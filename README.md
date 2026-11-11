@@ -1,4 +1,4 @@
-# 별무리 앱 관리 허브 (apps.bmrschool.net)
+# BMR APPS 앱 관리 허브 (apps.bmrschool.net)
 
 별무리학교 앱 목록·담당 교사·새 앱 신청/승인·토큰 발급 기록·운영 상태를 한곳에서 관리합니다.
 GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, 백엔드는 허브 전용 Supabase 프로젝트입니다.

@@ -97,6 +97,15 @@ export function App() {
   return <Shell ctx={ctx} path={path}>{page}</Shell>;
 }
 
+/** 인사말에 쓸 이름: 프로필 이름(일반 명칭 '관리자' 등 제외) → 가입 때 넣은 이름 → 이메일 앞부분 */
+const GENERIC = new Set(['관리자', 'admin', '직원', 'staff', '사용자', 'user']);
+function displayName(ctx: Ctx) {
+  const u = ctx.session?.user;
+  const meta = (u?.user_metadata ?? {}) as { name?: string; full_name?: string };
+  const cands = [ctx.me?.name, meta.name, meta.full_name].map((x) => (x ?? '').trim());
+  return cands.find((x) => x && !GENERIC.has(x.toLowerCase())) || (u?.email ?? ctx.me?.email ?? '').split('@')[0] || '선생';
+}
+
 type Tab = { to: string; icon: string; label: string; sub: string; show: boolean; badge?: number | null; tone?: string };
 
 function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: ReactNode }) {
@@ -152,14 +161,14 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.session, ctx.isStaff, ctx.isAdmin, c, pubApps, theme, inHub]);
 
-  const name = ctx.me?.name || ctx.session?.user.email?.split('@')[0] || '';
+  const name = displayName(ctx);
   const isActive = (to: string) => path === to || (to === '/hub/apps' && path === '/hub');
 
   return (
     <div className={`layout${inHub ? ' with-side' : ''}`}>
       {inHub && <>
         <aside className={`side${menu ? ' open' : ''}`}>
-          <Link to="/hub/apps" className="side-brand"><span className="logo">✨</span><span><b>별무리 앱</b><small>관리 허브</small></span></Link>
+          <Link to="/hub/apps" className="side-brand"><span className="logo">✨</span><span><b>BMR APPS</b><small>앱 관리</small></span></Link>
           <nav>
             {groups.map(([g, t]) => t.some((x) => x.show) && (
               <div key={g} className="side-group">
@@ -182,8 +191,8 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           {inHub && <button className="icon-btn burger" aria-label="메뉴 열기" onClick={() => setMenu(true)}>☰</button>}
           {!inHub && <Link to="/" className="logo" ><span>✨</span></Link>}
           <div className="greet">
-            {inHub ? <><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 별무리 앱을 살펴볼까요?</p></>
-              : <><h1>별무리 앱</h1><p>별무리학교 선생님들이 만들어 운영하는 서비스 모음</p></>}
+            {inHub ? <><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></>
+              : <><h1>BMR APPS</h1><p>별무리학교 선생님들이 만들어 운영하는 서비스 모음</p></>}
           </div>
           <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
           <Clock />

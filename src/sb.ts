@@ -29,7 +29,7 @@ export async function login(email: string, password: string) {
   if (error) throw new Error(/confirm/i.test(error.message) ? '이메일 확인이 아직 안 됐습니다. 받은편지함의 확인 메일을 눌러 주세요.' : '이메일 또는 비밀번호가 올바르지 않습니다.');
 }
 export async function signUp(email: string, password: string, name: string) {
-  const { data, error } = await sb.auth.signUp({ email: email.trim(), password, options: { data: { name }, emailRedirectTo: location.origin + '/hub/login' } });
+  const { data, error } = await sb.auth.signUp({ email: email.trim(), password, options: { data: { name: name.trim(), full_name: name.trim() }, emailRedirectTo: location.origin + '/hub/login' } });
   if (error) throw new Error(/already/i.test(error.message) ? '이미 가입된 이메일입니다.' : /password/i.test(error.message) ? '비밀번호는 8자 이상으로 해 주세요.' : '가입하지 못했습니다. 잠시 뒤 다시 시도하세요.');
   return { needsConfirm: !data.session };
 }

@@ -14,7 +14,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
   return (
     <section>
       <div className="hero">
-        <span className="eyebrow">✨ BYEOLMURI APPS</span>
+        <span className="eyebrow">✨ BMR APPS</span>
         <h2>별무리 선생님들이 만든 서비스</h2>
         <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 직원 로그인 뒤 신청할 수 있어요.</p>
       </div>
