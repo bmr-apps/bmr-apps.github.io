@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { Ctx } from '../App';
 import { sb, errMsg, fmtTime, type Request } from '../sb';
+import { Pills } from '../ui';
 
 const ST = { pending: '검토 대기', approved: '승인', rejected: '반려' } as const;
 const blank = { requester_name: '', requester_email: '', app_name: '', slug: '', purpose: '', data_handled: '', has_student_pii: '' as '' | 'yes' | 'no', github_username: '' };
@@ -9,6 +10,7 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
   const [list, setList] = useState<Request[]>([]);
   const [f, setF] = useState({ ...blank, requester_name: ctx.me?.name ?? '', requester_email: ctx.me?.email ?? '' });
   const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
+  const [tab, setTab] = useState<'all' | Request['status']>('all'); const [showForm, setShowForm] = useState(!ctx.isAdmin);
   const load = () => sb.from('app_requests').select('*').order('created_at', { ascending: false }).then(({ data, error }) => {
     if (error) setErr(errMsg(error)); setList((data as Request[]) ?? []);
   });
@@ -22,14 +24,15 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
       purpose: f.purpose, data_handled: f.data_handled, has_student_pii: f.has_student_pii === 'yes', github_username: f.github_username,
     });
     if (error) return setErr(errMsg(error));
-    setMsg('신청했습니다. 관리자가 검토한 뒤 결과가 이 화면에 표시됩니다.'); setF({ ...blank, requester_name: f.requester_name }); load();
+    setMsg('신청했습니다. 관리자가 검토한 뒤 결과가 이 화면에 표시됩니다.'); setF({ ...blank, requester_name: f.requester_name }); load(); ctx.refreshCounts?.();
   };
   const mine = list.filter((r) => r.requested_by === ctx.session?.user.id);
   const others = ctx.isAdmin ? list : mine;
   return (
     <section>
-      <h2>새 앱 신청</h2>
-      <form className="card form" onSubmit={submit}>
+      <div className="section-head"><h2>📝 새 앱 신청</h2><button className={showForm ? 'ghost' : ''} onClick={() => setShowForm(!showForm)}>{showForm ? '신청서 접기' : '✨ 새 앱 신청하기'}</button></div>
+      {msg && <p className="ok">{msg}</p>}{err && !showForm && <p className="error">{err}</p>}
+      {showForm && <form className="card form accent" onSubmit={submit}>
         <div className="cols">
           <label>신청자 이름<input required value={f.requester_name} onChange={(e) => setF({ ...f, requester_name: e.target.value })} /></label>
           <label>연락 이메일<input type="email" value={f.requester_email} onChange={(e) => setF({ ...f, requester_email: e.target.value })} /></label>
@@ -45,11 +48,15 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
         <label>목적·주요 기능<textarea required value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} /></label>
         <label>다루는 데이터<textarea value={f.data_handled} onChange={(e) => setF({ ...f, data_handled: e.target.value })} placeholder="예: 학생 이름·학번, 대출 기록" /></label>
         {f.has_student_pii === 'yes' && <p className="warn">학생 개인정보를 다루는 앱은 접근 권한(RLS)과 보관 기간을 승인 전에 함께 검토합니다.</p>}
-        {err && <p className="error">{err}</p>}{msg && <p className="ok">{msg}</p>}
-        <button>신청하기</button>
-      </form>
-      <h2>{ctx.isAdmin ? '전체 신청 (관리자)' : '내 신청'}</h2>
-      {others.length === 0 ? <p className="muted">신청 내역이 없습니다.</p> : others.map((r) => <RequestCard key={r.id} r={r} ctx={ctx} reload={load} />)}
+        {err && <p className="error">{err}</p>}
+        <div className="row"><button>신청하기</button></div>
+      </form>}
+      <div className="section-head">
+        <h3>{ctx.isAdmin ? '전체 신청 (관리자)' : '내 신청'}</h3>
+        <Pills value={tab} onChange={setTab} items={[['all', '전체', others.length], ['pending', ST.pending, others.filter((r) => r.status === 'pending').length], ['approved', ST.approved, others.filter((r) => r.status === 'approved').length], ['rejected', ST.rejected, others.filter((r) => r.status === 'rejected').length]]} />
+      </div>
+      {others.filter((r) => tab === 'all' || r.status === tab).length === 0 ? <div className="card empty">신청 내역이 없습니다.</div>
+        : others.filter((r) => tab === 'all' || r.status === tab).map((r) => <RequestCard key={r.id} r={r} ctx={ctx} reload={() => { load(); ctx.refreshCounts?.(); }} />)}
     </section>
   );
 }
@@ -65,8 +72,8 @@ function RequestCard({ r, ctx, reload }: { r: Request; ctx: Ctx; reload: () => v
   };
   const cancel = async () => { if (!confirm('신청을 취소할까요?')) return; const { error } = await sb.from('app_requests').delete().eq('id', r.id); if (error) setErr(errMsg(error)); else reload(); };
   return (
-    <div className={`card req s-${r.status}`}>
-      <div className="head"><h3>{r.app_name} <code>/{r.slug}</code> <span className={`badge r-${r.status}`}>{ST[r.status]}</span>{r.has_student_pii && <span className="badge pii">학생 개인정보</span>}</h3>
+    <div className={`card item b-${r.status === 'pending' ? 'amber' : r.status === 'approved' ? 'green' : 'red'}`}>
+      <div className="head"><h3>{r.app_name} <code>/{r.slug}</code> <span className={`badge r-${r.status}`}>{r.status === 'pending' ? '⏳' : r.status === 'approved' ? '✅' : '⛔'} {ST[r.status]}</span>{r.has_student_pii && <span className="badge pii">🔒 학생 개인정보</span>}</h3>
         <span className="muted">{fmtTime(r.created_at)}</span></div>
       <dl className="meta">
         <dt>신청자</dt><dd>{r.requester_name}{r.requester_email && ` · ${r.requester_email}`} · GitHub @{r.github_username}</dd>

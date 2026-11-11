@@ -9,25 +9,25 @@ export function MembersPage({ ctx }: { ctx: Ctx }) {
   useEffect(() => { if (ctx.isAdmin) load(); }, [ctx.isAdmin]);
   if (!ctx.isAdmin) return <div className="card">관리자만 볼 수 있습니다.</div>;
   const setRole = async (p: Profile, role: Role) => {
-    const { error } = await sb.from('profiles').update({ role }).eq('id', p.id); if (error) setErr(errMsg(error)); else load();
+    const { error } = await sb.from('profiles').update({ role }).eq('id', p.id); if (error) setErr(errMsg(error)); else { load(); ctx.refreshCounts?.(); }
   };
   const pending = rows.filter((r) => r.role === 'pending').length;
   return (
     <section>
-      <h2>역할 관리</h2>
-      {pending > 0 && <p className="warn">승인을 기다리는 가입자가 {pending}명 있습니다.</p>}
+      <div className="section-head"><h2>👥 역할 관리</h2></div>
+      {pending > 0 && <p className="warn">⏳ 승인을 기다리는 가입자가 {pending}명 있습니다.</p>}
       {err && <p className="error">{err}</p>}
-      <table className="card">
+      <div className="card flush"><table>
         <thead><tr><th>이름</th><th>이메일</th><th>가입</th><th>역할</th></tr></thead>
         <tbody>{rows.map((p) => (
           <tr key={p.id} className={p.role === 'pending' ? 'soon' : ''}>
-            <td>{p.name}</td><td>{p.email}</td><td>{fmtTime(p.created_at)}</td>
+            <td><span className="avatar sm">{(p.name || p.email).slice(0, 1)}</span> {p.name}</td><td>{p.email}</td><td>{fmtTime(p.created_at)}</td>
             <td>{p.id === ctx.session?.user.id ? `${ROLE_LABEL[p.role]} (나)` : (
               <select value={p.role} onChange={(e) => setRole(p, e.target.value as Role)}>
                 {Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>)}</td>
           </tr>))}</tbody>
-      </table>
+      </table></div>
     </section>
   );
 }

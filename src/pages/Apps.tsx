@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Ctx } from '../App';
+import { go, type Ctx } from '../App';
 import { sb, errMsg, fmtTime, STATUS_LABEL, type App, type Health, type Owner, type Status } from '../sb';
+import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
 
 /** 첫 화면: 누구나 보는 운영 중 앱 바로가기 */
 export function Landing({ ctx }: { ctx: Ctx }) {
@@ -12,12 +13,20 @@ export function Landing({ ctx }: { ctx: Ctx }) {
   }, [ctx.session]);
   return (
     <section>
-      <div className="hero"><h1>별무리 앱</h1><p className="muted">별무리학교 선생님들이 만들어 운영하는 서비스 모음입니다.</p></div>
+      <div className="hero">
+        <span className="eyebrow">✨ BYEOLMURI APPS</span>
+        <h2>별무리 선생님들이 만든 서비스</h2>
+        <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 직원 로그인 뒤 신청할 수 있어요.</p>
+      </div>
+      <div className="section-head"><h3>운영 중인 앱 {apps && <span className="cnt">{apps.length}</span>}</h3></div>
       {err && <p className="error">{err}</p>}
-      {apps === null ? <p className="muted">불러오는 중…</p> : apps.length === 0 ? <p className="muted">아직 운영 중인 앱이 없습니다.</p> : (
-        <div className="grid">{apps.map((a) => (
-          <a key={a.id} className="card app" href={a.url} target="_blank" rel="noopener noreferrer">
-            <h3>{a.name}</h3><p>{a.description}</p><span className="url">{a.url.replace(/^https?:\/\//, '')} ↗</span>
+      {apps === null ? <p className="muted">불러오는 중…</p> : apps.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
+        <div className="tiles">{apps.map((a) => (
+          <a key={a.id} className={`tile tone-${appTone(a.slug)}`} href={a.url} target="_blank" rel="noopener noreferrer">
+            <span className="tile-ico">{appIcon(a.slug)}</span>
+            <b className="tile-title">{a.name}</b>
+            <span className="tile-desc">{a.description}</span>
+            <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')} ↗</span></span>
           </a>))}
         </div>)}
     </section>
@@ -25,12 +34,15 @@ export function Landing({ ctx }: { ctx: Ctx }) {
 }
 
 const empty = { slug: '', name: '', description: '', url: '', repo_url: '', supabase_ref: '', status: 'active' as Status, note: '', sort: 100 };
+type F = 'all' | Status;
 
-/** 서비스 목록 + 담당 교사 (관리자는 추가·수정) */
+/** 대시보드: 요약 카드 + 서비스 목록 + 담당 교사 (관리자는 추가·수정) */
 export function AppsPage({ ctx }: { ctx: Ctx }) {
   const [apps, setApps] = useState<App[]>([]); const [owners, setOwners] = useState<Owner[]>([]);
   const [health, setHealth] = useState<Record<number, Health>>({});
   const [edit, setEdit] = useState<(typeof empty & { id?: number }) | null>(null);
+  const [open, setOpen] = useState<number | null>(null);
+  const [filter, setFilter] = useState<F>('all');
   const [err, setErr] = useState('');
   const load = async () => {
     const [a, o, h] = await Promise.all([
@@ -47,52 +59,89 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
     const { id, ...body } = row;
     const { error } = id ? await sb.from('apps').update(body).eq('id', id) : await sb.from('apps').insert(body);
     if (error) return setErr(errMsg(error));
-    setEdit(null); load();
+    setEdit(null); load(); ctx.refreshCounts?.();
   };
+  const c = ctx.counts;
+  const n = (s: Status) => apps.filter((a) => a.status === s).length;
+  const shown = apps.filter((a) => filter === 'all' || a.status === filter);
+  const cur = apps.find((a) => a.id === open);
+  const watched = (c?.healthOk ?? 0) + (c?.healthBad ?? 0) + (c?.healthNone ?? 0);
   return (
     <section>
-      <div className="head"><h2>서비스 목록 · 담당 교사</h2>{ctx.isAdmin && <button onClick={() => setEdit({ ...empty })}>+ 앱 추가</button>}</div>
+      <div className="stats">
+        <Stat tone="amber" icon="📝" label="승인 대기 신청" value={c ? c.reqPending : '–'} sub={ctx.isAdmin ? '검토가 필요한 새 앱 신청' : '내가 낸 신청 중 검토 대기'} onClick={() => go('/hub/requests')} />
+        {ctx.isAdmin
+          ? <Stat tone="red" icon="🔑" label="만료 임박 토큰" value={c?.tokSoon ?? '–'} sub="14일 안에 만료 · 이미 만료" onClick={() => go('/hub/tokens')} />
+          : <Stat tone="blue" icon="🧑‍🏫" label="담당 교사" value={owners.length} sub="등록된 담당자 수" />}
+        <Stat tone="green" icon="📡" label="운영 상태" value={c ? <>{c.healthOk}<small>/{watched}</small></> : '–'} sub={c ? (c.healthBad ? `⚠️ 이상 ${c.healthBad}개` : c.healthNone ? `기록 없음 ${c.healthNone}개` : '모두 정상') : ''} onClick={() => go('/hub/status')} />
+        <Stat tone="violet" icon="🧩" label="서비스" value={<>{n('active')}<small>/{apps.length}</small></>} sub={`운영 중 · 준비 중 ${n('preparing')}개`} />
+      </div>
+
+      <div className="section-head">
+        <h3>서비스 · 담당 교사</h3>
+        <Pills value={filter} onChange={setFilter} items={[['all', '전체', apps.length], ['active', '운영 중', n('active')], ['preparing', '준비 중', n('preparing')], ['paused', '일시 중지', n('paused')], ['retired', '종료', n('retired')]]} />
+        {ctx.isAdmin && <button onClick={() => setEdit({ ...empty })}>+ 앱 추가</button>}
+      </div>
       {err && <p className="error">{err}</p>}
-      {edit && (
-        <form className="card form" onSubmit={save}>
-          <h3>{edit.id ? '앱 수정' : '앱 추가'}</h3>
-          <div className="cols">
-            <label>앱 이름<input required value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></label>
-            <label>주소 이름(slug)<input required pattern="[a-z0-9][a-z0-9-]{1,38}" value={edit.slug} onChange={(e) => setEdit({ ...edit, slug: e.target.value.toLowerCase() })} placeholder="예: library" /></label>
-            <label>앱 주소 (비우면 apps.bmrschool.net/slug)<input value={edit.url} onChange={(e) => setEdit({ ...edit, url: e.target.value })} placeholder={`https://apps.bmrschool.net/${edit.slug || 'slug'}`} /></label>
-            <label>저장소 주소<input value={edit.repo_url} onChange={(e) => setEdit({ ...edit, repo_url: e.target.value })} placeholder="https://github.com/bmr-apps/..." /></label>
-            <label>Supabase 프로젝트 ref<input value={edit.supabase_ref} onChange={(e) => setEdit({ ...edit, supabase_ref: e.target.value })} /></label>
-            <label>상태<select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value as Status })}>{Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-            <label>정렬 순서<input type="number" value={edit.sort} onChange={(e) => setEdit({ ...edit, sort: Number(e.target.value) })} /></label>
+      {shown.length === 0 ? <div className="card empty">해당하는 서비스가 없습니다.</div> : (
+        <div className="tiles">{shown.map((a) => {
+          const own = owners.filter((o) => o.app_id === a.id);
+          return (
+            <button key={a.id} className={`tile tone-${appTone(a.slug)}`} onClick={() => setOpen(a.id)}>
+              <span className="tile-ico">{appIcon(a.slug)}</span>
+              <b className="tile-title">{a.name}</b>
+              <span className="tile-desc">{a.description || '설명이 없습니다.'}</span>
+              <span className="tile-foot">
+                <span className={`sdot s-${a.status}`} />{STATUS_LABEL[a.status]}
+                <HealthDot h={health[a.id]} />
+                <span className="tile-url">{own.length ? `🧑‍🏫 ${own.map((o) => o.name).join(', ')}` : '담당자 없음'}</span>
+              </span>
+            </button>);
+        })}</div>)}
+
+      {cur && !edit && (
+        <Modal onClose={() => setOpen(null)} wide>
+          <div className="modal-head">
+            <span className={`tile-ico tone-${appTone(cur.slug)}`}>{appIcon(cur.slug)}</span>
+            <div><h2>{cur.name}</h2><span className={`badge s-${cur.status}`}>{STATUS_LABEL[cur.status]}</span> <HealthDot h={health[cur.id]} label /></div>
           </div>
-          <label>설명<textarea value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></label>
-          <label>메모<textarea value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></label>
-          <div className="row"><button>저장</button><button type="button" className="ghost" onClick={() => setEdit(null)}>취소</button></div>
-        </form>
-      )}
-      {apps.map((a) => (
-        <div key={a.id} className="card">
-          <div className="head">
-            <h3>{a.name} <span className={`badge s-${a.status}`}>{STATUS_LABEL[a.status]}</span> <HealthDot h={health[a.id]} /></h3>
-            {ctx.isAdmin && <button className="ghost" onClick={() => setEdit({ ...a, repo_url: a.repo_url ?? '', supabase_ref: a.supabase_ref ?? '' })}>수정</button>}
-          </div>
-          <p>{a.description}</p>
+          {cur.description && <p>{cur.description}</p>}
           <dl className="meta">
-            <dt>주소</dt><dd><a href={a.url} target="_blank" rel="noopener noreferrer">{a.url}</a></dd>
-            {a.repo_url && <><dt>저장소</dt><dd><a href={a.repo_url} target="_blank" rel="noopener noreferrer">{a.repo_url.replace('https://github.com/', '')}</a></dd></>}
-            {a.supabase_ref && <><dt>Supabase</dt><dd><code>{a.supabase_ref}</code></dd></>}
-            {a.note && <><dt>메모</dt><dd>{a.note}</dd></>}
+            <dt>주소</dt><dd><a href={cur.url} target="_blank" rel="noopener noreferrer">{cur.url} ↗</a></dd>
+            {cur.repo_url && <><dt>저장소</dt><dd><a href={cur.repo_url} target="_blank" rel="noopener noreferrer">{cur.repo_url.replace('https://github.com/', '')}</a></dd></>}
+            {cur.supabase_ref && <><dt>Supabase</dt><dd><code>{cur.supabase_ref}</code></dd></>}
+            {cur.note && <><dt>메모</dt><dd>{cur.note}</dd></>}
           </dl>
-          <Owners app={a} owners={owners.filter((o) => o.app_id === a.id)} isAdmin={ctx.isAdmin} reload={load} />
-        </div>
-      ))}
+          <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} isAdmin={ctx.isAdmin} reload={load} />
+          {ctx.isAdmin && <div className="row end"><button className="ghost" onClick={() => setEdit({ ...cur, repo_url: cur.repo_url ?? '', supabase_ref: cur.supabase_ref ?? '' })}>✏️ 앱 정보 수정</button></div>}
+        </Modal>)}
+
+      {edit && (
+        <Modal onClose={() => setEdit(null)} wide>
+          <form className="form" onSubmit={save}>
+            <h2>{edit.id ? '앱 수정' : '앱 추가'}</h2>
+            <div className="cols">
+              <label>앱 이름<input required value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></label>
+              <label>주소 이름(slug)<input required pattern="[a-z0-9][a-z0-9-]{1,38}" value={edit.slug} onChange={(e) => setEdit({ ...edit, slug: e.target.value.toLowerCase() })} placeholder="예: library" /></label>
+              <label>앱 주소 (비우면 apps.bmrschool.net/slug)<input value={edit.url} onChange={(e) => setEdit({ ...edit, url: e.target.value })} placeholder={`https://apps.bmrschool.net/${edit.slug || 'slug'}`} /></label>
+              <label>저장소 주소<input value={edit.repo_url} onChange={(e) => setEdit({ ...edit, repo_url: e.target.value })} placeholder="https://github.com/bmr-apps/..." /></label>
+              <label>Supabase 프로젝트 ref<input value={edit.supabase_ref} onChange={(e) => setEdit({ ...edit, supabase_ref: e.target.value })} /></label>
+              <label>상태<select value={edit.status} onChange={(e) => setEdit({ ...edit, status: e.target.value as Status })}>{Object.entries(STATUS_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
+              <label>정렬 순서<input type="number" value={edit.sort} onChange={(e) => setEdit({ ...edit, sort: Number(e.target.value) })} /></label>
+            </div>
+            <label>설명<textarea value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></label>
+            <label>메모<textarea value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></label>
+            {err && <p className="error">{err}</p>}
+            <div className="row"><button>저장</button><button type="button" className="ghost" onClick={() => setEdit(null)}>취소</button></div>
+          </form>
+        </Modal>)}
     </section>
   );
 }
 
-export function HealthDot({ h }: { h?: Health }) {
-  if (!h) return <span className="dot none" title="점검 기록 없음">●</span>;
-  return <span className={`dot ${h.ok ? 'ok' : 'bad'}`} title={`${fmtTime(h.checked_at)} · ${h.http_status ?? h.error} · ${h.response_ms ?? '-'}ms`}>●</span>;
+export function HealthDot({ h, label }: { h?: Health; label?: boolean }) {
+  if (!h) return <span className="hpill none" title="점검 기록 없음">● {label ? '점검 기록 없음' : '기록 없음'}</span>;
+  return <span className={`hpill ${h.ok ? 'ok' : 'bad'}`} title={`${fmtTime(h.checked_at)} · ${h.http_status ?? h.error} · ${h.response_ms ?? '-'}ms`}>● {h.ok ? '정상' : '이상'}{label && h.response_ms != null ? ` · ${h.response_ms}ms` : ''}</span>;
 }
 
 function Owners({ app, owners, isAdmin, reload }: { app: App; owners: Owner[]; isAdmin: boolean; reload: () => void }) {
@@ -110,14 +159,15 @@ function Owners({ app, owners, isAdmin, reload }: { app: App; owners: Owner[]; i
   };
   return (
     <div className="owners">
-      <h4>담당 교사</h4>
+      <h4>🧑‍🏫 담당 교사</h4>
       {owners.length === 0 ? <p className="muted">등록된 담당자가 없습니다.</p> : (
-        <table><thead><tr><th>이름</th><th>역할</th><th>이메일</th><th>GitHub</th>{isAdmin && <th />}</tr></thead>
-          <tbody>{owners.map((o) => (
-            <tr key={o.id}><td>{o.name}</td><td>{o.role}</td><td>{o.email}</td>
-              <td>{o.github_username && <a href={`https://github.com/${o.github_username}`} target="_blank" rel="noopener noreferrer">@{o.github_username}</a>}</td>
-              {isAdmin && <td><button className="ghost small" onClick={() => del(o)}>빼기</button></td>}</tr>))}
-          </tbody></table>)}
+        <div className="owner-list">{owners.map((o) => (
+          <div key={o.id} className="owner">
+            <span className="avatar">{o.name.slice(0, 1)}</span>
+            <span className="grow"><b>{o.name}</b> <span className="badge">{o.role}</span><small className="muted block">{o.email}{o.github_username && <> · <a href={`https://github.com/${o.github_username}`} target="_blank" rel="noopener noreferrer">@{o.github_username}</a></>}</small></span>
+            {isAdmin && <button className="ghost small" onClick={() => del(o)}>빼기</button>}
+          </div>))}
+        </div>)}
       {err && <p className="error">{err}</p>}
       {isAdmin && (f ? (
         <form className="row wrap" onSubmit={add}>
