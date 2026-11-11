@@ -6,6 +6,7 @@ import { RequestsPage } from './pages/Requests';
 import { TokensPage } from './pages/Tokens';
 import { StatusPage } from './pages/Status';
 import { MembersPage } from './pages/Members';
+import { DbCredPage } from './pages/DbCred';
 import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
@@ -87,7 +88,8 @@ export function App() {
   if (path === '/') page = <Landing ctx={ctx} />;
   else if (path === '/hub/login') page = <LoginPage session={session} />;
   else if (!session) page = <LoginPage session={null} />;
-  else if (me && !ctx.isStaff) page = <div className="card narrow center"><div className="logo big">{me.role === 'pending' ? '⏳' : '🚫'}</div><h2>{ROLE_LABEL[me.role]}</h2><p>{me.role === 'pending' ? '가입은 됐습니다. 관리자가 직원으로 승인하면 허브를 쓸 수 있습니다.' : '사용이 중지된 계정입니다. 관리자에게 문의하세요.'}</p><p className="muted">{me.email}</p></div>;
+  else if (path === '/hub/db' && me?.role !== 'disabled') page = <DbCredPage ctx={ctx} />;
+  else if (me && !ctx.isStaff) page = <div className="card narrow center"><div className="logo big">{me.role === 'pending' ? '⏳' : '🚫'}</div><h2>{ROLE_LABEL[me.role]}</h2><p>{me.role === 'pending' ? '가입은 됐습니다. 관리자가 직원으로 승인하면 허브를 쓸 수 있습니다.' : '사용이 중지된 계정입니다. 관리자에게 문의하세요.'}</p><p className="muted">{me.email}</p>{me.role === 'pending' && <Link to="/hub/db" className="btn">내가 담당인 앱의 DB 접속 정보</Link>}</div>;
   else if (path === '/hub' || path === '/hub/apps') page = <AppsPage ctx={ctx} />;
   else if (path === '/hub/requests') page = <RequestsPage ctx={ctx} />;
   else if (path === '/hub/tokens') page = <TokensPage ctx={ctx} />;
@@ -117,6 +119,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
       { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 교사', show: true },
+      { to: '/hub/db', icon: '🗄️', label: 'DB 접속 정보', sub: '내 앱 비밀번호 받기', show: true },
       { to: '/', icon: '🌐', label: '공개 첫 화면', sub: '누구나 보는 바로가기', show: true },
     ]],
     ['운영', [

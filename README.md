@@ -11,6 +11,9 @@ GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, �
 - `/hub/tokens` 토큰 발급 기록 (관리자 전용, **값은 저장하지 않음**, 14일 안 만료 강조)
 - `/hub/status` 운영 상태 (Edge Function `hub-health`, 매시 정각 pg_cron)
 - `/hub/members` 역할 관리 (관리자 전용)
+- `/hub/db` **DB 접속 정보** — 로그인한 사람 누구나(승인 대기 포함). 확인된 허브 계정 메일이 앱 담당자 메일과 같으면 그 앱이 보임.
+  '처음 비밀번호 받기'(한 번만, 받으면 서버 사본 삭제) · '새 비밀번호 발급'(즉시 이전 값 무효, 저장 안 함) · 직접 바꾸는 SQL 안내 · 최근 기록.
+  관리자는 앱 상세(`/hub/apps` → 앱)에서도 같은 카드를 보고, 담당자 계정 유무 확인과 **'✉️ 가입 초대 보내기'**(누를 때만 메일 발송)를 할 수 있음.
 
 ## 역할
 가입하면 `pending`(승인 대기) → 관리자가 `staff`(직원) 또는 `admin`(관리자)으로 올립니다. `disabled`는 사용 중지.
@@ -27,7 +30,14 @@ node scripts/migrate.mjs            # 테이블·RLS·시드·cron
 node scripts/auth_config.mjs        # site_url, 리디렉트 허용, 가입 허용+이메일 확인
 node scripts/setup_cron_secret.mjs  # Vault + 함수 비밀값 HUB_CRON_SECRET
 (cd supabase && SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN_NEW npx supabase functions deploy hub-health --project-ref $HUB_REF --use-api)
+(cd supabase && SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN_NEW npx supabase functions deploy hub-dbcred --project-ref $HUB_REF --use-api --no-verify-jwt)
 ```
+
+### `hub-dbcred` (앱 DB 비밀번호 전달)
+- 마이그레이션 `20261112070000_dbcred.sql`: token_logs 종류 `supabase_db_password`, 시도 기록표 `bmr_admin.dbcred_attempts`(권한 없음, 함수만 씀).
+- 동작 `list`·`reveal`·`rotate`·`invite`(로그인 JWT 확인 후 서버에서 담당자/관리자 확인), `stage`(서버용 키만 — `bmr-app-templates/provision.mjs` 가 부름).
+- 1회용 비밀번호는 Vault `bmr_dbcred:<slug>`. 역할 비밀번호는 SCRAM 값으로만 넣어 평문이 DB 로그에 남지 않음. 출처 허용: apps.bmrschool.net, localhost.
+- 시험: `bmr-app-templates/test/dbcred.mjs`.
 
 ## 배포
 `main`에 push하면 `.github/workflows/deploy.yml`이 빌드해 Pages로 배포합니다.

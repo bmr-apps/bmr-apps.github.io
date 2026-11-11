@@ -5,7 +5,7 @@ export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\
 const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 export const configured = !!(SUPABASE_URL && ANON);
 export const sb = createClient(SUPABASE_URL || 'http://invalid.local', ANON || 'missing', {
-  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storageKey: 'bmr-apps-hub-auth' },
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'bmr-apps-hub-auth' },
 });
 
 export type App = { id: number; slug: string; name: string; description: string; url: string; repo_url: string | null; supabase_ref: string | null; status: Status; note: string; sort: number; created_at: string; updated_at: string };
@@ -21,7 +21,7 @@ export const ROLE_LABEL: Record<Role, string> = { pending: '승인 대기', staf
 export const STATUS_LABEL: Record<Status, string> = { preparing: '준비 중', active: '운영 중', paused: '일시 중지', retired: '종료' };
 export const KIND_LABEL: Record<string, string> = {
   github_pat: 'GitHub 토큰(fine-grained)', github_deploy_key: 'GitHub 배포 키', supabase_anon: 'Supabase 공개(anon) 키',
-  supabase_service_role: 'Supabase service_role 키', supabase_access_token: 'Supabase 개인 액세스 토큰', gemini_api_key: 'Gemini API 키', other: '기타',
+  supabase_service_role: 'Supabase service_role 키', supabase_db_password: '앱 DB 비밀번호 (허브 1회 표시)', supabase_access_token: 'Supabase 개인 액세스 토큰', gemini_api_key: 'Gemini API 키', other: '기타',
 };
 
 export async function login(email: string, password: string) {
@@ -58,4 +58,17 @@ export function daysLeft(d: string | null): number | null {
   if (!d) return null;
   const today = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' }));
   return Math.round((new Date(d).getTime() - today.getTime()) / 86400000);
+}
+
+// ---------- 앱 DB 접속 정보 (Edge Function hub-dbcred) ----------
+export type DbConn = { host: string; port: number; port_transaction: number; database: string; user: string; user_direct: string; schema: string; password?: string; direct_host: string; database_url: string };
+export type DbApp = { app_id: number; slug: string; name: string; schema: string; role: string; pending_initial: boolean; recent: { label: string; issued_to: string; created_at: string }[];
+  owners: { id: number; name: string; email: string | null; has_account: boolean; verified: boolean }[]; conn: DbConn };
+export async function dbcred<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-dbcred`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ action, ...body }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`);
+  return j as T;
 }

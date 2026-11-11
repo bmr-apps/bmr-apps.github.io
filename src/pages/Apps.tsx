@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { go, type Ctx } from '../App';
 import { sb, errMsg, fmtTime, STATUS_LABEL, type App, type Health, type Owner, type Status } from '../sb';
 import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
+import { DbCredSection } from './DbCred';
 
 /** 첫 화면: 누구나 보는 운영 중 앱 바로가기 */
 export function Landing({ ctx }: { ctx: Ctx }) {
@@ -113,6 +114,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
             {cur.note && <><dt>메모</dt><dd>{cur.note}</dd></>}
           </dl>
           <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} isAdmin={ctx.isAdmin} reload={load} />
+          <DbCredSection ctx={ctx} appId={cur.id} />
           {ctx.isAdmin && <div className="row end"><button className="ghost" onClick={() => setEdit({ ...cur, repo_url: cur.repo_url ?? '', supabase_ref: cur.supabase_ref ?? '' })}>✏️ 앱 정보 수정</button></div>}
         </Modal>)}
 
