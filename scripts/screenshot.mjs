@@ -9,8 +9,8 @@ const apps = [
   { id: 2, slug: 'library', name: '도서 대출 관리(예시)', description: '학교 도서관 대출·반납 기록', url: 'https://apps.bmrschool.net/library', repo_url: 'https://github.com/bmr-apps/library', supabase_ref: null, status: 'preparing', note: '', sort: 100, created_at: now, updated_at: now },
 ];
 const data = {
-  apps, profiles: [{ id: 'u1', email: 'bmrdev@bmrschool.org', name: '관리자', role: 'admin', created_at: now }],
-  app_owners: [{ id: 1, app_id: 1, name: '조은길', email: 'bmrdev@bmrschool.org', github_username: 'devgoodway', role: '책임' }],
+  apps, profiles: [{ id: 'u1', email: 'dev@bmrschool.org', name: '관리자', role: 'admin', created_at: now }],
+  app_owners: [{ id: 1, app_id: 1, name: '조은길', email: 'dev@bmrschool.org', github_username: 'devgoodway', role: '책임' }],
   app_health_latest: [{ app_id: 1, checked_at: now, url: apps[0].url, http_status: 200, ok: true, response_ms: 605, error: null }],
   health_checks: Array.from({ length: 12 }, (_, i) => ({ app_id: 1, checked_at: now, url: apps[0].url, http_status: 200, ok: i !== 3, response_ms: 600, error: null })),
   token_logs: [
@@ -24,7 +24,7 @@ async function shot(path, file, loggedIn, height = 900) {
   const ctx = await b.newContext({ viewport: { width: 1280, height }, locale: 'ko-KR' });
   if (loggedIn) await ctx.addInitScript(() => localStorage.setItem('bmr-apps-hub-auth', JSON.stringify({
     access_token: 'x.eyJzdWIiOiJ1MSJ9.x', refresh_token: 'r', token_type: 'bearer', expires_in: 3600, expires_at: 4102444800,
-    user: { id: 'u1', email: 'bmrdev@bmrschool.org', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '2026-11-11T00:00:00Z' } })));
+    user: { id: 'u1', email: 'dev@bmrschool.org', aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {}, created_at: '2026-11-11T00:00:00Z' } })));
   const p = await ctx.newPage();
   const errs = []; p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
   await p.route('https://abcdefghijklmnopqrst.supabase.co/**', (r) => {

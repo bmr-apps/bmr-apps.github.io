@@ -4,4 +4,4 @@ values ('designer', '별무리 수업 디자이너', '교과 수업 설계와 �
         'https://apps.bmrschool.net/designer (bmr-apps/designer 저장소)로 옮길 예정', 10)
 on conflict (slug) do nothing;
 -- 첫 관리자는 가입 후 SQL 한 줄로 올린다 (README 참고):
---   update public.profiles set role = 'admin' where email = 'bmrdev@bmrschool.org';
+--   update public.profiles set role = 'admin' where email = 'dev@bmrschool.org';

@@ -17,7 +17,7 @@ GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, �
 
 **첫 관리자 만들기**: 사이트에서 가입하고 이메일 확인을 마친 뒤, Supabase SQL 편집기에서 한 줄 실행
 ```sql
-update public.profiles set role = 'admin' where email = 'bmrdev@bmrschool.org';
+update public.profiles set role = 'admin' where email = 'dev@bmrschool.org';
 ```
 
 ## 백엔드 설정 (새 프로젝트 기준, 토큰은 출력되지 않음)
