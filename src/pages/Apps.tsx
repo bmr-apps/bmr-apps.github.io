@@ -17,7 +17,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
       <div className="hero">
         <span className="eyebrow">✨ BMR APPS</span>
         <h2>별무리 선생님들이 만든 서비스</h2>
-        <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 직원 로그인 뒤 신청할 수 있어요.</p>
+        <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 가입한 뒤, 교사로 승인되면 신청할 수 있어요.</p>
       </div>
       <div className="section-head"><h3>운영 중인 앱 {apps && <span className="cnt">{apps.length}</span>}</h3></div>
       {err && <p className="error">{err}</p>}
@@ -67,6 +67,27 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
   const shown = apps.filter((a) => filter === 'all' || a.status === filter);
   const cur = apps.find((a) => a.id === open);
   const watched = (c?.healthOk ?? 0) + (c?.healthBad ?? 0) + (c?.healthNone ?? 0);
+  if (!ctx.isStaff) {
+    const active = apps.filter((a) => a.status === 'active');
+    return (
+      <section>
+        <div className="card warn">
+          <h3>교사 승인 후 이용할 수 있어요</h3>
+          <p>일반 사용자로 가입되었습니다. 앱 신청, DB 접속 정보, 운영 상태는 관리자가 직원으로 올리면 쓸 수 있습니다. 관리자에게 요청하세요.</p>
+        </div>
+        <div className="section-head"><h3>운영 중인 앱 {active.length ? <span className="cnt">{active.length}</span> : null}</h3></div>
+        {err && <p className="error">{err}</p>}
+        {active.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
+          <div className="tiles">{active.map((a) => (
+            <a key={a.id} className={`tile tone-${appTone(a.slug)}`} href={a.url} target="_blank" rel="noopener noreferrer">
+              <span className="tile-ico">{appIcon(a.slug)}</span>
+              <b className="tile-title">{a.name}</b>
+              <span className="tile-desc">{a.description}</span>
+              <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')} ↗</span></span>
+            </a>))}</div>)}
+      </section>
+    );
+  }
   return (
     <section>
       <div className="stats">

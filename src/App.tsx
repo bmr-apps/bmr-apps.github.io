@@ -65,6 +65,7 @@ export function App() {
   const path = usePath();
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<Profile | null>(null);
+  const [meReady, setMeReady] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -74,8 +75,19 @@ export function App() {
   }, []);
   const uid = session?.user.id;
   useEffect(() => {
-    if (!uid) { setMe(null); return; }
-    sb.from('profiles').select('*').eq('id', uid).maybeSingle().then(({ data }) => setMe((data as Profile) ?? null));
+    if (!uid) { setMe(null); setMeReady(true); return; }
+    let live = true;
+    setMeReady(false);
+    (async () => {
+      for (let i = 0; i < 8 && live; i++) {
+        const { data } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+        if (!live) return;
+        if (data) { setMe(data as Profile); setMeReady(true); return; }
+        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+      }
+      if (live) { setMe(null); setMeReady(true); }
+    })();
+    return () => { live = false; };
   }, [uid]);
 
   const isAdmin = me?.role === 'admin'; const isStaff = isAdmin || me?.role === 'staff';
@@ -88,15 +100,31 @@ export function App() {
   if (path === '/') page = <Landing ctx={ctx} />;
   else if (path === '/hub/login') page = <LoginPage session={session} />;
   else if (!session) page = <LoginPage session={null} />;
-  else if (path === '/hub/db' && me?.role !== 'disabled') page = <DbCredPage ctx={ctx} />;
-  else if (me && !ctx.isStaff) page = <div className="card narrow center"><div className="logo big">{me.role === 'pending' ? '⏳' : '🚫'}</div><h2>{ROLE_LABEL[me.role]}</h2><p>{me.role === 'pending' ? '가입은 됐습니다. 관리자가 직원으로 승인하면 허브를 쓸 수 있습니다.' : '사용이 중지된 계정입니다. 관리자에게 문의하세요.'}</p><p className="muted">{me.email}</p>{me.role === 'pending' && <Link to="/hub/db" className="btn">내가 담당인 앱의 DB 접속 정보</Link>}</div>;
+  else if (!meReady) page = <p className="muted">불러오는 중…</p>;
+  else if (!me) page = <div className="card narrow center"><h2>프로필을 찾지 못했습니다</h2><p>다시 로그인하거나 관리자에게 문의하세요.</p></div>;
+  else if (me.role === 'disabled') page = <div className="card narrow center"><div className="logo big">🚫</div><h2>사용 중지</h2><p>사용이 중지된 계정입니다. 관리자에게 문의하세요.</p><p className="muted">{me.email}</p></div>;
+  else if (path === '/hub/db') page = <StaffOnly ctx={ctx}><DbCredPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub' || path === '/hub/apps') page = <AppsPage ctx={ctx} />;
-  else if (path === '/hub/requests') page = <RequestsPage ctx={ctx} />;
+  else if (path === '/hub/requests') page = <StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/tokens') page = <TokensPage ctx={ctx} />;
-  else if (path === '/hub/status') page = <StatusPage ctx={ctx} />;
+  else if (path === '/hub/status') page = <StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/members') page = <MembersPage ctx={ctx} />;
   else page = <div className="card narrow center"><div className="logo big">🧭</div><h2>페이지를 찾을 수 없습니다</h2><p className="muted">주소({path})에 해당하는 앱이 아직 배포되지 않았을 수 있습니다.</p><Link to="/" className="btn">처음으로</Link></div>;
   return <Shell ctx={ctx} path={path}>{page}</Shell>;
+}
+
+/** 직원 전용 화면: 일반 사용자에게는 안내만 보여 준다 */
+function StaffOnly({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
+  if (ctx.isStaff) return children;
+  return (
+    <div className="card narrow center">
+      <div className="logo big">🔒</div>
+      <h2>교사 승인 후 이용할 수 있어요</h2>
+      <p>관리자에게 요청하세요.</p>
+      <p className="muted">{ctx.me?.email}</p>
+      <Link to="/hub/apps" className="btn">대시보드로</Link>
+    </div>
+  );
 }
 
 /** 인사말에 쓸 이름: 프로필 이름(일반 명칭 '관리자' 등 제외) → 가입 때 넣은 이름 → 이메일 앞부분 */
@@ -115,7 +143,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const [pal, setPal] = useState(false);
   const [menu, setMenu] = useState(false);
   const c = ctx.counts;
-  const inHub = !!ctx.session && ctx.isStaff && path !== '/' && path !== '/hub/login';
+  const inHub = !!ctx.session && ctx.me?.role !== 'disabled' && path !== '/' && path !== '/hub/login';
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
       { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 교사', show: true },
@@ -128,7 +156,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     ]],
     ['관리자', [
       { to: '/hub/tokens', icon: '🔑', label: '토큰 기록', sub: '발급·만료 관리', show: ctx.isAdmin, badge: c?.tokSoon, tone: 'red' },
-      { to: '/hub/members', icon: '👥', label: '역할 관리', sub: '가입자 승인', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
+      { to: '/hub/members', icon: '👥', label: '역할 관리', sub: '일반 사용자를 직원으로', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
     ]],
   ];
   const tabs = groups.flatMap(([, t]) => t.filter((x) => x.show));
@@ -149,7 +177,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
 
   const cmds = useMemo<Cmd[]>(() => {
     const list: Cmd[] = [];
-    if (ctx.session && ctx.isStaff) tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
+    if (ctx.session && ctx.me?.role !== 'disabled') tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
     else list.push({ id: 'home', group: '메뉴', icon: '🌐', title: '첫 화면', sub: '운영 중인 앱 바로가기', run: () => go('/') });
     const apps = (inHub ? c?.apps : pubApps)?.filter((a) => a.status !== 'retired') ?? [];
     apps.forEach((a) => list.push({ id: 'app' + a.id, group: '서비스 열기', icon: appIcon(a.slug), title: a.name, sub: a.url.replace(/^https?:\/\//, ''), run: () => { open(a.url, '_blank', 'noopener'); } }));
@@ -159,7 +187,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       if (ctx.isAdmin) list.push({ id: 'chk', group: '동작', icon: '🩺', title: '운영 상태 점검하러 가기', sub: '운영 상태 화면의 “지금 점검”', run: () => go('/hub/status') });
     }
     if (ctx.session) list.push({ id: 'out', group: '동작', icon: '🚪', title: '로그아웃', run: logout });
-    else list.push({ id: 'in', group: '동작', icon: '🔐', title: '직원 로그인', run: () => go('/hub/login') });
+    else list.push({ id: 'in', group: '동작', icon: '🔐', title: '로그인', run: () => go('/hub/login') });
     return list;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.session, ctx.isStaff, ctx.isAdmin, c, pubApps, theme, inHub]);
@@ -201,9 +229,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           <Clock />
           <button className="icon-btn" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
           {ctx.session ? <>
-            {!inHub && ctx.isStaff && <Link to="/hub/apps" className="btn">관리 허브</Link>}
+            {!inHub && ctx.me && ctx.me.role !== 'disabled' && <Link to="/hub/apps" className="btn">관리 허브</Link>}
             <button className="icon-btn" onClick={logout} aria-label="로그아웃" title="로그아웃">🚪</button>
-          </> : path !== '/hub/login' && <Link to="/hub/login" className="btn">직원 로그인</Link>}
+          </> : path !== '/hub/login' && <Link to="/hub/login" className="btn">로그인</Link>}
         </header>
         <main>{children}</main>
         <footer className="muted">별무리학교 · apps.bmrschool.net · <kbd>Ctrl K</kbd> 빠른 이동</footer>
@@ -216,28 +244,24 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
 function LoginPage({ session }: { session: Session | null }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [name, setName] = useState('');
-  const [err, setErr] = useState(''); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   useEffect(() => { if (session && location.pathname === '/hub/login') go('/hub/apps'); }, [session]);
   const submit = useCallback(async (e: FormEvent) => {
-    e.preventDefault(); setErr(''); setMsg(''); setBusy(true);
+    e.preventDefault(); setErr(''); setBusy(true);
     try {
       if (mode === 'login') { await login(email, pw); if (location.pathname === '/hub/login') go('/hub/apps'); }
-      else {
-        const r = await signUp(email, pw, name);
-        setMsg(r.needsConfirm ? '확인 메일을 보냈습니다. 메일의 링크를 누른 뒤 로그인하세요. 관리자 승인 후 허브를 쓸 수 있습니다.' : '가입했습니다. 관리자 승인 후 허브를 쓸 수 있습니다.');
-        setMode('login');
-      }
+      else { await signUp(email, pw, name); if (location.pathname === '/hub/login') go('/hub/apps'); }
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   }, [mode, email, pw, name]);
   return (
     <form className="card narrow login" onSubmit={submit}>
       <div className="logo big">✨</div>
-      <h2>{mode === 'login' ? '직원 로그인' : '직원 가입'}</h2>
-      <p className="muted">{mode === 'login' ? '이메일과 비밀번호로 로그인합니다.' : '학교 이메일로 가입하세요. 가입 후 관리자가 직원으로 승인해야 쓸 수 있습니다.'}</p>
+      <h2>{mode === 'login' ? '로그인' : '가입'}</h2>
+      <p className="muted">{mode === 'login' ? '이메일과 비밀번호로 로그인합니다.' : '이름, 이메일, 비밀번호만 입력하면 바로 이용할 수 있습니다.'}</p>
       {mode === 'signup' && <label>이름<input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>}
       <label>이메일<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required placeholder="name@bmrschool.org" /></label>
       <label>비밀번호<input type="password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required /></label>
-      {err && <p className="error">{err}</p>}{msg && <p className="ok">{msg}</p>}
+      {err && <p className="error">{err}</p>}
       <button disabled={busy}>{busy ? '처리 중…' : mode === 'login' ? '로그인' : '가입하기'}</button>
       <button type="button" className="ghost" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErr(''); }}>{mode === 'login' ? '처음이면 가입하기' : '로그인으로 돌아가기'}</button>
     </form>

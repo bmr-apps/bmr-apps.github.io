@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Ctx } from '../App';
 import { sb, errMsg, fmtTime, ROLE_LABEL, type Profile, type Role } from '../sb';
 
-/** 역할 관리: 가입자(승인 대기)를 직원·관리자로 올리거나 사용 중지 */
+/** 역할 관리: 일반 사용자를 직원·관리자로 올리거나 사용 중지 */
 export function MembersPage({ ctx }: { ctx: Ctx }) {
   const [rows, setRows] = useState<Profile[]>([]); const [err, setErr] = useState('');
   const load = () => sb.from('profiles').select('*').order('created_at', { ascending: false }).then(({ data, error }) => { if (error) setErr(errMsg(error)); setRows((data as Profile[]) ?? []); });
@@ -11,11 +11,11 @@ export function MembersPage({ ctx }: { ctx: Ctx }) {
   const setRole = async (p: Profile, role: Role) => {
     const { error } = await sb.from('profiles').update({ role }).eq('id', p.id); if (error) setErr(errMsg(error)); else { load(); ctx.refreshCounts?.(); }
   };
-  const pending = rows.filter((r) => r.role === 'pending').length;
+  const regular = rows.filter((r) => r.role === 'pending').length;
   return (
     <section>
       <div className="section-head"><h2>👥 역할 관리</h2></div>
-      {pending > 0 && <p className="warn">⏳ 승인을 기다리는 가입자가 {pending}명 있습니다.</p>}
+      {regular > 0 && <p className="warn">일반 사용자 {regular}명이 있습니다. 직원으로 올리면 앱 신청과 DB 접속 정보를 쓸 수 있습니다.</p>}
       {err && <p className="error">{err}</p>}
       <div className="card flush"><table>
         <thead><tr><th>이름</th><th>이메일</th><th>가입</th><th>역할</th></tr></thead>
@@ -23,9 +23,12 @@ export function MembersPage({ ctx }: { ctx: Ctx }) {
           <tr key={p.id} className={p.role === 'pending' ? 'soon' : ''}>
             <td><span className="avatar sm">{(p.name || p.email).slice(0, 1)}</span> {p.name}</td><td>{p.email}</td><td>{fmtTime(p.created_at)}</td>
             <td>{p.id === ctx.session?.user.id ? `${ROLE_LABEL[p.role]} (나)` : (
-              <select value={p.role} onChange={(e) => setRole(p, e.target.value as Role)}>
-                {Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>)}</td>
+              <div className="row wrap">
+                {p.role === 'pending' && <button type="button" className="small" onClick={() => setRole(p, 'staff')}>직원으로 올리기</button>}
+                <select value={p.role} onChange={(e) => setRole(p, e.target.value as Role)}>
+                  {Object.entries(ROLE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </div>)}</td>
           </tr>))}</tbody>
       </table></div>
     </section>

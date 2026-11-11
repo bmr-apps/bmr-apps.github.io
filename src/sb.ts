@@ -16,7 +16,7 @@ export type TokenLog = { id: number; app_id: number | null; kind: string; label:
 export type Health = { app_id: number; checked_at: string; url: string; http_status: number | null; ok: boolean; response_ms: number | null; error: string | null };
 export type Role = 'pending' | 'staff' | 'admin' | 'disabled';
 export type Profile = { id: string; email: string; name: string; role: Role; created_at: string };
-export const ROLE_LABEL: Record<Role, string> = { pending: '승인 대기', staff: '직원', admin: '관리자', disabled: '사용 중지' };
+export const ROLE_LABEL: Record<Role, string> = { pending: '일반 사용자', staff: '직원', admin: '관리자', disabled: '사용 중지' };
 
 export const STATUS_LABEL: Record<Status, string> = { preparing: '준비 중', active: '운영 중', paused: '일시 중지', retired: '종료' };
 export const KIND_LABEL: Record<string, string> = {
@@ -26,12 +26,12 @@ export const KIND_LABEL: Record<string, string> = {
 
 export async function login(email: string, password: string) {
   const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
-  if (error) throw new Error(/confirm/i.test(error.message) ? '이메일 확인이 아직 안 됐습니다. 받은편지함의 확인 메일을 눌러 주세요.' : '이메일 또는 비밀번호가 올바르지 않습니다.');
+  if (error) throw new Error('이메일 또는 비밀번호가 올바르지 않습니다.');
 }
 export async function signUp(email: string, password: string, name: string) {
-  const { data, error } = await sb.auth.signUp({ email: email.trim(), password, options: { data: { name: name.trim(), full_name: name.trim() }, emailRedirectTo: location.origin + '/hub/login' } });
+  const { data, error } = await sb.auth.signUp({ email: email.trim(), password, options: { data: { name: name.trim(), full_name: name.trim() } } });
   if (error) throw new Error(/already/i.test(error.message) ? '이미 가입된 이메일입니다.' : /password/i.test(error.message) ? '비밀번호는 8자 이상으로 해 주세요.' : '가입하지 못했습니다. 잠시 뒤 다시 시도하세요.');
-  return { needsConfirm: !data.session };
+  if (!data.session) throw new Error('가입은 됐지만 바로 로그인되지 않았습니다. 로그인 화면에서 다시 시도하세요.');
 }
 
 export async function runHealth(session: Session) {
@@ -63,7 +63,7 @@ export function daysLeft(d: string | null): number | null {
 // ---------- 앱 DB 접속 정보 (Edge Function hub-dbcred) ----------
 export type DbConn = { host: string; port: number; port_transaction: number; database: string; user: string; user_direct: string; schema: string; password?: string; direct_host: string; database_url: string };
 export type DbApp = { app_id: number; slug: string; name: string; schema: string; role: string; pending_initial: boolean; recent: { label: string; issued_to: string; created_at: string }[];
-  owners: { id: number; name: string; email: string | null; has_account: boolean; verified: boolean }[]; conn: DbConn };
+  owners: { id: number; name: string; email: string | null; has_account: boolean; staff?: boolean; verified?: boolean }[]; conn: DbConn };
 export async function dbcred<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-dbcred`, {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ action, ...body }),

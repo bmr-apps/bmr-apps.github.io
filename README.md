@@ -5,20 +5,20 @@ GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, �
 
 ## 화면 (허브 화면은 /hub/ 아래, 앱 주소 /<slug> 와 겹치지 않음)
 - `/` 누구나 보는 운영 중 앱 바로가기
-- `/hub/login` 직원 로그인·가입 (이메일·비밀번호)
+- `/hub/login` 로그인·가입 (이름·이메일·비밀번호, 확인 메일 없이 바로 로그인)
 - `/hub/apps` 서비스 목록·담당 교사 (관리자: 추가·수정)
 - `/hub/requests` 새 앱 신청 / 관리자 승인·반려 (승인하면 apps 행과 책임 담당자가 생김, 상태 '준비 중')
 - `/hub/tokens` 토큰 발급 기록 (관리자 전용, **값은 저장하지 않음**, 14일 안 만료 강조)
 - `/hub/status` 운영 상태 (Edge Function `hub-health`, 매시 정각 pg_cron)
 - `/hub/members` 역할 관리 (관리자 전용)
-- `/hub/db` **DB 접속 정보** — 로그인한 사람 누구나(승인 대기 포함). 확인된 허브 계정 메일이 앱 담당자 메일과 같으면 그 앱이 보임.
+- `/hub/db` **DB 접속 정보** — 직원(staff)·관리자만. 허브 계정 메일이 앱 담당자 메일과 같으면(관리자는 전체) 그 앱이 보임.
   '처음 비밀번호 받기'(한 번만, 받으면 서버 사본 삭제) · '새 비밀번호 발급'(즉시 이전 값 무효, 저장 안 함) · 직접 바꾸는 SQL 안내 · 최근 기록.
-  관리자는 앱 상세(`/hub/apps` → 앱)에서도 같은 카드를 보고, 담당자 계정 유무 확인과 **'✉️ 가입 초대 보내기'**(누를 때만 메일 발송)를 할 수 있음.
+  관리자는 앱 상세(`/hub/apps` → 앱)에서도 같은 카드를 보고, 담당자 계정·직원 여부 확인과 **가입 안내 메일**(누를 때만 발송)을 할 수 있음.
 
 ## 역할
-가입하면 `pending`(승인 대기) → 관리자가 `staff`(직원) 또는 `admin`(관리자)으로 올립니다. `disabled`는 사용 중지.
+가입하면 `pending`(일반 사용자)로 바로 허브를 볼 수 있습니다. 앱 신청·DB 접속 정보·운영 상태는 관리자가 `staff`(직원) 또는 `admin`(관리자)으로 올린 뒤에만 쓸 수 있습니다. `disabled`는 사용 중지. (이메일은 확인하지 않으므로, 메일만 같다고 직원 권한을 자동으로 주지 않습니다.)
 
-**첫 관리자 만들기**: 사이트에서 가입하고 이메일 확인을 마친 뒤, Supabase SQL 편집기에서 한 줄 실행
+**첫 관리자 만들기**: 사이트에서 가입한 뒤, Supabase SQL 편집기에서 한 줄 실행
 ```sql
 update public.profiles set role = 'admin' where email = 'dev@bmrschool.org';
 ```
@@ -27,7 +27,7 @@ update public.profiles set role = 'admin' where email = 'dev@bmrschool.org';
 ```bash
 export HUB_REF=<허브 프로젝트 ref>  HUB_TOKEN_ENV=SUPABASE_ACCESS_TOKEN_NEW
 node scripts/migrate.mjs            # 테이블·RLS·시드·cron
-node scripts/auth_config.mjs        # site_url, 리디렉트 허용, 가입 허용+이메일 확인
+node scripts/auth_config.mjs        # site_url, 리디렉트 허용, 가입 허용, 이메일 확인 없음(바로 로그인)
 node scripts/setup_cron_secret.mjs  # Vault + 함수 비밀값 HUB_CRON_SECRET
 (cd supabase && SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN_NEW npx supabase functions deploy hub-health --project-ref $HUB_REF --use-api)
 (cd supabase && SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN_NEW npx supabase functions deploy hub-dbcred --project-ref $HUB_REF --use-api --no-verify-jwt)

@@ -55,7 +55,7 @@ function connInfo(app: App, pw: string) {
 }
 
 // ---------- 누가 부르나 ----------
-type Me = { id: string; email: string; verified: boolean; name: string; admin: boolean };
+type Me = { id: string; email: string; name: string; admin: boolean; staff: boolean };
 async function me(req: Request): Promise<Me> {
   const m = /^Bearer\s+(.+)$/i.exec(req.headers.get('Authorization') ?? '');
   const tok = m?.[1] ?? '';
@@ -64,16 +64,18 @@ async function me(req: Request): Promise<Me> {
   if (!r.ok) throw new HttpError(401, '로그인이 필요합니다.');
   const u = await r.json();
   const [p] = await db`select role, name from public.profiles where id = ${u.id}`;
-  return { id: u.id, email: String(u.email ?? '').toLowerCase(), verified: !!u.email_confirmed_at, name: p?.name || u.email, admin: p?.role === 'admin' };
+  const role = p?.role ?? '';
+  if (role === 'disabled') throw new HttpError(403, '사용이 중지된 계정입니다. 관리자에게 문의하세요.');
+  return { id: u.id, email: String(u.email ?? '').toLowerCase(), name: p?.name || u.email, admin: role === 'admin', staff: role === 'staff' || role === 'admin' };
 }
-/** v2 앱(스키마 주석 bmr-app:<slug>:v2) 중 내가 담당이거나(확인된 메일이 담당자 메일과 같음) 관리자면 */
+/** v2 앱 중 내가 담당(허브 메일이 담당자 메일과 같음)이거나 관리자. 호출 전에 staff/admin 이어야 한다. */
 async function myApps(u: Me, appId?: number): Promise<App[]> {
   const rows = await db`
     select a.id, a.slug, a.name, replace(a.slug, '-', '_') as schema, replace(a.slug, '-', '_') || '_dev' as role
     from public.apps a
     join pg_namespace n on n.nspname = replace(a.slug, '-', '_') and obj_description(n.oid, 'pg_namespace') = 'bmr-app:' || a.slug || ':v2'
     where (${appId ?? null}::bigint is null or a.id = ${appId ?? null}::bigint)
-      and (${u.admin} or (${u.verified} and exists (select 1 from public.app_owners o where o.app_id = a.id and lower(o.email) = ${u.email})))
+      and (${u.admin} or exists (select 1 from public.app_owners o where o.app_id = a.id and lower(o.email) = ${u.email}))
     order by a.name`;
   return rows as unknown as App[];
 }
@@ -129,6 +131,10 @@ Deno.serve(async (req) => {
     const u = await me(req).catch(async (e) => { await rateLimit(req, null, action || '?'); throw e; });
     await rateLimit(req, u, action);
 
+    if (action === 'list' || action === 'reveal' || action === 'rotate') {
+      if (!u.staff) return json(req, 403, { error: '교사 승인 후 이용할 수 있어요. 관리자에게 요청하세요.' });
+    }
+
     if (action === 'list') {
       const apps = await myApps(u);
       const out = [];
@@ -136,19 +142,19 @@ Deno.serve(async (req) => {
         const [p] = await db`select exists (select 1 from vault.secrets where name = ${vaultName(a.slug)}) as pending`;
         const last = await db`select label, issued_to, created_at from public.token_logs where app_id = ${a.id} and kind = 'supabase_db_password' order by created_at desc limit 3`;
         const owners = u.admin ? await db`select o.id, o.name, o.email, exists (select 1 from auth.users x where lower(x.email) = lower(o.email)) as has_account,
-            exists (select 1 from auth.users x where lower(x.email) = lower(o.email) and x.email_confirmed_at is not null) as verified
+            exists (select 1 from public.profiles p where lower(p.email) = lower(o.email) and p.role in ('staff','admin')) as staff
           from public.app_owners o where o.app_id = ${a.id} order by o.id` : [];
         out.push({ app_id: a.id, slug: a.slug, name: a.name, schema: a.schema, role: a.role, pending_initial: p.pending, recent: last, owners,
           conn: { ...connInfo(a, '<비밀번호>'), password: undefined } });
       }
-      return json(req, 200, { apps: out, me: { email: u.email, verified: u.verified, admin: u.admin } });
+      return json(req, 200, { apps: out, me: { email: u.email, admin: u.admin, staff: u.staff } });
     }
 
     if (action === 'reveal' || action === 'rotate') {
       const id = Number(b.app_id);
       if (!Number.isInteger(id)) return json(req, 400, { error: '앱을 골라 주세요.' });
       const [a] = await myApps(u, id);
-      if (!a) return json(req, 403, { error: '이 앱의 담당자만 볼 수 있습니다. (허브 계정 메일이 담당자 메일과 같고, 메일 확인을 마쳐야 합니다)' });
+      if (!a) return json(req, 403, { error: '이 앱의 담당자만 볼 수 있습니다. (허브 계정 메일이 담당자 메일과 같아야 합니다)' });
       if (action === 'reveal') {
         // 한 번만: 읽고 바로 지운다. 동시에 두 번 눌러도 지우기에 성공한 쪽만 받는다.
         const pw = await db.begin(async (t) => {

@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import type { Ctx } from '../App';
 import { sb, dbcred, fmtTime, type DbApp, type DbConn } from '../sb';
 
-type List = { apps: DbApp[]; me: { email: string; verified: boolean; admin: boolean } };
+type List = { apps: DbApp[]; me: { email: string; admin: boolean; staff?: boolean } };
 
 function useDbApps(session: Session | null) {
   const [data, setData] = useState<List | null>(null); const [err, setErr] = useState('');
@@ -77,8 +77,8 @@ export function DbCredCard({ app, session, admin, reload }: { app: DbApp; sessio
           <div className="owner-list">{app.owners.map((o) => (
             <div key={o.id} className="owner">
               <span className="avatar">{o.name.slice(0, 1)}</span>
-              <span className="grow"><b>{o.name}</b><small className="muted block">{o.email || '메일 없음'} · {o.has_account ? (o.verified ? '허브 계정 있음 ✓ (자동 연결)' : '가입했지만 메일 확인 전') : '허브 계정 없음'}</small></span>
-              {!o.has_account && o.email && <button className="ghost small" onClick={() => invite(o.id, o.email)}>✉️ 가입 초대 보내기</button>}
+              <span className="grow"><b>{o.name}</b><small className="muted block">{o.email || '메일 없음'} · {o.has_account ? (o.staff ? '허브 계정 있음 · 직원 ✓' : '허브 계정 있음 · 일반 사용자 (직원으로 올리면 DB를 받을 수 있음)') : '허브 계정 없음'}</small></span>
+              {!o.has_account && o.email && <button className="ghost small" onClick={() => invite(o.id, o.email)}>✉️ 가입 안내 메일 보내기</button>}
             </div>))}
           </div>
         </div>)}
@@ -94,7 +94,7 @@ export function DbCredSection({ ctx, appId }: { ctx: Ctx; appId: number }) {
   return <div style={{ marginTop: 14 }}><h4>🗄️ DB 접속 정보</h4><DbCredCard app={app} session={ctx.session} admin={!!data?.me.admin} reload={load} /></div>;
 }
 
-/** /hub/db — 내가 담당인 앱의 DB 접속 정보 (승인 대기 계정도 담당 메일이 맞으면 씀) */
+/** /hub/db — 내가 담당인 앱의 DB 접속 정보 (직원·관리자만, 담당 메일이 맞거나 관리자) */
 export function DbCredPage({ ctx }: { ctx: Ctx }) {
   const { data, err, load } = useDbApps(ctx.session);
   if (!ctx.session) return null;
@@ -106,12 +106,12 @@ export function DbCredPage({ ctx }: { ctx: Ctx }) {
       {!data ? <p className="muted">불러오는 중…</p> : data.apps.length === 0 ? (
         <div className="card empty">
           <p>담당인 앱이 없습니다.</p>
-          <p className="muted">앱 담당자로 등록된 메일과 지금 로그인한 메일(<b>{data.me.email}</b>)이 같아야 하고, 메일 확인을 마쳐야 합니다{data.me.verified ? '' : ' — 아직 메일 확인 전입니다'}. 다르면 관리자(dev@bmrschool.org)에게 담당자 메일을 확인해 달라고 하세요.</p>
+          <p className="muted">앱 담당자로 등록된 메일과 지금 로그인한 메일(<b>{data.me.email}</b>)이 같아야 합니다. 다르면 관리자(dev@bmrschool.org)에게 담당자 메일을 확인해 달라고 하세요.</p>
         </div>) : data.apps.map((a) => <DbCredCard key={a.app_id} app={a} session={ctx.session!} admin={data.me.admin} reload={load} />)}
       <HubPassword />
       <div className="card">
         <h3>허브 계정이 없는 담당자라면</h3>
-        <p className="muted">담당자로 등록된 메일로 <a href="/hub/login">가입</a>하고 받은 메일의 확인 링크를 누르면, 로그인했을 때 이 화면에 앱이 자동으로 나타납니다. 관리자가 초대 메일을 보내 줄 수도 있습니다(초대 메일의 링크를 누르면 아래에서 허브 비밀번호를 정하세요).</p>
+        <p className="muted">담당자로 등록된 메일로 <a href="/hub/login">가입</a>한 뒤, 관리자가 직원으로 올리면 이 화면에 앱이 나타납니다.</p>
       </div>
     </section>
   );
