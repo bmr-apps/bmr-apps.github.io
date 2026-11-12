@@ -24,17 +24,16 @@ GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, �
 update public.profiles set role = 'admin' where email = 'dev@bmrschool.org';
 ```
 
-## 백엔드 설정 (새 프로젝트 기준, 토큰은 출력되지 않음)
+## 백엔드 설정 (토큰은 출력되지 않음)
+백엔드: Supabase **bmr-dev-apps** (`psupfmarnyxontorftio`, 서울 ap-northeast-2). 2026-11-12에 옛 프로젝트 `zogddpjesatjmvrshrgr`(뭄바이)에서 옮김 — 옛 프로젝트는 예비로만 남아 있고 쓰지 않음.
+스크립트 기본값은 새 프로젝트입니다. 다른 프로젝트면 `HUB_REF`, 토큰 환경변수 이름이 다르면 `HUB_TOKEN_ENV`(기본 `SUPABASE_ACCESS_TOKEN_DEVAPPS`).
 ```bash
-export HUB_REF=<허브 프로젝트 ref>  HUB_TOKEN_ENV=SUPABASE_ACCESS_TOKEN_NEW
 node scripts/migrate.mjs            # 테이블·RLS·시드·cron
 node scripts/auth_config.mjs        # site_url, 리디렉트 허용, 가입 허용, 이메일 확인 없음(바로 로그인)
 node scripts/setup_cron_secret.mjs  # Vault + 함수 비밀값 HUB_CRON_SECRET
-(cd supabase && SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN_NEW npx supabase functions deploy hub-health --project-ref $HUB_REF --use-api)
-(cd supabase && SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN_NEW npx supabase functions deploy hub-dbcred --project-ref $HUB_REF --use-api --no-verify-jwt)
-(cd supabase && SUPABASE_ACCESS_TOKEN=$SUPABASE_ACCESS_TOKEN_NEW npx supabase functions deploy hub-users --project-ref $HUB_REF --use-api --no-verify-jwt)
-# 또는: node scripts/deploy-fn.mjs hub-users
+node scripts/deploy-fn.mjs hub-health && node scripts/deploy-fn.mjs hub-dbcred && node scripts/deploy-fn.mjs hub-users
 ```
+`hub-dbcred` 가 알려 주는 공용 접속기 주소는 `aws-1-ap-northeast-2.pooler.supabase.com`(서울). 지역이 바뀌면 함수 비밀값 `BMR_POOL_HOST` 로 바꿉니다.
 
 ### `hub-dbcred` (앱 DB 비밀번호 전달)
 - 마이그레이션 `20261112070000_dbcred.sql`: token_logs 종류 `supabase_db_password`, 시도 기록표 `bmr_admin.dbcred_attempts`(권한 없음, 함수만 씀).

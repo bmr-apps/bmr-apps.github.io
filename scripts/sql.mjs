@@ -1,8 +1,8 @@
-// Supabase Management API로 SQL 실행. 토큰은 환경변수(기본 SUPABASE_ACCESS_TOKEN, HUB_TOKEN_ENV로 바꿀 수 있음)이며 출력하지 않는다.
+// Supabase Management API로 SQL 실행. 토큰은 환경변수(기본 SUPABASE_ACCESS_TOKEN_DEVAPPS, HUB_TOKEN_ENV로 바꿀 수 있음)이며 출력하지 않는다.
 // 사용: HUB_REF=<프로젝트 ref> node scripts/sql.mjs "select 1"   |   node scripts/sql.mjs -f file.sql
 import { readFileSync } from 'node:fs';
-export const REF = process.env.HUB_REF;
-export const TOKEN = process.env[process.env.HUB_TOKEN_ENV || 'SUPABASE_ACCESS_TOKEN'];
+export const REF = process.env.HUB_REF || 'psupfmarnyxontorftio'; // bmr-dev-apps (서울)
+export const TOKEN = process.env[process.env.HUB_TOKEN_ENV || 'SUPABASE_ACCESS_TOKEN_DEVAPPS'];
 export const H = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
 export const api = (p, o = {}) => fetch(`https://api.supabase.com/v1/projects/${REF}${p}`, { headers: H, ...o });
 export async function sql(query, { readOnly = false } = {}) {

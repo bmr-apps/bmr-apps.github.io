@@ -1,4 +1,4 @@
-project_id = "zogddpjesatjmvrshrgr"
+project_id = "psupfmarnyxontorftio"
 
 # 함수 안에서 관리자 JWT 또는 cron 비밀값을 직접 확인한다
 [functions.hub-health]

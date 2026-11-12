@@ -5,11 +5,12 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REF = process.env.HUB_REF || 'zogddpjesatjmvrshrgr';
-const TOKEN = process.env.SUPABASE_ACCESS_TOKEN_NEW;
+const REF = process.env.HUB_REF || 'psupfmarnyxontorftio'; // bmr-dev-apps (서울)
+const TOKEN_ENV = process.env.HUB_TOKEN_ENV || 'SUPABASE_ACCESS_TOKEN_DEVAPPS';
+const TOKEN = process.env[TOKEN_ENV];
 const slug = process.argv[2];
 if (!slug || !/^[a-z][a-z0-9-]{1,48}$/.test(slug)) { console.error('사용: node scripts/deploy-fn.mjs <함수이름>'); process.exit(1); }
-if (!TOKEN) { console.error('환경변수 SUPABASE_ACCESS_TOKEN_NEW 가 없습니다'); process.exit(1); }
+if (!TOKEN) { console.error(`환경변수 ${TOKEN_ENV} 가 없습니다`); process.exit(1); }
 
 const dir = join(dirname(fileURLToPath(import.meta.url)), `../supabase/functions/${slug}`);
 function walk(base, prefix = '') {
