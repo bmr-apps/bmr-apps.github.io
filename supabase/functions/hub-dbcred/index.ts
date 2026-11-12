@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
     await rateLimit(req, u, action);
 
     if (action === 'list' || action === 'reveal' || action === 'rotate') {
-      if (!u.staff) return json(req, 403, { error: '교사 승인 후 이용할 수 있어요. 관리자에게 요청하세요.' });
+      if (!u.staff) return json(req, 403, { error: '개발자 승인 후 이용할 수 있어요. 관리자에게 요청하세요.' });
     }
 
     if (action === 'list') {

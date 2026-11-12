@@ -16,7 +16,7 @@ export type TokenLog = { id: number; app_id: number | null; kind: string; label:
 export type Health = { app_id: number; checked_at: string; url: string; http_status: number | null; ok: boolean; response_ms: number | null; error: string | null };
 export type Role = 'pending' | 'staff' | 'admin' | 'disabled';
 export type Profile = { id: string; email: string; name: string; role: Role; created_at: string };
-export const ROLE_LABEL: Record<Role, string> = { pending: '일반 사용자', staff: '직원', admin: '관리자', disabled: '사용 중지' };
+export const ROLE_LABEL: Record<Role, string> = { pending: '일반 사용자', staff: '개발자', admin: '관리자', disabled: '사용 중지' };
 
 export const STATUS_LABEL: Record<Status, string> = { preparing: '준비 중', active: '운영 중', paused: '일시 중지', retired: '종료' };
 export const KIND_LABEL: Record<string, string> = {
@@ -26,7 +26,7 @@ export const KIND_LABEL: Record<string, string> = {
 
 export async function login(email: string, password: string) {
   const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
-  if (error) throw new Error('이메일 또는 비밀번호가 올바르지 않습니다.');
+  if (error) throw new Error(/banned|disabled/i.test(error.message) ? '사용이 중지된 계정입니다. 관리자에게 문의하세요.' : '이메일 또는 비밀번호가 올바르지 않습니다.');
 }
 export async function signUp(email: string, password: string, name: string) {
   const { data, error } = await sb.auth.signUp({ email: email.trim(), password, options: { data: { name: name.trim(), full_name: name.trim() } } });
@@ -67,6 +67,22 @@ export type DbApp = { app_id: number; slug: string; name: string; schema: string
 export async function dbcred<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-dbcred`, {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ action, ...body }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`);
+  return j as T;
+}
+
+// ---------- 사용자 관리 (Edge Function hub-users, 관리자 전용) ----------
+export type HubUser = {
+  id: string; email: string; name: string; role: Role; created_at: string;
+  last_sign_in_at: string | null; banned: boolean;
+  owned_apps: { id: number; slug: string; name: string }[];
+};
+export async function usersApi<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-users`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ action, ...body }),
   });
   const j = await r.json().catch(() => null);
   if (!r.ok) throw new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`);

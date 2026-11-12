@@ -16,8 +16,8 @@ export function Landing({ ctx }: { ctx: Ctx }) {
     <section>
       <div className="hero">
         <span className="eyebrow">✨ BMR APPS</span>
-        <h2>별무리 선생님들이 만든 서비스</h2>
-        <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 가입한 뒤, 교사로 승인되면 신청할 수 있어요.</p>
+        <h2>별무리 개발자들이 만든 서비스</h2>
+        <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 가입한 뒤, 개발자로 승인되면 신청할 수 있어요.</p>
       </div>
       <div className="section-head"><h3>운영 중인 앱 {apps && <span className="cnt">{apps.length}</span>}</h3></div>
       {err && <p className="error">{err}</p>}
@@ -37,7 +37,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
 const empty = { slug: '', name: '', description: '', url: '', repo_url: '', supabase_ref: '', status: 'active' as Status, note: '', sort: 100 };
 type F = 'all' | Status;
 
-/** 대시보드: 요약 카드 + 서비스 목록 + 담당 교사 (관리자는 추가·수정) */
+/** 대시보드: 요약 카드 + 서비스 목록 + 담당 개발자 (관리자는 추가·수정) */
 export function AppsPage({ ctx }: { ctx: Ctx }) {
   const [apps, setApps] = useState<App[]>([]); const [owners, setOwners] = useState<Owner[]>([]);
   const [health, setHealth] = useState<Record<number, Health>>({});
@@ -72,8 +72,8 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
     return (
       <section>
         <div className="card warn">
-          <h3>교사 승인 후 이용할 수 있어요</h3>
-          <p>일반 사용자로 가입되었습니다. 앱 신청, DB 접속 정보, 운영 상태는 관리자가 직원으로 올리면 쓸 수 있습니다. 관리자에게 요청하세요.</p>
+          <h3>개발자 승인 후 이용할 수 있어요</h3>
+          <p>일반 사용자로 가입되었습니다. 앱 신청, DB 접속 정보, 운영 상태는 관리자가 개발자로 올리면 쓸 수 있습니다. 관리자에게 요청하세요.</p>
         </div>
         <div className="section-head"><h3>운영 중인 앱 {active.length ? <span className="cnt">{active.length}</span> : null}</h3></div>
         {err && <p className="error">{err}</p>}
@@ -94,13 +94,13 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
         <Stat tone="amber" icon="📝" label="승인 대기 신청" value={c ? c.reqPending : '–'} sub={ctx.isAdmin ? '검토가 필요한 새 앱 신청' : '내가 낸 신청 중 검토 대기'} onClick={() => go('/hub/requests')} />
         {ctx.isAdmin
           ? <Stat tone="red" icon="🔑" label="만료 임박 토큰" value={c?.tokSoon ?? '–'} sub="14일 안에 만료 · 이미 만료" onClick={() => go('/hub/tokens')} />
-          : <Stat tone="blue" icon="🧑‍🏫" label="담당 교사" value={owners.length} sub="등록된 담당자 수" />}
+          : <Stat tone="blue" icon="🧑‍💻" label="담당 개발자" value={owners.length} sub="등록된 담당자 수" />}
         <Stat tone="green" icon="📡" label="운영 상태" value={c ? <>{c.healthOk}<small>/{watched}</small></> : '–'} sub={c ? (c.healthBad ? `⚠️ 이상 ${c.healthBad}개` : c.healthNone ? `기록 없음 ${c.healthNone}개` : '모두 정상') : ''} onClick={() => go('/hub/status')} />
         <Stat tone="violet" icon="🧩" label="서비스" value={<>{n('active')}<small>/{apps.length}</small></>} sub={`운영 중 · 준비 중 ${n('preparing')}개`} />
       </div>
 
       <div className="section-head">
-        <h3>서비스 · 담당 교사</h3>
+        <h3>서비스 · 담당 개발자</h3>
         <Pills value={filter} onChange={setFilter} items={[['all', '전체', apps.length], ['active', '운영 중', n('active')], ['preparing', '준비 중', n('preparing')], ['paused', '일시 중지', n('paused')], ['retired', '종료', n('retired')]]} />
         {ctx.isAdmin && <button onClick={() => setEdit({ ...empty })}>+ 앱 추가</button>}
       </div>
@@ -116,7 +116,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
               <span className="tile-foot">
                 <span className={`sdot s-${a.status}`} />{STATUS_LABEL[a.status]}
                 <HealthDot h={health[a.id]} />
-                <span className="tile-url">{own.length ? `🧑‍🏫 ${own.map((o) => o.name).join(', ')}` : '담당자 없음'}</span>
+                <span className="tile-url">{own.length ? `🧑‍💻 ${own.map((o) => o.name).join(', ')}` : '담당자 없음'}</span>
               </span>
             </button>);
         })}</div>)}
@@ -182,7 +182,7 @@ function Owners({ app, owners, isAdmin, reload }: { app: App; owners: Owner[]; i
   };
   return (
     <div className="owners">
-      <h4>🧑‍🏫 담당 교사</h4>
+      <h4>🧑‍💻 담당 개발자</h4>
       {owners.length === 0 ? <p className="muted">등록된 담당자가 없습니다.</p> : (
         <div className="owner-list">{owners.map((o) => (
           <div key={o.id} className="owner">

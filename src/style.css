@@ -67,6 +67,7 @@ footer { text-align: center; padding: 18px; font-size: 12.5px; }
 .count.c-red { background: var(--bad); } .count.c-amber { background: var(--warn); }
 .side-item.on .count { background: rgba(255,255,255,.28); }
 .side-foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+a.me { color: inherit; } a.me:hover { text-decoration: none; background: var(--accent-soft); border-radius: 12px; }
 .me { display: flex; gap: 10px; align-items: center; padding: 8px; min-width: 0; }
 .me > span:last-child { min-width: 0; } .me b { display: block; font-size: 14px; } .me small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar { flex: none; width: 34px; height: 34px; border-radius: 12px; display: inline-grid; place-items: center; font-weight: 800; color: #fff; background: linear-gradient(135deg, #f472b6, var(--accent)); }
@@ -199,6 +200,14 @@ th { font-size: 12px; font-weight: 800; color: var(--soft); letter-spacing: .04e
 tbody tr:last-child td { border-bottom: 0; }
 tr.soon td { background: var(--warn-soft); }
 td select { padding: 6px 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.filter-in { flex: 1; min-width: 180px; max-width: 320px; }
+.badge.role-pending { background: var(--warn-soft); color: var(--warn); }
+.badge.role-staff { background: var(--blue-soft); color: var(--blue); }
+.badge.role-admin { background: var(--accent-soft); color: var(--accent-text); }
+.badge.role-disabled { background: var(--bad-soft); color: var(--bad); }
+tr.off td { opacity: .72; }
+code.pw-once { font-size: 15.5px; letter-spacing: .03em; user-select: all; }
 
 dl.meta { display: grid; grid-template-columns: 84px 1fr; gap: 6px 12px; margin: 12px 0; font-size: 14px; padding: 14px 16px; border-radius: 14px; background: var(--card2); }
 dl.meta dt { color: var(--muted); font-weight: 700; } dl.meta dd { margin: 0; overflow-wrap: anywhere; }

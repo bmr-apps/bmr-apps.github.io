@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Ctx } from '../App';
-import { sb, dbcred, fmtTime, type DbApp, type DbConn } from '../sb';
+import { dbcred, fmtTime, type DbApp, type DbConn } from '../sb';
 
 type List = { apps: DbApp[]; me: { email: string; admin: boolean; staff?: boolean } };
 
@@ -77,7 +77,7 @@ export function DbCredCard({ app, session, admin, reload }: { app: DbApp; sessio
           <div className="owner-list">{app.owners.map((o) => (
             <div key={o.id} className="owner">
               <span className="avatar">{o.name.slice(0, 1)}</span>
-              <span className="grow"><b>{o.name}</b><small className="muted block">{o.email || '메일 없음'} · {o.has_account ? (o.staff ? '허브 계정 있음 · 직원 ✓' : '허브 계정 있음 · 일반 사용자 (직원으로 올리면 DB를 받을 수 있음)') : '허브 계정 없음'}</small></span>
+              <span className="grow"><b>{o.name}</b><small className="muted block">{o.email || '메일 없음'} · {o.has_account ? (o.staff ? '허브 계정 있음 · 개발자 ✓' : '허브 계정 있음 · 일반 사용자 (개발자로 올리면 DB를 받을 수 있음)') : '허브 계정 없음'}</small></span>
               {!o.has_account && o.email && <button className="ghost small" onClick={() => invite(o.id, o.email)}>✉️ 가입 안내 메일 보내기</button>}
             </div>))}
           </div>
@@ -94,7 +94,7 @@ export function DbCredSection({ ctx, appId }: { ctx: Ctx; appId: number }) {
   return <div style={{ marginTop: 14 }}><h4>🗄️ DB 접속 정보</h4><DbCredCard app={app} session={ctx.session} admin={!!data?.me.admin} reload={load} /></div>;
 }
 
-/** /hub/db — 내가 담당인 앱의 DB 접속 정보 (직원·관리자만, 담당 메일이 맞거나 관리자) */
+/** /hub/db — 내가 담당인 앱의 DB 접속 정보 (개발자·관리자만, 담당 메일이 맞거나 관리자) */
 export function DbCredPage({ ctx }: { ctx: Ctx }) {
   const { data, err, load } = useDbApps(ctx.session);
   if (!ctx.session) return null;
@@ -108,29 +108,12 @@ export function DbCredPage({ ctx }: { ctx: Ctx }) {
           <p>담당인 앱이 없습니다.</p>
           <p className="muted">앱 담당자로 등록된 메일과 지금 로그인한 메일(<b>{data.me.email}</b>)이 같아야 합니다. 다르면 관리자(dev@bmrschool.org)에게 담당자 메일을 확인해 달라고 하세요.</p>
         </div>) : data.apps.map((a) => <DbCredCard key={a.app_id} app={a} session={ctx.session!} admin={data.me.admin} reload={load} />)}
-      <HubPassword />
+      <div className="card"><p>허브 로그인 비밀번호는 <a href="/hub/account">내 계정</a>에서 바꿀 수 있습니다.</p></div>
       <div className="card">
         <h3>허브 계정이 없는 담당자라면</h3>
-        <p className="muted">담당자로 등록된 메일로 <a href="/hub/login">가입</a>한 뒤, 관리자가 직원으로 올리면 이 화면에 앱이 나타납니다.</p>
+        <p className="muted">담당자로 등록된 메일로 <a href="/hub/login">가입</a>한 뒤, 관리자가 개발자로 올리면 이 화면에 앱이 나타납니다.</p>
       </div>
     </section>
   );
 }
 
-function HubPassword() {
-  const [pw, setPw] = useState(''); const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
-  const save = async (e: FormEvent) => {
-    e.preventDefault(); setMsg(''); setErr('');
-    const { error } = await sb.auth.updateUser({ password: pw });
-    if (error) setErr(/should be|least|weak/i.test(error.message) ? '비밀번호는 8자 이상으로 해 주세요.' : '바꾸지 못했습니다. 다시 로그인한 뒤 시도하세요.'); else { setMsg('허브 로그인 비밀번호를 정했습니다.'); setPw(''); }
-  };
-  return (
-    <details className="card"><summary><b>허브 로그인 비밀번호 정하기·바꾸기</b> <span className="muted">(초대 메일로 들어왔다면 먼저 정하세요)</span></summary>
-      <form className="row wrap" onSubmit={save} style={{ marginTop: 10 }}>
-        <input type="password" minLength={8} required autoComplete="new-password" placeholder="새 허브 비밀번호 (8자 이상)" value={pw} onChange={(e) => setPw(e.target.value)} />
-        <button>저장</button>
-      </form>
-      {err && <p className="error">{err}</p>}{msg && <p className="ok">{msg}</p>}
-    </details>
-  );
-}

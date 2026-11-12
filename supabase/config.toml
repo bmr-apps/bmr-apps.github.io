@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.hub-dbcred]
 verify_jwt = false
+
+[functions.hub-users]
+verify_jwt = false

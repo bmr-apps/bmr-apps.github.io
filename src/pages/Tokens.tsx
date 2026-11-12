@@ -11,7 +11,7 @@ export function TokensPage({ ctx }: { ctx: Ctx }) {
   const [f, setF] = useState(blank()); const [err, setErr] = useState(''); const [showAll, setShowAll] = useState(false);
   const load = async () => {
     const [t, a] = await Promise.all([sb.from('token_logs').select('*').order('expires_at', { ascending: true, nullsFirst: false }), sb.from('apps').select('id, name').order('sort')]);
-    if (t.error) setErr(errMsg(t.error)); setRows((t.data as TokenLog[]) ?? []); setApps(a.data ?? []);
+    if (t.error) setErr(errMsg(t.error)); setRows(((t.data as TokenLog[]) ?? []).filter((r) => r.kind !== 'hub_user')); setApps(a.data ?? []);
   };
   useEffect(() => { if (ctx.isAdmin) load(); }, [ctx.isAdmin]);
   if (!ctx.isAdmin) return <div className="card">관리자만 볼 수 있습니다.</div>;

@@ -7,6 +7,7 @@ import { TokensPage } from './pages/Tokens';
 import { StatusPage } from './pages/Status';
 import { MembersPage } from './pages/Members';
 import { DbCredPage } from './pages/DbCred';
+import { AccountPage } from './pages/Account';
 import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
@@ -103,6 +104,7 @@ export function App() {
   else if (!meReady) page = <p className="muted">불러오는 중…</p>;
   else if (!me) page = <div className="card narrow center"><h2>프로필을 찾지 못했습니다</h2><p>다시 로그인하거나 관리자에게 문의하세요.</p></div>;
   else if (me.role === 'disabled') page = <div className="card narrow center"><div className="logo big">🚫</div><h2>사용 중지</h2><p>사용이 중지된 계정입니다. 관리자에게 문의하세요.</p><p className="muted">{me.email}</p></div>;
+  else if (path === '/hub/account') page = <AccountPage ctx={ctx} />;
   else if (path === '/hub/db') page = <StaffOnly ctx={ctx}><DbCredPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub' || path === '/hub/apps') page = <AppsPage ctx={ctx} />;
   else if (path === '/hub/requests') page = <StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>;
@@ -113,13 +115,13 @@ export function App() {
   return <Shell ctx={ctx} path={path}>{page}</Shell>;
 }
 
-/** 직원 전용 화면: 일반 사용자에게는 안내만 보여 준다 */
+/** 개발자 전용 화면: 일반 사용자에게는 안내만 보여 준다 */
 function StaffOnly({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
   if (ctx.isStaff) return children;
   return (
     <div className="card narrow center">
       <div className="logo big">🔒</div>
-      <h2>교사 승인 후 이용할 수 있어요</h2>
+      <h2>개발자 승인 후 이용할 수 있어요</h2>
       <p>관리자에게 요청하세요.</p>
       <p className="muted">{ctx.me?.email}</p>
       <Link to="/hub/apps" className="btn">대시보드로</Link>
@@ -128,7 +130,7 @@ function StaffOnly({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
 }
 
 /** 인사말에 쓸 이름: 프로필 이름(일반 명칭 '관리자' 등 제외) → 가입 때 넣은 이름 → 이메일 앞부분 */
-const GENERIC = new Set(['관리자', 'admin', '직원', 'staff', '사용자', 'user']);
+const GENERIC = new Set(['관리자', 'admin', '직원', '개발자', 'staff', '사용자', 'user']);
 function displayName(ctx: Ctx) {
   const u = ctx.session?.user;
   const meta = (u?.user_metadata ?? {}) as { name?: string; full_name?: string };
@@ -146,8 +148,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const inHub = !!ctx.session && ctx.me?.role !== 'disabled' && path !== '/' && path !== '/hub/login';
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
-      { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 교사', show: true },
+      { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
       { to: '/hub/db', icon: '🗄️', label: 'DB 접속 정보', sub: '내 앱 비밀번호 받기', show: true },
+      { to: '/hub/account', icon: '👤', label: '내 계정', sub: '비밀번호 바꾸기', show: true },
       { to: '/', icon: '🌐', label: '공개 첫 화면', sub: '누구나 보는 바로가기', show: true },
     ]],
     ['운영', [
@@ -156,7 +159,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     ]],
     ['관리자', [
       { to: '/hub/tokens', icon: '🔑', label: '토큰 기록', sub: '발급·만료 관리', show: ctx.isAdmin, badge: c?.tokSoon, tone: 'red' },
-      { to: '/hub/members', icon: '👥', label: '역할 관리', sub: '일반 사용자를 직원으로', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
+      { to: '/hub/members', icon: '👥', label: '사용자 관리', sub: '역할·비밀번호·삭제', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
     ]],
   ];
   const tabs = groups.flatMap(([, t]) => t.filter((x) => x.show));
@@ -212,7 +215,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
               </div>))}
           </nav>
           <div className="side-foot">
-            <div className="me"><span className="avatar">{(name || '?').slice(0, 1)}</span><span><b>{name}</b><small>{ctx.me ? ROLE_LABEL[ctx.me.role] : ''} · {ctx.session?.user.email}</small></span></div>
+            <Link to="/hub/account" className="me"><span className="avatar">{(name || '?').slice(0, 1)}</span><span><b>{name}</b><small>{ctx.me ? ROLE_LABEL[ctx.me.role] : ''} · {ctx.session?.user.email}</small></span></Link>
           </div>
         </aside>
         {menu && <div className="scrim" onClick={() => setMenu(false)} />}
@@ -223,7 +226,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           {!inHub && <Link to="/" className="logo" ><span>✨</span></Link>}
           <div className="greet">
             {inHub ? <><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></>
-              : <><h1>BMR APPS</h1><p>별무리학교 선생님들이 만들어 운영하는 서비스 모음</p></>}
+              : <><h1>BMR APPS</h1><p>별무리 개발자들이 만들어 운영하는 서비스 모음</p></>}
           </div>
           <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
           <Clock />
