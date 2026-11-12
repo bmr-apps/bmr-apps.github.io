@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { go, type Ctx } from '../App';
+import { go, Link, type Ctx } from '../App';
 import { sb, errMsg, fmtTime, STATUS_LABEL, type App, type Health, type Owner, type Status } from '../sb';
 import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
 import { DbCredSection } from './DbCred';
@@ -15,7 +15,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
   return (
     <section>
       <div className="hero">
-        <span className="eyebrow">✨ BMR APPS</span>
+        <Link to="/" className="eyebrow brand-title">✨ BMR APPS</Link>
         <h2>별무리 개발자들이 만든 서비스</h2>
         <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 가입한 뒤, 개발자로 승인되면 신청할 수 있어요.</p>
       </div>

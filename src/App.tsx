@@ -12,8 +12,8 @@ import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
 export function go(path: string) { history.pushState(null, '', path); dispatchEvent(new PopStateEvent('popstate')); }
-export function Link({ to, children, className, onClick }: { to: string; children: ReactNode; className?: string; onClick?: () => void }) {
-  return <a href={to} className={className} onClick={(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onClick?.(); go(to); }}>{children}</a>;
+export function Link({ to, children, className, onClick, 'aria-label': ariaLabel }: { to: string; children: ReactNode; className?: string; onClick?: () => void; 'aria-label'?: string }) {
+  return <a href={to} className={className} aria-label={ariaLabel} onClick={(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onClick?.(); go(to); }}>{children}</a>;
 }
 function usePath() {
   const [p, setP] = useState(location.pathname);
@@ -202,7 +202,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     <div className={`layout${inHub ? ' with-side' : ''}`}>
       {inHub && <>
         <aside className={`side${menu ? ' open' : ''}`}>
-          <Link to="/hub/apps" className="side-brand"><span className="logo">✨</span><span><b>BMR APPS</b><small>앱 관리</small></span></Link>
+          <Link to="/" className="side-brand" aria-label="BMR APPS 메인 화면"><span className="logo">✨</span><span><b>BMR APPS</b><small>앱 관리</small></span></Link>
           <nav>
             {groups.map(([g, t]) => t.some((x) => x.show) && (
               <div key={g} className="side-group">
@@ -223,10 +223,10 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       <div className="body">
         <header className="top">
           {inHub && <button className="icon-btn burger" aria-label="메뉴 열기" onClick={() => setMenu(true)}>☰</button>}
-          {!inHub && <Link to="/" className="logo" ><span>✨</span></Link>}
+          {!inHub && <Link to="/" className="logo" aria-label="BMR APPS 메인 화면"><span>✨</span></Link>}
           <div className="greet">
             {inHub ? <><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></>
-              : <><h1>BMR APPS</h1><p>별무리 개발자들이 만들어 운영하는 서비스 모음</p></>}
+              : <><h1><Link to="/" className="brand-title">BMR APPS</Link></h1><p>별무리 개발자들이 만들어 운영하는 서비스 모음</p></>}
           </div>
           <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
           <Clock />
@@ -258,7 +258,7 @@ function LoginPage({ session }: { session: Session | null }) {
   }, [mode, email, pw, name]);
   return (
     <form className="card narrow login" onSubmit={submit}>
-      <div className="logo big">✨</div>
+      <Link to="/" className="logo big" aria-label="BMR APPS 메인 화면">✨</Link>
       <h2>{mode === 'login' ? '로그인' : '가입'}</h2>
       <p className="muted">{mode === 'login' ? '이메일과 비밀번호로 로그인합니다.' : '이름, 이메일, 비밀번호만 입력하면 바로 이용할 수 있습니다.'}</p>
       {mode === 'signup' && <label>이름<input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>}
