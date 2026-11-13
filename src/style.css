@@ -227,6 +227,13 @@ section > .section-head:first-child { margin-top: 4px; }
 .hero-art .half-b::before { left: 0; right: 0; bottom: 0; height: 50%; }
 .hero-art .tri::before { inset: 0; clip-path: polygon(0 100%, 100% 100%, 100% 0); }
 .hero-art .diamond::before { inset: 14%; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.hero-art .q2::before { inset: 0; background: radial-gradient(circle at 0 0, var(--s) 0 49.6%, transparent 50%), radial-gradient(circle at 100% 100%, var(--s) 0 49.6%, transparent 50%); }
+.hero-art .squares::before { inset: 12%; background: var(--s); }
+.hero-art .squares::after { content: ""; position: absolute; inset: 28%; background: linear-gradient(var(--s), var(--s)) center / 44% 44% no-repeat, var(--b); }
+.hero-art .dots::before { inset: 10%; background: radial-gradient(circle closest-side, var(--s) 0 66%, transparent 70%) 0 0 / 33.333% 33.333%; }
+.hero-art .zigzag::before { inset: 0; clip-path: polygon(0 62%, 25% 30%, 50% 62%, 75% 30%, 100% 62%, 100% 86%, 75% 54%, 50% 86%, 25% 54%, 0 86%); }
+.hero-art .ring::before { inset: 0; background: radial-gradient(circle at 100% 100%, transparent 0 27.6%, var(--s) 28% 59.6%, transparent 60%); }
+.hero-art .stairs::before { inset: 0; clip-path: polygon(0 100%, 0 75%, 25% 75%, 25% 50%, 50% 50%, 50% 25%, 75% 25%, 75% 0, 100% 0, 100% 100%); }
 .hero-art .stripes::before { inset: 0; background: repeating-linear-gradient(90deg, var(--s) 0 12%, transparent 12% 25%); }
 .band { margin: 36px 0 0; padding: 32px 32px 40px; background: var(--bg-alt); border: var(--border); }
 .band .section-head { margin-top: 0; }

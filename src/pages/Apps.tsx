@@ -29,7 +29,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
         </div>
         {/* 색과 도형만으로 그린 격자 (이모지·글자 없음, CSS 만) */}
         <div className="hero-art" aria-hidden="true">
-          <i className="b-paper s-coral circle" /><i className="b-yellow s-green q-bl" /><i className="b-purple n" /><i className="b-cyan s-paper arch" /><i className="b-green s-yellow tri" /><i className="b-paper s-cyan stripes" /><i className="b-coral s-yellow q-tr" /><i className="b-yellow s-purple circle" /><i className="b-navy s-cyan diamond" /><i className="b-cyan n" /><i className="b-paper s-green half-b" /><i className="b-yellow s-coral q-br" />
+          <i className="b-paper s-coral q2" /><i className="b-yellow s-green q-bl" /><i className="b-purple n" /><i className="b-cyan s-paper arch" /><i className="b-green s-yellow stairs" /><i className="b-yellow s-cyan squares" /><i className="b-coral s-yellow q-tr" /><i className="b-paper s-purple dots" /><i className="b-navy s-yellow zigzag" /><i className="b-cyan n" /><i className="b-paper s-green ring" /><i className="b-yellow s-coral q-br" />
         </div>
       </div>
       <div className="band" id="apps">

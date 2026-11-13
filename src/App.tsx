@@ -154,7 +154,6 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
       { to: '/guide', icon: '🧭', label: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', show: true },
-      { to: '/guide/quick', icon: '⚡', label: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', show: true, child: true },
       { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
     ]],
     ['운영', [
@@ -188,6 +187,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     list.push({ id: 'home', group: '메뉴', icon: '🌐', title: '메인', sub: '누구나 보는 서비스 모음', run: () => go('/') });
     if (ctx.session && ctx.me?.role !== 'disabled') {
       tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
+      list.push({ id: 'quick', group: '메뉴', icon: '⚡', title: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', run: () => go('/guide/quick') });
       list.push({ id: 'account', group: '메뉴', icon: '👤', title: '내 계정', sub: '허브 로그인 비밀번호 바꾸기', run: () => go('/hub/account') });
       if (ctx.isStaff) list.push({ id: 'db', group: '메뉴', icon: '🗄️', title: 'DB 접속 정보 모아 보기', sub: '앱마다 앱 정보 → DB 접속 정보에서도 할 수 있어요', run: () => go('/hub/db') });
     } else {
