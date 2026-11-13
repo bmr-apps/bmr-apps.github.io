@@ -2,7 +2,7 @@
 // hub-provision 준비·배포. 비밀값은 화면·파일·저장소에 남기지 않는다.
 //  1) 열쇠: .secrets/hub-provision.key (이 컴퓨터에만, git 제외). 없으면 새로 만든다 (--rotate-key 로 새로).
 //  2) 비밀값: SUPABASE_ACCESS_TOKEN_DEVAPPS → BMR_MGMT_TOKEN, GITHUB_BMR_APPS_TOKEN → BMR_GH_TOKEN 을 AES-GCM 암호문으로 함수 비밀값에 저장
-//  3) 배포: 함수 파일 + 열쇠 모듈(_key.ts, 배포본에만)을 올린다.
+//  3) 배포: hub-provision · hub-deprovision 함수 파일 + 열쇠 모듈(_key.ts, 배포본에만)을 올린다.
 // 사용: node scripts/setup-provision.mjs [--secrets] [--deploy] [--rotate-key]   (인자 없으면 둘 다)
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -42,12 +42,15 @@ if (all || args.has('--secrets') || fresh) {
 }
 
 if (all || args.has('--deploy') || fresh) {
-  const dir = join(ROOT, 'supabase', 'functions', 'hub-provision');
-  const fd = new FormData();
-  fd.append('metadata', JSON.stringify({ entrypoint_path: 'index.ts', name: 'hub-provision', verify_jwt: false }));
-  for (const f of readdirSync(dir)) if (f.endsWith('.ts') && f !== '_key.ts') fd.append('file', new Blob([readFileSync(join(dir, f))]), f);
-  fd.append('file', new Blob([`export const PROVISION_KEY = '${key.toString('base64')}';\n`]), '_key.ts');
-  const r = await api('/functions/deploy?slug=hub-provision', { method: 'POST', body: fd });
-  if (!r.ok) { console.error('배포 실패', r.status, (await r.text()).slice(0, 600)); process.exit(1); }
-  console.log('함수 hub-provision 배포 완료');
+  // 같은 열쇠로 두 함수 배포: hub-provision(만들기, 지우기 없음) · hub-deprovision(백업 후 지우기)
+  for (const fnName of ['hub-provision', 'hub-deprovision']) {
+    const dir = join(ROOT, 'supabase', 'functions', fnName);
+    const fd = new FormData();
+    fd.append('metadata', JSON.stringify({ entrypoint_path: 'index.ts', name: fnName, verify_jwt: false }));
+    for (const f of readdirSync(dir)) if (f.endsWith('.ts') && f !== '_key.ts') fd.append('file', new Blob([readFileSync(join(dir, f))]), f);
+    fd.append('file', new Blob([`export const PROVISION_KEY = '${key.toString('base64')}';\n`]), '_key.ts');
+    const r = await api(`/functions/deploy?slug=${fnName}`, { method: 'POST', body: fd });
+    if (!r.ok) { console.error(`${fnName} 배포 실패`, r.status, (await r.text()).slice(0, 600)); process.exit(1); }
+    console.log(`함수 ${fnName} 배포 완료`);
+  }
 }

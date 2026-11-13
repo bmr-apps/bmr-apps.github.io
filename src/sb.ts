@@ -109,3 +109,34 @@ export async function provisionApi<T = Record<string, unknown>>(session: Session
   if (!r.ok) throw new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`);
   return j as T;
 }
+
+// ---------- 앱 삭제 (Edge Function hub-deprovision, 관리자 전용 — 먼저 백업) ----------
+export type AppDeletion = {
+  id: number; app_id: number; slug: string; app_name: string; status: 'running' | 'done' | 'failed'; steps: Record<string, unknown>; error: string | null;
+  backup_prefix: string | null; backup_files: { path: string; size: number }[]; note: string; created_by_email: string; created_at: string; finished_at: string | null; lease_until: string | null;
+};
+export type DelInfo = {
+  slug: string; schema: string; schemaExists: boolean; schemaOurs: boolean; devOurs: boolean; fnRoleOurs: boolean; rolesForeign: string[];
+  repo: 'ours' | 'foreign' | 'none'; hubTag: boolean; appOurs: boolean; fn: boolean; secrets: string[]; bucket: boolean;
+  bucketFiles: number; bucketBytes: number; policies: number; vault: boolean; exposed: boolean; tables: number; dbBytes: number;
+};
+export const DEL_STEP_LABEL: [string, string][] = [
+  ['check', '확인'], ['backup_hub', '백업: 허브 기록'], ['backup_db', '백업: DB 구조·데이터'], ['backup_bucket', '백업: 버킷 파일'], ['backup_fn', '백업: 서버 함수'],
+  ['backup_repo', '백업: 저장소 zip'], ['backup_manifest', '백업 확인'], ['del_repo', '저장소·Pages 삭제'], ['del_fn', '서버 함수 삭제'], ['del_secrets', '함수 비밀값 삭제'],
+  ['del_bucket', '버킷 삭제'], ['del_db', '스키마·DB 계정·Vault 삭제'], ['del_expose', 'Data API 목록 정리'], ['del_hub', '허브 행 삭제'],
+];
+export async function deprovisionApi<T = Record<string, unknown>>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-deprovision`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ action, ...body }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`);
+  return j as T;
+}
+export async function backupLink(path: string): Promise<string> {
+  const { data, error } = await sb.storage.from('hub-backups').createSignedUrl(path, 600, { download: true });
+  if (error || !data) throw new Error('내려받기 링크를 만들지 못했습니다.');
+  return data.signedUrl;
+}
+export const fmtBytes = (n: number) => (n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024).toFixed(0)}KB` : `${(n / 1048576).toFixed(1)}MB`);

@@ -286,3 +286,8 @@ dl.meta dt { color: var(--muted); font-weight: 700; } dl.meta dd { margin: 0; ov
 .gh-failed { background: var(--bad-soft); color: var(--bad); } .gh-no_repo { background: var(--gray-soft); color: var(--muted); }
 input[readonly] { opacity: .7; cursor: not-allowed; }
 .ok-text { color: var(--ok); } .error-text { color: var(--bad); }
+.del-list { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; }
+.del-list code, .backup code { margin: 0 2px; }
+.backup { margin-top: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--card2); font-size: 13.5px; }
+.backup ul { margin: 8px 0; padding-left: 18px; max-height: 260px; overflow: auto; }
+button.link { background: none; border: none; padding: 0; color: var(--accent, #7c5cff); text-decoration: underline; cursor: pointer; font: inherit; box-shadow: none; }

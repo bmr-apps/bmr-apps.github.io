@@ -56,11 +56,22 @@ node scripts/build-provision-templates.mjs && node scripts/setup-provision.mjs  
 - 단계: check → db → fn_secret → starter → expose → bucket → function → repo → pages → vars → code → hub → invite → dbcred → health.
   각 단계는 신청 행에 기록되어 실패하면 그 단계부터 이어서 함. 이미 있는 저장소·스키마·함수·버킷이 '이 신청이 만든 것'이 아니면 멈춤(덮어쓰지 않음). 한 번에 약 95초씩, 화면이 자동으로 이어 부름.
 - 안전장치(`guard.ts`): Supabase 관리 API 는 이 프로젝트의 고정 SQL·`<slug>-fn` 배포·`<SCHEMA>_DB_URL` 비밀값 하나·Data API 노출 '추가'만, GitHub 는 `bmr-apps/<slug>` 저장소 하나(만들기·파일·Pages·변수·push 초대/회수)만,
-  Storage 는 그 버킷 만들기만. 지우기 경로 없음(담당자 권한 회수 제외). 동시에 하나만(lease), 새 앱 시간당 6개, 모든 동작 `audit_log`.
+  Storage 는 그 버킷 만들기만. 지우기 경로 없음(담당자 권한 회수 제외, 앱 삭제는 별도 함수 `hub-deprovision`). 동시에 하나만(lease), 새 앱 시간당 6개, 모든 동작 `audit_log`.
 - 토큰: 함수 비밀값 `BMR_MGMT_TOKEN`·`BMR_GH_TOKEN` 은 **AES-GCM 암호문**이고, 푸는 열쇠는 상자의 `.secrets/hub-provision.key`(git 제외)에서 배포할 때만 함수 배포본(`_key.ts`)에 들어감.
   같은 프로젝트의 다른 앱 함수가 환경변수를 읽어도 토큰을 쓸 수 없음. 토큰을 바꾸면 `node scripts/setup-provision.mjs --secrets`.
 - 시작 틀: `templates.ts` 는 `bmr-app-templates` 에서 만든 자동 생성 파일 (`node scripts/build-provision-templates.mjs`).
 - 시험: `node scripts/test-hub-provision.mjs` (시험 계정·`zztest-auto`), 정리: `node ../bmr-app-templates/teardown.mjs --slug zztest-auto --yes --delete-repo --delete-hub-row && node scripts/test-hub-provision.mjs --cleanup`.
+### `hub-deprovision` (앱 삭제 · 먼저 백업)
+- 대시보드 → 앱 → **🗑️ 앱 삭제** (관리자만). 무엇이 지워지는지 미리 보여 주고, 주소 이름(slug)을 그대로 입력해야 시작. 숨기기만 하려면 상태 '종료'.
+- 마이그레이션 `20261113110000_deprovision.sql`: `public.app_deletions`(진행·단계·백업 목록, 관리자만 봄), `app_requests.app_deleted_at`,
+  비공개 버킷 `hub-backups`(관리자만 읽기), 삭제 중인 주소로는 새 신청 불가.
+- 단계: check → backup_hub → backup_db → backup_bucket → backup_fn → backup_repo → backup_manifest → del_repo → del_fn → del_secrets → del_bucket → del_db → del_expose → del_hub.
+  백업은 `hub-backups/<slug>/<YYYYMMDD-HHMMSS>/`(hub.json · db/schema.sql · db/data/<표>.json · bucket/… · function/*.eszip · repo/<slug>.zip · manifest.json).
+  백업이 끝나고 파일 수가 확인되기 전에는 아무것도 지우지 않음. 실패하면 그 단계부터 이어서(감사 기록 화면 '삭제된 앱 · 백업'에서 다시 시도·내려받기).
+- 안전장치(`guard.ts`): 앱 행이 있는 slug 만, 예약 주소(designer 등) 거부. 지우기 대상은 그 앱 이름에서 정해진 것만이고, 각각 'BMR APPS 표시'(스키마·역할 주석, 저장소 `.bmr-app.json`, 허브 메모 태그)가 맞을 때만 지움.
+  표시 없는 것·없는 것은 건너뛰고 '없음'으로 기록(예: altsis 는 허브 행만). 다른 앱·허브 표·프로젝트 설정·Auth 설정은 건드리는 경로가 없음. hub-provision 과 같은 lease, 실제 삭제 시간당 3개, 모든 단계 `audit_log`.
+- 한도: DB 100MB · 버킷 300MB/5000개 · 저장소 zip 80MB 를 넘으면 백업 단계에서 멈춤(아무것도 안 지움) → 직접 백업 후 처리.
+- 시험: `node scripts/test-hub-deprovision.mjs` (zztest-del 생성 → 삭제 → 백업·삭제·다른 앱 비교), 정리: `node scripts/test-hub-deprovision.mjs --cleanup`.
 
 ## 배포
 `main`에 push하면 `.github/workflows/deploy.yml`이 빌드해 Pages로 배포합니다.

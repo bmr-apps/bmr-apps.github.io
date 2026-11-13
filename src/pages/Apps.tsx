@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { go, Link, type Ctx } from '../App';
 import { sb, errMsg, fmtTime, provisionApi, GH_LABEL, STATUS_LABEL, type App, type GhStatus, type Health, type Owner, type Status } from '../sb';
 import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
+import { DeleteAppModal } from './DeleteApp';
 import { DbCredSection } from './DbCred';
 
 /** 첫 화면: 누구나 보는 운영 중 앱 바로가기 */
@@ -43,6 +44,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
   const [health, setHealth] = useState<Record<number, Health>>({});
   const [edit, setEdit] = useState<(typeof empty & { id?: number }) | null>(null);
   const [open, setOpen] = useState<number | null>(null);
+  const [del, setDel] = useState<App | null>(null);
   const [filter, setFilter] = useState<F>('all');
   const [err, setErr] = useState('');
   const load = async () => {
@@ -136,8 +138,20 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
           </dl>
           <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} ctx={ctx} reload={load} />
           <DbCredSection ctx={ctx} appId={cur.id} />
-          {ctx.isAdmin && <div className="row end"><button className="ghost" onClick={() => setEdit({ ...cur, repo_url: cur.repo_url ?? '', supabase_ref: cur.supabase_ref ?? '' })}>✏️ 앱 정보 수정</button></div>}
+          {ctx.isAdmin && <div className="row end">
+            <button className="ghost" onClick={() => setEdit({ ...cur, repo_url: cur.repo_url ?? '', supabase_ref: cur.supabase_ref ?? '' })}>✏️ 앱 정보 수정</button>
+            <button className="danger" onClick={() => { setDel(cur); setOpen(null); }}>🗑️ 앱 삭제</button>
+          </div>}
         </Modal>)}
+
+      {del && ctx.isAdmin && (
+        <DeleteAppModal app={del} ctx={ctx} onClose={() => { setOpen(del.id); setDel(null); }} onDone={() => { setDel(null); load(); }}
+          onSoftDelete={async () => {
+            if (!confirm(`'${del.name}'을(를) 지우지 않고 상태만 '종료'로 바꿀까요? 저장소·DB·파일은 그대로 남습니다.`)) return;
+            const { error } = await sb.from('apps').update({ status: 'retired' }).eq('id', del.id);
+            if (error) { alert(errMsg(error)); return; }
+            setDel(null); load();
+          }} />)}
 
       {edit && (
         <Modal onClose={() => setEdit(null)} wide>

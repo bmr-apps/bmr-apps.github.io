@@ -9,3 +9,4 @@ screenshot-*.png
 redesign-*.png
 redesign2-*.png
 supabase/functions/hub-provision/_key.ts
+supabase/functions/hub-deprovision/_key.ts

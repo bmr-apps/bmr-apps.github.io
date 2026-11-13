@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.hub-provision]
 verify_jwt = false
+
+[functions.hub-deprovision]
+verify_jwt = false
