@@ -31,7 +31,7 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
   return (
     <section>
       <div className="section-head"><h2>📝 새 앱 신청</h2><button className={showForm ? 'ghost' : ''} onClick={() => setShowForm(!showForm)}>{showForm ? '신청서 접기' : '✨ 새 앱 신청하기'}</button></div>
-      {msg && <p className="ok">{msg}</p>}{err && !showForm && <p className="error">{err}</p>}
+      {msg && <p className="ok" role="status">{msg}</p>}{err && !showForm && <p className="error" role="alert">{err}</p>}
       {showForm && <form className="card form accent" onSubmit={submit}>
         <div className="cols">
           <label>신청자 이름<input required value={f.requester_name} onChange={(e) => setF({ ...f, requester_name: e.target.value })} /></label>
@@ -48,7 +48,7 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
         <label>목적·주요 기능<textarea required value={f.purpose} onChange={(e) => setF({ ...f, purpose: e.target.value })} /></label>
         <label>다루는 데이터<textarea value={f.data_handled} onChange={(e) => setF({ ...f, data_handled: e.target.value })} placeholder="예: 학생 이름·학번, 대출 기록" /></label>
         {f.has_student_pii === 'yes' && <p className="warn">학생 개인정보를 다루는 앱은 접근 권한(RLS)과 보관 기간을 승인 전에 함께 검토합니다.</p>}
-        {err && <p className="error">{err}</p>}
+        {err && <p className="error" role="alert">{err}</p>}
         <div className="row"><button>신청하기</button></div>
       </form>}
       <div className="section-head">
@@ -112,7 +112,7 @@ function RequestCard({ r, ctx, reload }: { r: Request; ctx: Ctx; reload: () => v
           {cur.provision_error && <p className={ps === 'done' ? 'warn' : 'error'}>{cur.provision_error}</p>}
         </dd></>}
       </dl>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       {r.status === 'pending' && ctx.isAdmin && (
         <div className="row wrap">
           <input className="grow" aria-label="앱 이름" title="앱 이름 (40자 이내, 따옴표·꺾쇠 없이)" value={name} onChange={(e) => setName(e.target.value)} />

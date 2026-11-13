@@ -471,3 +471,4 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
 .checks .small { font-size: 12.5px; margin: 6px 0 0; }
 .g-shared { margin: 0 0 18px; padding: 4px 18px 10px; border: var(--border); border-left-width: 8px; border-left-color: var(--yellow); scroll-margin-top: 90px; }
 .g-shared > h3:first-child { margin-top: 12px; }
+.modal:focus { outline: none; }

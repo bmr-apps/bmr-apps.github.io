@@ -32,7 +32,7 @@ export function BackupFiles({ d }: { d: AppDeletion }) {
       <b>💾 백업</b> <code>hub-backups/{d.backup_prefix}</code> · 파일 {files.length}개 · {fmtBytes(total)}
       <ul>{shown.map((f) => <li key={f.path}><button className="link" onClick={() => dl(f.path)}>{f.path}</button> <span className="muted">{fmtBytes(f.size)}</span></li>)}</ul>
       {files.length > main.length && <button className="ghost small" onClick={() => setOpen(!open)}>{open ? '버킷 파일 접기' : `버킷 파일 ${files.length - main.length}개 모두 보기`}</button>}
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
     </div>
   );
 }
@@ -88,11 +88,11 @@ export function DeleteAppModal({ app, ctx, onClose, onDone, onSoftDelete }: { ap
       {d && <>
         <p>{done ? <b className="ok-text">✅ 삭제 완료</b> : d.status === 'failed' ? <b className="error-text">⚠️ 멈춤</b> : <b>⏳ 백업하고 지우는 중… (창을 닫지 마세요)</b>}</p>
         <DelSteps d={d} running={busy} />
-        {d.error && <p className="error">{d.error}</p>}
+        {d.error && <p className="error" role="alert">{d.error}</p>}
         <BackupFiles d={d} />
         {done && <p className="muted">감사 기록 화면의 '삭제된 앱 · 백업'에서도 언제든 내려받을 수 있어요.</p>}
       </>}
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       <div className="row">
         {!d && <button className="danger" disabled={busy || !i || confirm !== app.slug || !!active} onClick={() => drive('start')}>{busy ? '진행 중…' : '백업하고 삭제'}</button>}
         {d && d.status === 'failed' && <button disabled={busy} onClick={() => drive('run', d.id)}>🔁 다시 시도</button>}

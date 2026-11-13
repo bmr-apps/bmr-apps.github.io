@@ -34,7 +34,7 @@ function safeEqual(a: string, b: string) { if (!a || a.length !== b.length) retu
 // ---------- 비밀번호·SCRAM ----------
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 function newPassword() { return [...crypto.getRandomValues(new Uint8Array(24))].map((b) => b.toString(16).padStart(2, '0')).join(''); }
-async function hmac(key: Uint8Array, msg: string) { const k = await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']); return new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(msg))); }
+async function hmac(key: Uint8Array, msg: string) { const k = await crypto.subtle.importKey('raw', key as BufferSource, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']); return new Uint8Array(await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(msg))); }
 async function scram(pw: string) {
   const salt = crypto.getRandomValues(new Uint8Array(16)), it = 4096;
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);

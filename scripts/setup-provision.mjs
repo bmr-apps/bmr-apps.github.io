@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, createCipheriv } from 'node:crypto';
+import { recordDeploy } from './deploy-record.mjs';
 
 const REF = 'psupfmarnyxontorftio';
 const TOKEN = process.env.SUPABASE_ACCESS_TOKEN_DEVAPPS;
@@ -56,5 +57,6 @@ if (all || args.has('--deploy') || fresh) {
     const r = await api(`/functions/deploy?slug=${fnName}`, { method: 'POST', body: fd });
     if (!r.ok) { console.error(`${fnName} 배포 실패`, r.status, (await r.text()).slice(0, 600)); process.exit(1); }
     console.log(`함수 ${fnName} 배포 완료`);
+    await recordDeploy(fnName, dir);
   }
 }

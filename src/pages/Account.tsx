@@ -24,7 +24,7 @@ export function HubPassword({ create = false }: { create?: boolean }) {
       <form onSubmit={save} style={{ marginTop: 10 }}>
         <label>새 비밀번호<input type="password" minLength={8} required autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} /></label>
         <label>새 비밀번호 확인<input type="password" minLength={8} required autoComplete="new-password" value={pw2} onChange={(e) => setPw2(e.target.value)} /></label>
-        {err && <p className="error">{err}</p>}{msg && <p className="ok">{msg}</p>}
+        {err && <p className="error" role="alert">{err}</p>}{msg && <p className="ok" role="status">{msg}</p>}
         <div className="row end"><button disabled={busy}>{busy ? '저장 중…' : '저장'}</button></div>
       </form>
     </div>

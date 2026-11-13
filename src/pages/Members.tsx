@@ -6,7 +6,7 @@ import { Modal, Pills } from '../ui';
 
 function Copy({ text, label = '복사' }: { text: string; label?: string }) {
   const [t, setT] = useState(label);
-  return <button type="button" className="ghost small" onClick={async () => { try { await navigator.clipboard.writeText(text); setT('복사됨'); } catch { setT('복사 실패'); } setTimeout(() => setT(label), 1500); }}>{t}</button>;
+  return <button type="button" className="ghost small" aria-live="polite" onClick={async () => { try { await navigator.clipboard.writeText(text); setT('복사됨'); } catch { setT('복사 실패'); } setTimeout(() => setT(label), 1500); }}>{t}</button>;
 }
 
 function TempPassword({ email, password, onClose }: { email: string; password: string; onClose: () => void }) {
@@ -44,7 +44,7 @@ function ResetDialog({ user, session, onClose, onDone }: { user: HubUser; sessio
           <button type="button" role="tab" aria-selected={mode === 'set'} className={`pill${mode === 'set' ? ' on' : ''}`} onClick={() => setMode('set')}>직접 지정</button>
         </div>
         {mode === 'set' && <label>새 비밀번호<input type="password" minLength={8} required autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="8자 이상" /></label>}
-        {err && <p className="error">{err}</p>}
+        {err && <p className="error" role="alert">{err}</p>}
         <div className="row end">
           <button type="button" className="ghost" onClick={onClose}>취소</button>
           <button disabled={busy}>{busy ? '처리 중…' : mode === 'gen' ? '임시 비밀번호 발급' : '이 비밀번호로 바꾸기'}</button>
@@ -72,7 +72,7 @@ function DeleteDialog({ user, session, onClose, onDone }: { user: HubUser; sessi
       <p className="muted">확인을 위해 이메일 주소를 그대로 입력하세요.</p>
       <form onSubmit={go}>
         <label>이메일 확인<input type="email" required autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={user.email} /></label>
-        {err && <p className="error">{err}</p>}
+        {err && <p className="error" role="alert">{err}</p>}
         <div className="row end">
           <button type="button" className="ghost" onClick={onClose}>취소</button>
           <button className="danger" disabled={!ok || busy}>{busy ? '삭제 중…' : '삭제'}</button>
@@ -137,7 +137,7 @@ export function MembersPage({ ctx }: { ctx: Ctx }) {
       <div className="section-head"><h2>👥 사용자 관리</h2></div>
       <p className="muted">역할을 바꾸고, 비밀번호를 초기화하고, 사용을 중지하거나 계정을 삭제할 수 있습니다. 임시 비밀번호는 한 번만 보이며 서버에 저장되지 않습니다.</p>
       {counts.pending > 0 && <p className="warn">일반 사용자 {counts.pending}명이 있습니다. 개발자로 올리면 앱 신청과 DB 접속 정보를 쓸 수 있습니다.</p>}
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       <div className="section-head">
         <input className="filter-in" value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름, 이메일, 담당 앱 검색" aria-label="사용자 검색" />
         <Pills value={filter} onChange={setFilter} items={[

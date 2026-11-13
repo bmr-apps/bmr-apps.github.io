@@ -4,6 +4,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { recordDeploy } from './deploy-record.mjs';
 
 const REF = process.env.HUB_REF || 'psupfmarnyxontorftio'; // bmr-dev-apps (서울)
 const TOKEN_ENV = process.env.HUB_TOKEN_ENV || 'SUPABASE_ACCESS_TOKEN_DEVAPPS';
@@ -32,3 +33,4 @@ const r = await fetch(`https://api.supabase.com/v1/projects/${REF}/functions/dep
 });
 if (!r.ok) { console.error(`배포 실패 ${r.status}:`, (await r.text()).slice(0, 800)); process.exit(1); }
 console.log(`함수 ${slug} 배포 완료`);
+if (REF === 'psupfmarnyxontorftio') await recordDeploy(slug, dir);

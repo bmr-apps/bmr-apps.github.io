@@ -35,7 +35,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
       </div>
       <div className="band" id="apps">
       <div className="section-head"><h2>운영 중인 앱 {apps && <span className="cnt">{apps.length}</span>}</h2></div>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       {apps === null ? <p className="muted">불러오는 중…</p> : apps.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
         <div className="tiles">{apps.map((a) => (
           <a key={a.id} className={`tile tone-${appTone(a.slug)}`} href={a.url} target="_blank" rel="noopener noreferrer">
@@ -97,7 +97,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
           <p>일반 사용자로 가입되었습니다. 앱 신청, DB 접속 정보, 운영 상태는 관리자가 개발자로 올리면 쓸 수 있습니다. 관리자에게 요청하세요.</p>
         </div>
         <div className="section-head"><h2>운영 중인 앱 {active.length ? <span className="cnt">{active.length}</span> : null}</h2></div>
-        {err && <p className="error">{err}</p>}
+        {err && <p className="error" role="alert">{err}</p>}
         {active.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
           <div className="tiles">{active.map((a) => (
             <a key={a.id} className={`tile tone-${appTone(a.slug)}`} href={a.url} target="_blank" rel="noopener noreferrer">
@@ -126,7 +126,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
         <Pills value={filter} onChange={setFilter} items={[['all', '전체', apps.length], ...(ctx.isStaff ? [['mine', '내 서비스', apps.filter((a) => mineIds.has(a.id)).length] as [F, string, number]] : []), ['active', '운영 중', n('active')], ['preparing', '준비 중', n('preparing')], ['paused', '일시 중지', n('paused')], ['retired', '종료', n('retired')]]} />
         {ctx.isAdmin && <button onClick={() => setEdit({ ...empty })}>+ 앱 추가</button>}
       </div>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       {shown.length === 0 ? <div className="card empty">{filter === 'mine' ? <>담당으로 등록된 서비스가 없습니다. 담당자 메일이 지금 로그인한 메일(<b>{myEmail}</b>)과 같아야 해요. <Link to="/guide">시작 가이드</Link>에서 앱 신청 방법을 볼 수 있어요.</> : '해당하는 서비스가 없습니다.'}</div> : (
         <div className="tiles">{shown.map((a) => {
           const own = owners.filter((o) => o.app_id === a.id);
@@ -195,7 +195,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
             </div>
             <label>설명<textarea value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></label>
             <label>메모<textarea value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></label>
-            {err && <p className="error">{err}</p>}
+            {err && <p className="error" role="alert">{err}</p>}
             <div className="row"><button>저장</button><button type="button" className="ghost" onClick={() => setEdit(null)}>취소</button></div>
           </form>
         </Modal>)}
@@ -227,15 +227,15 @@ function FnAutoDeploy({ app, reload }: { app: App; reload: () => void }) {
         {on ? <>main 에 push 하면 검사 후 <code>{app.slug}-fn</code> 이 자동으로 배포됩니다.</> : <>꺼져 있으면 push 해도 배포되지 않고, 개발자가 관리자에게 배포를 요청합니다.</>}
       </p>
       <p className="warn" style={{ fontSize: 13, marginTop: 8 }}>⚠️ 켜 두면 이 저장소에 push 할 수 있는 사람은 누구나 함수 코드로 프로젝트 공용 키를 읽을 수 있습니다. 믿을 수 있는 개발자에게만 켜 주세요. 바꿀 때마다 감사 기록에 남습니다.</p>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
     </div>);
 }
 
 export function HealthDot({ h, label }: { h?: Health; label?: boolean }) {
-  if (!h) return <span className="hpill none" title="점검 기록 없음">● {label ? '점검 기록 없음' : '기록 없음'}</span>;
+  if (!h) return <span className="hpill none" title="점검 기록 없음" aria-label="운영 상태: 점검 기록 없음">● {label ? '점검 기록 없음' : '기록 없음'}</span>;
   const k = healthState(h);
   const tip = `${fmtTime(h.checked_at)} · ${h.http_status ?? h.error} · ${h.response_ms ?? '-'}ms${k === 'checking' ? ' · 한 번 실패, 다음 점검에서 다시 확인' : k === 'down' ? ` · ${h.fail_streak ?? 2}번 연속 실패` : ''}`;
-  return <span className={`hpill ${k === 'ok' ? 'ok' : k === 'checking' ? 'warn' : 'bad'}`} title={tip}>● {k === 'ok' ? '정상' : k === 'checking' ? '확인 중' : '장애'}{label && h.response_ms != null ? ` · ${h.response_ms}ms` : ''}</span>;
+  return <span className={`hpill ${k === 'ok' ? 'ok' : k === 'checking' ? 'warn' : 'bad'}`} title={tip} aria-label={`운영 상태: ${k === 'ok' ? '정상' : k === 'checking' ? '확인 중' : '장애'} (${tip})`}>● {k === 'ok' ? '정상' : k === 'checking' ? '확인 중' : '장애'}{label && h.response_ms != null ? ` · ${h.response_ms}ms` : ''}</span>;
 }
 
 type OwnerForm = { id?: number; name: string; email: string; github_username: string; role: string };
@@ -295,8 +295,8 @@ function Owners({ app, owners, ctx, reload }: { app: App; owners: Owner[]; ctx: 
             </>}
           </div>))}
         </div>)}
-      {err && <p className="error">{err}</p>}
-      {msg && <p className="ok">{msg}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
+      {msg && <p className="ok" role="status">{msg}</p>}
       {isAdmin && (f ? form : <button className="ghost small" onClick={() => setF({ name: '', email: '', github_username: '', role: '담당' })}>+ 담당자 추가</button>)}
       {isAdmin && <p className="muted" style={{ fontSize: 12.5 }}>GitHub 아이디를 넣거나 바꾸면 이 앱 저장소에 쓰기(push) 권한으로 바로 초대하고, 빼면 권한을 회수합니다.</p>}
     </div>

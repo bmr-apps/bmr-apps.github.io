@@ -48,14 +48,37 @@ const TONES = ['violet', 'blue', 'teal', 'pink', 'amber', 'green'];
 export function appTone(slug: string) { let h = 7; for (const c of slug) h = (h * 17 + c.charCodeAt(0)) >>> 0; return TONES[h % TONES.length]; }
 
 /* ---------- 모달 ---------- */
-export function Modal({ onClose, children, wide }: { onClose: () => void; children: ReactNode; wide?: boolean }) {
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+let modalSeq = 0;
+/** 창: 열리면 초점을 창 안(첫 입력칸, 없으면 창)으로 옮기고, Tab 은 창 안에서만 돌고, 닫히면 연 버튼으로 초점을 돌려준다.
+ *  제목(첫 h2/h3)을 aria-labelledby 로 읽어 준다. Esc 로 닫기. */
+export function Modal({ onClose, children, wide, label }: { onClose: () => void; children: ReactNode; wide?: boolean; label?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  const [titleId, setTitleId] = useState<string | undefined>(undefined);
   useEffect(() => {
-    const f = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    addEventListener('keydown', f); return () => removeEventListener('keydown', f);
-  }, [onClose]);
+    const box = ref.current; if (!box) return;
+    const prev = document.activeElement as HTMLElement | null;
+    const h = box.querySelector('h2, h3');
+    if (h) { if (!h.id) h.id = `modal-title-${++modalSeq}`; setTitleId(h.id); }
+    const first = box.querySelector<HTMLElement>('input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled])');
+    (first ?? box).focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeRef.current(); return; }
+      if (e.key !== 'Tab') return;
+      const items = [...box.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (!items.length) { e.preventDefault(); box.focus(); return; }
+      const a = items[0], z = items[items.length - 1], cur = document.activeElement;
+      if (e.shiftKey && (cur === a || cur === box)) { e.preventDefault(); z.focus(); }
+      else if (!e.shiftKey && cur === z) { e.preventDefault(); a.focus(); }
+      else if (!box.contains(cur)) { e.preventDefault(); a.focus(); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('keydown', onKey); if (prev && document.contains(prev)) prev.focus(); };
+  }, []);
   return (
     <div className="overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true">
+      <div ref={ref} className={`modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-labelledby={label ? undefined : titleId} aria-label={label} tabIndex={-1}>
         <button className="icon-btn close" aria-label="닫기" onClick={onClose}>✕</button>
         {children}
       </div>

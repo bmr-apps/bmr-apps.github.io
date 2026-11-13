@@ -1,0 +1,27 @@
+# 허브 서버 함수 형식 검사 (배포하지 않음, 비밀값 쓰지 않음)
+# 허브 함수 배포는 관리자가 작업 상자에서 scripts/deploy-fn.mjs · setup-provision.mjs 로 합니다 (배포 기록: 감사 기록 hub:deploy).
+# _key.ts 는 저장소에 없으므로 검사할 때만 빈 예시(_key.ts.example)로 채웁니다.
+name: 허브 함수 검사
+on:
+  push:
+    paths: ['supabase/functions/**', '.github/workflows/functions-check.yml']
+  pull_request:
+    paths: ['supabase/functions/**', '.github/workflows/functions-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: 열쇠 자리 채우기 (빈 값)
+        working-directory: supabase/functions
+        run: for d in hub-provision hub-deprovision hub-fn-deploy; do cp hub-provision/_key.ts.example "$d/_key.ts"; done
+      - name: 타입 검사
+        working-directory: supabase/functions
+        run: deno check */index.ts

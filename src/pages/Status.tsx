@@ -28,10 +28,10 @@ export function StatusPage({ ctx }: { ctx: Ctx }) {
   const avg = times.length ? Math.round(times.reduce((s, x) => s + x, 0) / times.length) : null;
   const lastAt = Object.values(latest).map((h) => h.checked_at).sort().pop() ?? null;
   return (
-    <section>
+    <section aria-busy={busy}>
       <div className="section-head"><h2>📡 운영 상태</h2>{ctx.isAdmin && <button disabled={busy} onClick={run}>{busy ? '점검 중…' : '🩺 지금 점검'}</button>}</div>
       <p className="muted">운영 중인 앱 주소를 매시 정각에 자동으로 열어 봅니다. 응답 코드 200~399면 정상입니다. 한 번 실패하면 <b>확인 중</b>, 2번 연속 실패하면 <b>장애</b>로 표시합니다. 기록은 30일 동안 보관합니다.</p>
-      {err && <p className="error">{err}</p>}{msg && <p className="ok">{msg}</p>}
+      {err && <p className="error" role="alert">{err}</p>}{msg && <p className="ok" role="status">{msg}</p>}
       <div className="stats">
         <Stat tone="green" icon="✅" label="정상" value={cnt('ok')} sub={`점검 대상 ${apps.length}개`} />
         <Stat tone="red" icon="🚨" label="장애" value={cnt('down')} sub={cnt('down') ? '2번 연속 실패 · 확인이 필요해요' : cnt('checking') ? `확인 중 ${cnt('checking')}개 (한 번 실패)` : '문제 없음'} />

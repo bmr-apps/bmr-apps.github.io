@@ -12,7 +12,7 @@ export type DevInfo = {
 
 function Copy({ text }: { text: string }) {
   const [ok, setOk] = useState(false);
-  return <button type="button" className="ghost small copy-btn" onClick={async () => { try { await navigator.clipboard.writeText(text); setOk(true); setTimeout(() => setOk(false), 1400); } catch { /* 복사 실패는 조용히 */ } }}>{ok ? '복사됨' : '복사'}</button>;
+  return <button type="button" className="ghost small copy-btn" aria-live="polite" onClick={async () => { try { await navigator.clipboard.writeText(text); setOk(true); setTimeout(() => setOk(false), 1400); } catch { /* 복사 실패는 조용히 */ } }}>{ok ? '복사됨' : '복사'}</button>;
 }
 function Code({ children }: { children: string }) {
   return <div className="codeblock"><pre><code>{children}</code></pre><Copy text={children} /></div>;

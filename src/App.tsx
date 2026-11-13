@@ -283,7 +283,7 @@ function LoginPage({ session }: { session: Session | null }) {
       {mode === 'signup' && <label>이름<input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>}
       <label>이메일<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required placeholder="name@bmrschool.org" /></label>
       <label>비밀번호<input type="password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required /></label>
-      {err && <p className="error">{err}</p>}
+      {err && <p className="error" role="alert">{err}</p>}
       <button disabled={busy}>{busy ? '처리 중…' : mode === 'login' ? '로그인' : '가입하기'}</button>
       <button type="button" className="ghost" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErr(''); }}>{mode === 'login' ? '처음이면 가입하기' : '로그인으로 돌아가기'}</button>
       <p className="muted small-note">처음 가입하면 <b>일반 사용자</b>로 시작해요. 앱 신청은 관리자가 <b>개발자</b>로 올린 뒤에 할 수 있어요. 같은 메일로 이미 가입했다면 구글로 로그인해도 같은 계정으로 들어갑니다.</p>
