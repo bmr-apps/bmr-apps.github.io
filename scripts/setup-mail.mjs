@@ -12,7 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, createCipheriv, createHash } from 'node:crypto';
 import { recordDeploy } from './deploy-record.mjs';
-import { sql, api, REF } from './sql.mjs';
+import { sql, REF } from './sql.mjs';
 
 const TOKEN = process.env.SUPABASE_ACCESS_TOKEN_DEVAPPS;
 const RESEND = process.env.RESEND_API_KEY;
@@ -29,6 +29,7 @@ const TEST_TO = 'bmrdev@bmrschool.org';
 const TEST_SLUG = 'class-designer';
 
 if (!TOKEN) { console.error('SUPABASE_ACCESS_TOKEN_DEVAPPS 가 없습니다'); process.exit(1); }
+const api = (p, o = {}) => fetch(`https://api.supabase.com/v1/projects/${REF}${p}`, { ...o, headers: { Authorization: `Bearer ${TOKEN}`, ...(o.headers || {}) } });
 if ((doSecrets || doSmtp || doTest) && !RESEND) { console.error('RESEND_API_KEY 가 없습니다'); process.exit(1); }
 
 const keyFile = join(ROOT, '.secrets', 'hub-provision.key');
