@@ -86,7 +86,7 @@ const path = \`\${user.id}/\${Date.now()}.png\`;   // 키에 한글·공백 대�
 await supabase.storage.from('${d.bucket}').upload(path, file);`}</Code></>}
           <ul className="devnotes">
             <li><b>화면 배포</b>: <code>main</code> 에 push → GitHub Actions 가 빌드해 {site} 에 올립니다.</li>
-            <li><b>서버 함수</b>: <code>supabase/functions/{d.fn}/</code> 를 고쳐 올린 뒤 관리자에게 배포를 요청하세요 (검토 후 배포).</li>
+            <li><b>서버 함수</b>: <code>supabase/functions/{d.fn}/</code> 를 고쳐 <code>main</code> 에 push → 검사 후 <code>{d.fn}</code> 가 자동 배포됩니다 (저장소 Actions → 서버 함수 검사·배포).</li>
             <li><b>자세한 설명</b>: 저장소 <code>README.md</code> · <Link to="/guide">시작 가이드</Link></li>
           </ul>
         </>}
