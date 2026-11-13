@@ -80,6 +80,7 @@ node scripts/build-provision-templates.mjs && node scripts/setup-provision.mjs  
 - 대시보드 **내 서비스** 필터: 내가 담당자인 앱만.
 - 새 앱 공개 주소(index.html)는 `starter/layout.html` 의 '준비 중' 안내만 보여 줌 (허브의 이름·설명을 실시간으로 반영). 자세한 개발 정보는 저장소 README 와 허브 개발 정보에 있음. `scripts/build-provision-templates.mjs` 가 공개 페이지에 개발 정보가 섞이면 빌드를 멈춤.
 - **구글 로그인**: bmr-dev-apps 프로젝트 전체에 켜져 있음 (Auth 설정 `external_google_enabled`, 클라이언트 비밀값은 Supabase 에만 있음 — 저장소에 두지 않음). 허용된 돌아올 주소: `https://apps.bmrschool.net/**`, `http://localhost:5173/**`, `http://localhost:3000/**`. 안내는 `/guide#google-login`, 새 앱 저장소의 `src/auth.js`.
+- **공용 주소 점검(경고만)**: 새 앱 저장소의 `.github/workflows/bmr-check.yml` → `scripts/bmr-check.mjs` 가 push 때마다 규칙(저장소 clear·이름표·맨 앞 경로·서비스 워커 범위·외부 스크립트)을 살펴 Job Summary 에 경고를 쓰고, main 이면 **GitHub OIDC 토큰**(aud `bmr-apps-hub`)으로 `hub-checks` 함수에 보냄. 함수는 GitHub 서명·조직(bmr-apps)·main·워크플로 파일·등록된 repo_url 을 확인하고 `public.app_checks`(앱마다 최신 1건, RLS: 관리자 전체·담당 개발자만)에 저장. 저장소·허브에 새 비밀값 없음. 화면: 앱 상세 '공용 주소 점검', 운영 상태(관리자) 요약. 시험: `node scripts/test-checks.mjs`.
 - 처음부터 끝까지 시험: `node scripts/test-dev-info.mjs` (zztest-guide 앱을 만들고 확인한 뒤 hub-deprovision 으로 지우고 시험 계정을 정리함).
 
 ## 배포
