@@ -9,7 +9,7 @@ import { MembersPage } from './pages/Members';
 import { AuditPage } from './pages/Audit';
 import { DbCredPage } from './pages/DbCred';
 import { AccountPage } from './pages/Account';
-import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
+import { Clock, Mark, Palette, appIcon, useTheme, type Cmd } from './ui';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
 export function go(path: string) { history.pushState(null, '', path); dispatchEvent(new PopStateEvent('popstate')); }
@@ -205,7 +205,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     <div className={`layout${inHub ? ' with-side' : ''}`}>
       {inHub && <>
         <aside className={`side${menu ? ' open' : ''}`}>
-          <Link to="/" className="side-brand" aria-label="BMR APPS 메인 화면"><span className="logo">✨</span><span><b>BMR APPS</b><small>앱 관리</small></span></Link>
+          <Link to="/" className="side-brand" aria-label="BMR APPS 메인 화면"><Mark /><span><b>BMR APPS</b><small>앱 관리 허브</small></span></Link>
           <nav>
             {groups.map(([g, t]) => t.some((x) => x.show) && (
               <div key={g} className="side-group">
@@ -226,7 +226,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       <div className="body">
         <header className="top">
           {inHub && <button className="icon-btn burger" aria-label="메뉴 열기" onClick={() => setMenu(true)}>☰</button>}
-          {!inHub && <Link to="/" className="logo" aria-label="BMR APPS 메인 화면"><span>✨</span></Link>}
+          {!inHub && <Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>}
           <div className="greet">
             {inHub ? <><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></>
               : <><h1><Link to="/" className="brand-title">BMR APPS</Link></h1><p>별무리 개발자들이 만들어 운영하는 서비스 모음</p></>}
@@ -240,7 +240,14 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           </> : path !== '/hub/login' && <Link to="/hub/login" className="btn">로그인</Link>}
         </header>
         <main>{children}</main>
-        <footer className="muted">별무리학교 · apps.bmrschool.net · <kbd>Ctrl K</kbd> 빠른 이동</footer>
+        <footer className="foot">
+          <div className="foot-in">
+            <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 만들어 운영하는 서비스 모음</p></div>
+            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">서비스 모음</Link>{ctx.session ? <Link to="/hub/apps">관리 허브</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
+            {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/db">DB 접속 정보</Link><Link to="/hub/status">운영 상태</Link></nav>}
+          </div>
+          <div className="foot-bar"><span>별무리학교 · apps.bmrschool.net</span><span><kbd>Ctrl K</kbd> 빠른 이동</span></div>
+        </footer>
       </div>
       {pal && <Palette cmds={cmds} onClose={() => setPal(false)} />}
     </div>
@@ -261,7 +268,7 @@ function LoginPage({ session }: { session: Session | null }) {
   }, [mode, email, pw, name]);
   return (
     <form className="card narrow login" onSubmit={submit}>
-      <Link to="/" className="logo big" aria-label="BMR APPS 메인 화면">✨</Link>
+      <Link to="/" className="logo big mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>
       <h2>{mode === 'login' ? '로그인' : '가입'}</h2>
       <p className="muted">{mode === 'login' ? '이메일과 비밀번호로 로그인합니다.' : '이름, 이메일, 비밀번호만 입력하면 바로 이용할 수 있습니다.'}</p>
       {mode === 'signup' && <label>이름<input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>}

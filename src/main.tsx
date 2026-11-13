@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import '@fontsource-variable/figtree';
 import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 import { App } from './App';
 import { applyTheme, initialTheme } from './ui';

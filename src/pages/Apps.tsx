@@ -16,11 +16,23 @@ export function Landing({ ctx }: { ctx: Ctx }) {
   return (
     <section>
       <div className="hero">
-        <Link to="/" className="eyebrow brand-title">✨ BMR APPS</Link>
-        <h2>별무리 개발자들이 만든 서비스</h2>
-        <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 가입한 뒤, 개발자로 승인되면 신청할 수 있어요.</p>
+        <div className="hero-copy">
+          <Link to="/" className="eyebrow brand-title">BMR APPS</Link>
+          <h2>별무리 개발자들이 만든 서비스</h2>
+          <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 가입한 뒤, 개발자로 승인되면 신청할 수 있어요.</p>
+          <div className="hero-cta">
+            <a className="btn" href="#apps">서비스 둘러보기</a>
+            {ctx.session ? <Link to="/hub/apps" className="btn alt">관리 허브</Link> : <Link to="/hub/login" className="btn alt">로그인 · 가입</Link>}
+          </div>
+        </div>
+        <div className="hero-art" aria-hidden="true">
+          <i className="c-white">🎒</i><i className="c-coral round" /><i className="c-cyan">🎨</i><i className="c-green half" />
+          <i className="c-purple" /><i className="c-yellow">💡</i><i className="c-white round" /><i className="c-navy" />
+          <i className="c-green">🌱</i><i className="c-white half" /><i className="c-coral">🧩</i><i className="c-cyan round" />
+        </div>
       </div>
-      <div className="section-head"><h3>운영 중인 앱 {apps && <span className="cnt">{apps.length}</span>}</h3></div>
+      <div className="band" id="apps">
+      <div className="section-head"><h2>운영 중인 앱 {apps && <span className="cnt">{apps.length}</span>}</h2></div>
       {err && <p className="error">{err}</p>}
       {apps === null ? <p className="muted">불러오는 중…</p> : apps.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
         <div className="tiles">{apps.map((a) => (
@@ -28,9 +40,11 @@ export function Landing({ ctx }: { ctx: Ctx }) {
             <span className="tile-ico">{appIcon(a.slug)}</span>
             <b className="tile-title">{a.name}</b>
             <span className="tile-desc">{a.description}</span>
-            <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')} ↗</span></span>
+            <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')}</span></span>
+            <span className="tile-cta" aria-hidden="true">열기 ↗</span>
           </a>))}
         </div>)}
+      </div>
     </section>
   );
 }
@@ -77,7 +91,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
           <h3>개발자 승인 후 이용할 수 있어요</h3>
           <p>일반 사용자로 가입되었습니다. 앱 신청, DB 접속 정보, 운영 상태는 관리자가 개발자로 올리면 쓸 수 있습니다. 관리자에게 요청하세요.</p>
         </div>
-        <div className="section-head"><h3>운영 중인 앱 {active.length ? <span className="cnt">{active.length}</span> : null}</h3></div>
+        <div className="section-head"><h2>운영 중인 앱 {active.length ? <span className="cnt">{active.length}</span> : null}</h2></div>
         {err && <p className="error">{err}</p>}
         {active.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
           <div className="tiles">{active.map((a) => (
@@ -85,7 +99,8 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
               <span className="tile-ico">{appIcon(a.slug)}</span>
               <b className="tile-title">{a.name}</b>
               <span className="tile-desc">{a.description}</span>
-              <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')} ↗</span></span>
+              <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')}</span></span>
+              <span className="tile-cta" aria-hidden="true">열기 ↗</span>
             </a>))}</div>)}
       </section>
     );
@@ -102,7 +117,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
       </div>
 
       <div className="section-head">
-        <h3>서비스 · 담당 개발자</h3>
+        <h2>서비스 · 담당 개발자</h2>
         <Pills value={filter} onChange={setFilter} items={[['all', '전체', apps.length], ['active', '운영 중', n('active')], ['preparing', '준비 중', n('preparing')], ['paused', '일시 중지', n('paused')], ['retired', '종료', n('retired')]]} />
         {ctx.isAdmin && <button onClick={() => setEdit({ ...empty })}>+ 앱 추가</button>}
       </div>
@@ -120,6 +135,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
                 <HealthDot h={health[a.id]} />
                 <span className="tile-url">{own.length ? `🧑‍💻 ${own.map((o) => o.name).join(', ')}` : '담당자 없음'}</span>
               </span>
+              <span className="tile-cta" aria-hidden="true">자세히 →</span>
             </button>);
         })}</div>)}
 
