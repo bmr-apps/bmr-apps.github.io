@@ -274,3 +274,15 @@ dl.meta dt { color: var(--muted); font-weight: 700; } dl.meta dd { margin: 0; ov
   .card.flush { overflow-x: auto; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* 자동 만들기 진행 · GitHub 권한 상태 */
+.steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; padding: 0; list-style: none; }
+.steps li { font-size: 12.5px; padding: 4px 9px; border-radius: 999px; background: var(--gray-soft); color: var(--muted); }
+.steps li.done { background: var(--ok-soft); color: var(--ok); }
+.steps li.started, .steps li.now { background: var(--warn-soft); color: var(--warn); }
+.steps li.failed { background: var(--bad-soft); color: var(--bad); font-weight: 700; }
+.gh { font-size: 12px; padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
+.gh-active { background: var(--ok-soft); color: var(--ok); } .gh-invited { background: var(--warn-soft); color: var(--warn); }
+.gh-failed { background: var(--bad-soft); color: var(--bad); } .gh-no_repo { background: var(--gray-soft); color: var(--muted); }
+input[readonly] { opacity: .7; cursor: not-allowed; }
+.ok-text { color: var(--ok); } .error-text { color: var(--bad); }

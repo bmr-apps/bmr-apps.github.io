@@ -6,6 +6,7 @@ import { RequestsPage } from './pages/Requests';
 import { TokensPage } from './pages/Tokens';
 import { StatusPage } from './pages/Status';
 import { MembersPage } from './pages/Members';
+import { AuditPage } from './pages/Audit';
 import { DbCredPage } from './pages/DbCred';
 import { AccountPage } from './pages/Account';
 import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
@@ -111,6 +112,7 @@ export function App() {
   else if (path === '/hub/tokens') page = <TokensPage ctx={ctx} />;
   else if (path === '/hub/status') page = <StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/members') page = <MembersPage ctx={ctx} />;
+  else if (path === '/hub/audit') page = <AuditPage ctx={ctx} />;
   else page = <div className="card narrow center"><div className="logo big">🧭</div><h2>페이지를 찾을 수 없습니다</h2><p className="muted">주소({path})에 해당하는 앱이 아직 배포되지 않았을 수 있습니다.</p><Link to="/" className="btn">처음으로</Link></div>;
   return <Shell ctx={ctx} path={path}>{page}</Shell>;
 }
@@ -160,6 +162,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     ['관리자', [
       { to: '/hub/tokens', icon: '🔑', label: '토큰 기록', sub: '발급·만료 관리', show: ctx.isAdmin, badge: c?.tokSoon, tone: 'red' },
       { to: '/hub/members', icon: '👥', label: '사용자 관리', sub: '역할·비밀번호·삭제', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
+      { to: '/hub/audit', icon: '🧾', label: '감사 기록', sub: '승인·생성·권한 변경', show: ctx.isAdmin },
     ]],
   ];
   const tabs = groups.flatMap(([, t]) => t.filter((x) => x.show));

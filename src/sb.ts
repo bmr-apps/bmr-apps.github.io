@@ -10,8 +10,12 @@ export const sb = createClient(SUPABASE_URL || 'http://invalid.local', ANON || '
 
 export type App = { id: number; slug: string; name: string; description: string; url: string; repo_url: string | null; supabase_ref: string | null; status: Status; note: string; sort: number; created_at: string; updated_at: string };
 export type Status = 'preparing' | 'active' | 'paused' | 'retired';
-export type Owner = { id: number; app_id: number; name: string; email: string | null; github_username: string | null; role: string };
-export type Request = { id: number; requested_by: string; requester_name: string; requester_email: string | null; app_name: string; slug: string; purpose: string; data_handled: string; has_student_pii: boolean; github_username: string; status: 'pending' | 'approved' | 'rejected'; review_note: string; reviewed_at: string | null; app_id: number | null; created_at: string };
+export type GhStatus = 'invited' | 'active' | 'failed' | 'no_repo';
+export type Owner = { id: number; app_id: number; name: string; email: string | null; github_username: string | null; role: string; gh_status: GhStatus | null; gh_status_at: string | null; gh_error: string | null };
+export type Request = { id: number; requested_by: string; requester_name: string; requester_email: string | null; app_name: string; slug: string; purpose: string; data_handled: string; has_student_pii: boolean; github_username: string; status: 'pending' | 'approved' | 'rejected'; review_note: string; reviewed_at: string | null; app_id: number | null; created_at: string;
+  provision_status: 'running' | 'done' | 'failed' | null; provision_steps: Record<string, string | number>; provision_error: string | null;
+  provision_started_at: string | null; provision_finished_at: string | null; provision_attempts: number; provision_lease_until: string | null };
+export type AuditLog = { id: number; at: string; actor: string | null; actor_email: string; action: string; target: string; result: 'ok' | 'error' | 'denied'; detail: string };
 export type TokenLog = { id: number; app_id: number | null; kind: string; label: string; issued_to: string; issued_at: string; expires_at: string | null; revoked_at: string | null; memo: string; created_at: string };
 export type Health = { app_id: number; checked_at: string; url: string; http_status: number | null; ok: boolean; response_ms: number | null; error: string | null };
 export type Role = 'pending' | 'staff' | 'admin' | 'disabled';
@@ -81,6 +85,23 @@ export type HubUser = {
 };
 export async function usersApi<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-users`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ action, ...body }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`);
+  return j as T;
+}
+
+// ---------- 승인 즉시 만들기 · 담당자 GitHub 권한 (Edge Function hub-provision, 관리자 전용) ----------
+export const STEP_LABEL: [string, string][] = [
+  ['check', '겹치는 자원 확인'], ['db', 'DB 스키마·계정'], ['fn_secret', '함수 DB 연결 정보'], ['starter', '시작 표 documents'], ['expose', 'Data API 노출'],
+  ['bucket', '파일 버킷'], ['function', '서버 함수 배포'], ['repo', 'GitHub 저장소'], ['pages', 'GitHub Pages'], ['vars', '배포 변수'],
+  ['code', '안내 페이지 올리기'], ['hub', '허브 등록·담당자'], ['invite', 'GitHub 초대'], ['dbcred', 'DB 비밀번호 준비'], ['health', '서버 함수 연결 확인'],
+];
+export const GH_LABEL: Record<GhStatus, string> = { invited: '초대됨', active: '권한 있음', failed: '실패', no_repo: '저장소 없음' };
+export async function provisionApi<T = Record<string, unknown>>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-provision`, {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token },
     body: JSON.stringify({ action, ...body }),
   });

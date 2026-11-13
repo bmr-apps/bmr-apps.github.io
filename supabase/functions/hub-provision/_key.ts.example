@@ -1,0 +1,2 @@
+// 실제 _key.ts 는 저장소에 두지 않는다. scripts/setup-provision.mjs 가 배포할 때만 넣는다 (.secrets/hub-provision.key).
+export const PROVISION_KEY = '';

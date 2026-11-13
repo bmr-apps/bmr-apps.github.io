@@ -8,3 +8,4 @@ screenshot-*.png
 .secrets/
 redesign-*.png
 redesign2-*.png
+supabase/functions/hub-provision/_key.ts

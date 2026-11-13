@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.hub-users]
 verify_jwt = false
+
+[functions.hub-provision]
+verify_jwt = false

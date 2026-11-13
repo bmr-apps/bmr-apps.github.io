@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { go, Link, type Ctx } from '../App';
-import { sb, errMsg, fmtTime, STATUS_LABEL, type App, type Health, type Owner, type Status } from '../sb';
+import { sb, errMsg, fmtTime, provisionApi, GH_LABEL, STATUS_LABEL, type App, type GhStatus, type Health, type Owner, type Status } from '../sb';
 import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
 import { DbCredSection } from './DbCred';
 
@@ -57,8 +57,8 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
   const save = async (e: FormEvent) => {
     e.preventDefault(); if (!edit) return;
     const row = { ...edit, url: edit.url || `https://apps.bmrschool.net/${edit.slug}`, repo_url: edit.repo_url || null, supabase_ref: edit.supabase_ref || null };
-    const { id, ...body } = row;
-    const { error } = id ? await sb.from('apps').update(body).eq('id', id) : await sb.from('apps').insert(body);
+    const { id, slug, ...rest } = row;
+    const { error } = id ? await sb.from('apps').update(rest).eq('id', id) : await sb.from('apps').insert({ slug, ...rest });
     if (error) return setErr(errMsg(error));
     setEdit(null); load(); ctx.refreshCounts?.();
   };
@@ -134,7 +134,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
             {cur.supabase_ref && <><dt>Supabase</dt><dd><code>{cur.supabase_ref}</code></dd></>}
             {cur.note && <><dt>메모</dt><dd>{cur.note}</dd></>}
           </dl>
-          <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} isAdmin={ctx.isAdmin} reload={load} />
+          <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} ctx={ctx} reload={load} />
           <DbCredSection ctx={ctx} appId={cur.id} />
           {ctx.isAdmin && <div className="row end"><button className="ghost" onClick={() => setEdit({ ...cur, repo_url: cur.repo_url ?? '', supabase_ref: cur.supabase_ref ?? '' })}>✏️ 앱 정보 수정</button></div>}
         </Modal>)}
@@ -145,7 +145,9 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
             <h2>{edit.id ? '앱 수정' : '앱 추가'}</h2>
             <div className="cols">
               <label>앱 이름<input required value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></label>
-              <label>주소 이름(slug)<input required pattern="[a-z0-9][a-z0-9-]{1,38}" value={edit.slug} onChange={(e) => setEdit({ ...edit, slug: e.target.value.toLowerCase() })} placeholder="예: library" /></label>
+              <label>주소 이름(slug){edit.id
+                ? <><input readOnly value={edit.slug} /><small className="muted">만든 뒤에는 바꿀 수 없어요 (주소·저장소·DB 이름이 함께 묶여 있음)</small></>
+                : <input required pattern="[a-z][a-z0-9\-]{1,38}" value={edit.slug} onChange={(e) => setEdit({ ...edit, slug: e.target.value.toLowerCase() })} placeholder="예: library" />}</label>
               <label>앱 주소 (비우면 apps.bmrschool.net/slug)<input value={edit.url} onChange={(e) => setEdit({ ...edit, url: e.target.value })} placeholder={`https://apps.bmrschool.net/${edit.slug || 'slug'}`} /></label>
               <label>저장소 주소<input value={edit.repo_url} onChange={(e) => setEdit({ ...edit, repo_url: e.target.value })} placeholder="https://github.com/bmr-apps/..." /></label>
               <label>Supabase 프로젝트 ref<input value={edit.supabase_ref} onChange={(e) => setEdit({ ...edit, supabase_ref: e.target.value })} /></label>
@@ -167,19 +169,45 @@ export function HealthDot({ h, label }: { h?: Health; label?: boolean }) {
   return <span className={`hpill ${h.ok ? 'ok' : 'bad'}`} title={`${fmtTime(h.checked_at)} · ${h.http_status ?? h.error} · ${h.response_ms ?? '-'}ms`}>● {h.ok ? '정상' : '이상'}{label && h.response_ms != null ? ` · ${h.response_ms}ms` : ''}</span>;
 }
 
-function Owners({ app, owners, isAdmin, reload }: { app: App; owners: Owner[]; isAdmin: boolean; reload: () => void }) {
-  const [f, setF] = useState<{ name: string; email: string; github_username: string; role: string } | null>(null);
-  const [err, setErr] = useState('');
-  const add = async (e: FormEvent) => {
+type OwnerForm = { id?: number; name: string; email: string; github_username: string; role: string };
+function Owners({ app, owners, ctx, reload }: { app: App; owners: Owner[]; ctx: Ctx; reload: () => void }) {
+  const isAdmin = ctx.isAdmin;
+  const [f, setF] = useState<OwnerForm | null>(null);
+  const [err, setErr] = useState(''); const [msg, setMsg] = useState(''); const [busy, setBusy] = useState(false);
+  const call = async (action: string, body: Record<string, unknown>) => {
+    if (!ctx.session) return null;
+    setErr(''); setMsg(''); setBusy(true);
+    try { return await provisionApi<{ github?: { status: GhStatus; error?: string; detail?: string } | null; revoked?: string }>(ctx.session, action, body); }
+    catch (e) { setErr((e as Error).message); return null; }
+    finally { setBusy(false); }
+  };
+  const ghMsg = (r: { github?: { status: GhStatus; error?: string; detail?: string } | null; revoked?: string } | null) => {
+    if (!r) return;
+    const parts = [];
+    if (r.revoked) parts.push(`옛 권한: ${r.revoked}`);
+    if (r.github) parts.push(`GitHub: ${GH_LABEL[r.github.status]}${r.github.error || r.github.detail ? ` (${r.github.error ?? r.github.detail})` : ''}`);
+    setMsg(parts.join(' · ') || '저장했습니다.');
+  };
+  const save = async (e: FormEvent) => {
     e.preventDefault(); if (!f) return;
-    const { error } = await sb.from('app_owners').insert({ app_id: app.id, name: f.name, email: f.email || null, github_username: f.github_username || null, role: f.role || '담당' });
-    if (error) return setErr(errMsg(error));
-    setF(null); setErr(''); reload();
+    const body = { name: f.name, email: f.email || null, github_username: f.github_username || null, role: f.role || '담당' };
+    const r = f.id ? await call('update_owner', { owner_id: f.id, ...body }) : await call('add_owner', { app_id: app.id, ...body });
+    if (r) { ghMsg(r); setF(null); reload(); }
   };
   const del = async (o: Owner) => {
-    if (!confirm(`${o.name} 님을 담당에서 뺄까요?`)) return;
-    const { error } = await sb.from('app_owners').delete().eq('id', o.id); if (error) setErr(errMsg(error)); else reload();
+    if (!confirm(`${o.name} 님을 담당에서 뺄까요?${o.github_username ? `\nGitHub @${o.github_username} 의 이 저장소 권한도 회수합니다.` : ''}`)) return;
+    const r = await call('remove_owner', { owner_id: o.id }); if (r) { ghMsg(r); reload(); }
   };
+  const sync = async (o: Owner) => { const r = await call('sync_owner', { owner_id: o.id }); if (r) { ghMsg(r); reload(); } };
+  const form = (
+    <form className="row wrap" onSubmit={save}>
+      <input required placeholder="이름" value={f?.name ?? ''} onChange={(e) => f && setF({ ...f, name: e.target.value })} />
+      <input placeholder="역할(예: 책임, 개발)" value={f?.role ?? ''} onChange={(e) => f && setF({ ...f, role: e.target.value })} />
+      <input type="email" placeholder="이메일 (허브 계정 메일)" value={f?.email ?? ''} onChange={(e) => f && setF({ ...f, email: e.target.value })} />
+      <input placeholder="GitHub 아이디 (저장소 쓰기 권한 초대)" value={f?.github_username ?? ''} onChange={(e) => f && setF({ ...f, github_username: e.target.value.trim() })} />
+      <button disabled={busy}>{busy ? '저장 중…' : f?.id ? '저장' : '추가'}</button><button type="button" className="ghost" onClick={() => setF(null)}>취소</button>
+    </form>
+  );
   return (
     <div className="owners">
       <h4>🧑‍💻 담당 개발자</h4>
@@ -187,19 +215,21 @@ function Owners({ app, owners, isAdmin, reload }: { app: App; owners: Owner[]; i
         <div className="owner-list">{owners.map((o) => (
           <div key={o.id} className="owner">
             <span className="avatar">{o.name.slice(0, 1)}</span>
-            <span className="grow"><b>{o.name}</b> <span className="badge">{o.role}</span><small className="muted block">{o.email}{o.github_username && <> · <a href={`https://github.com/${o.github_username}`} target="_blank" rel="noopener noreferrer">@{o.github_username}</a></>}</small></span>
-            {isAdmin && <button className="ghost small" onClick={() => del(o)}>빼기</button>}
+            <span className="grow"><b>{o.name}</b> <span className="badge">{o.role}</span>
+              {o.github_username && o.gh_status && <span className={`gh gh-${o.gh_status}`} title={o.gh_error ?? ''}>{o.gh_status === 'active' ? '✓' : o.gh_status === 'invited' ? '✉️' : o.gh_status === 'failed' ? '⚠️' : '—'} {GH_LABEL[o.gh_status]}</span>}
+              <small className="muted block">{o.email}{o.github_username && <> · <a href={`https://github.com/${o.github_username}`} target="_blank" rel="noopener noreferrer">@{o.github_username}</a></>}
+                {o.gh_status === 'failed' && o.gh_error && <> · <span className="error-text">{o.gh_error}</span></>}</small></span>
+            {isAdmin && <>
+              {o.github_username && <button className="ghost small" disabled={busy} onClick={() => sync(o)} title="GitHub 권한 상태를 다시 확인하고, 없으면 초대합니다">{o.gh_status === 'failed' ? '다시 시도' : '권한 확인'}</button>}
+              <button className="ghost small" disabled={busy} onClick={() => setF({ id: o.id, name: o.name, email: o.email ?? '', github_username: o.github_username ?? '', role: o.role })}>수정</button>
+              <button className="ghost small" disabled={busy} onClick={() => del(o)}>빼기</button>
+            </>}
           </div>))}
         </div>)}
       {err && <p className="error">{err}</p>}
-      {isAdmin && (f ? (
-        <form className="row wrap" onSubmit={add}>
-          <input required placeholder="이름" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-          <input placeholder="역할(예: 책임, 개발)" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} />
-          <input type="email" placeholder="이메일" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
-          <input placeholder="GitHub 아이디" value={f.github_username} onChange={(e) => setF({ ...f, github_username: e.target.value })} />
-          <button>추가</button><button type="button" className="ghost" onClick={() => setF(null)}>취소</button>
-        </form>) : <button className="ghost small" onClick={() => setF({ name: '', email: '', github_username: '', role: '담당' })}>+ 담당자 추가</button>)}
+      {msg && <p className="ok">{msg}</p>}
+      {isAdmin && (f ? form : <button className="ghost small" onClick={() => setF({ name: '', email: '', github_username: '', role: '담당' })}>+ 담당자 추가</button>)}
+      {isAdmin && <p className="muted" style={{ fontSize: 12.5 }}>GitHub 아이디를 넣거나 바꾸면 이 앱 저장소에 쓰기(push) 권한으로 바로 초대하고, 빼면 권한을 회수합니다.</p>}
     </div>
   );
 }

@@ -7,8 +7,9 @@ GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, �
 - `/` 누구나 보는 운영 중 앱 바로가기
 - `/hub/login` 로그인·가입 (이름·이메일·비밀번호, 확인 메일 없이 바로 로그인)
 - `/hub/account` 내 계정 · 허브 로그인 비밀번호 바꾸기
-- `/hub/apps` 서비스 목록·담당 개발자 (관리자: 추가·수정)
-- `/hub/requests` 새 앱 신청 / 관리자 승인·반려 (승인하면 apps 행과 책임 담당자가 생김, 상태 '준비 중')
+- `/hub/apps` 서비스 목록·담당 개발자 (관리자: 앱 정보 수정 — slug 는 만든 뒤 잠김, 담당자 추가·수정·빼기 → GitHub push 권한 초대·회수, 초대됨/권한 있음/실패 표시)
+- `/hub/requests` 새 앱 신청(개발자) / 관리자 **'승인하고 바로 만들기'**·반려. 승인하면 `hub-provision` 이 개발 환경 전체를 바로 만들고 단계별 진행·오류·'다시 시도'를 보여 줌
+- `/hub/audit` 감사 기록 (관리자 전용: 승인·생성·담당자 GitHub 권한 변경·거부된 시도)
 - `/hub/tokens` 토큰 발급 기록 (관리자 전용, **값은 저장하지 않음**, 14일 안 만료 강조)
 - `/hub/status` 운영 상태 (Edge Function `hub-health`, 매시 정각 pg_cron)
 - `/hub/members` 사용자 관리 (관리자 전용: 역할·비밀번호 초기화·사용 중지·삭제)
@@ -32,6 +33,7 @@ node scripts/migrate.mjs            # 테이블·RLS·시드·cron
 node scripts/auth_config.mjs        # site_url, 리디렉트 허용, 가입 허용, 이메일 확인 없음(바로 로그인)
 node scripts/setup_cron_secret.mjs  # Vault + 함수 비밀값 HUB_CRON_SECRET
 node scripts/deploy-fn.mjs hub-health && node scripts/deploy-fn.mjs hub-dbcred && node scripts/deploy-fn.mjs hub-users
+node scripts/build-provision-templates.mjs && node scripts/setup-provision.mjs   # hub-provision: 시작 틀 묶기 + 암호화 토큰 + 배포
 ```
 `hub-dbcred` 가 알려 주는 공용 접속기 주소는 `aws-1-ap-northeast-2.pooler.supabase.com`(서울). 지역이 바뀌면 함수 비밀값 `BMR_POOL_HOST` 로 바꿉니다.
 
@@ -45,6 +47,20 @@ node scripts/deploy-fn.mjs hub-health && node scripts/deploy-fn.mjs hub-dbcred &
 - 마이그레이션 `20261112103000_hub_users.sql`: token_logs 종류 `hub_user`, 신청 기록은 계정 삭제 뒤에도 남김(`requested_by` 빈 값), 역할 변경은 서버 함수만, 시도 기록표 `bmr_admin.users_attempts`.
 - 동작 `list`·`set_role`·`reset_password`·`delete` — 관리자 JWT 만. 사용 중지는 Auth 로그인 차단. 임시 비밀번호는 한 번만 돌려 주고 저장하지 않음. 본인·마지막 관리자는 삭제/강등 불가.
 - 시험: `node scripts/test-hub-users.mjs`.
+
+### `hub-provision` (승인 즉시 앱 만들기 · 담당자 GitHub 권한)
+- 마이그레이션 `20261113090000_provision.sql`: 신청 진행 칸(`provision_status/steps/error/...`), 담당자 `gh_status`, `public.audit_log`(관리자만 봄),
+  slug 규칙 `private.slug_problem()`(예약어·시스템 이름·`-fn/-dev` 끝 금지, 이미 쓰는 주소·스키마·역할 거부), 개발자는 신청서 칸만 insert,
+  옛 `approve_request` RPC 막음, `apps.slug` 잠금 트리거, 담당자 표 쓰기는 함수만, 공개 RPC `app_public_info(slug)`(앱 화면이 이름·설명을 읽음).
+- 동작 `approve`·`run`(이어서/다시 시도)·`add_owner`·`update_owner`·`remove_owner`·`sync_owner` — 모두 **관리자 JWT + DB 역할 admin** 만. 나머지는 403 + 감사 기록.
+- 단계: check → db → fn_secret → starter → expose → bucket → function → repo → pages → vars → code → hub → invite → dbcred → health.
+  각 단계는 신청 행에 기록되어 실패하면 그 단계부터 이어서 함. 이미 있는 저장소·스키마·함수·버킷이 '이 신청이 만든 것'이 아니면 멈춤(덮어쓰지 않음). 한 번에 약 95초씩, 화면이 자동으로 이어 부름.
+- 안전장치(`guard.ts`): Supabase 관리 API 는 이 프로젝트의 고정 SQL·`<slug>-fn` 배포·`<SCHEMA>_DB_URL` 비밀값 하나·Data API 노출 '추가'만, GitHub 는 `bmr-apps/<slug>` 저장소 하나(만들기·파일·Pages·변수·push 초대/회수)만,
+  Storage 는 그 버킷 만들기만. 지우기 경로 없음(담당자 권한 회수 제외). 동시에 하나만(lease), 새 앱 시간당 6개, 모든 동작 `audit_log`.
+- 토큰: 함수 비밀값 `BMR_MGMT_TOKEN`·`BMR_GH_TOKEN` 은 **AES-GCM 암호문**이고, 푸는 열쇠는 상자의 `.secrets/hub-provision.key`(git 제외)에서 배포할 때만 함수 배포본(`_key.ts`)에 들어감.
+  같은 프로젝트의 다른 앱 함수가 환경변수를 읽어도 토큰을 쓸 수 없음. 토큰을 바꾸면 `node scripts/setup-provision.mjs --secrets`.
+- 시작 틀: `templates.ts` 는 `bmr-app-templates` 에서 만든 자동 생성 파일 (`node scripts/build-provision-templates.mjs`).
+- 시험: `node scripts/test-hub-provision.mjs` (시험 계정·`zztest-auto`), 정리: `node ../bmr-app-templates/teardown.mjs --slug zztest-auto --yes --delete-repo --delete-hub-row && node scripts/test-hub-provision.mjs --cleanup`.
 
 ## 배포
 `main`에 push하면 `.github/workflows/deploy.yml`이 빌드해 Pages로 배포합니다.
