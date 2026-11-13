@@ -89,7 +89,7 @@ export function DbCredCard({ app, session, admin, reload }: { app: DbApp; sessio
 /** 앱 상세 창 안에 넣는 부분: 담당자·관리자에게만 보인다 */
 export function DbCredSection({ ctx, appId }: { ctx: Ctx; appId: number }) {
   const { data, load } = useDbApps(ctx.session);
-  const app = data?.apps.find((a) => a.app_id === appId);
+  const app = data?.apps.find((a) => Number(a.app_id) === Number(appId)); // 함수는 bigint 를 문자열로 돌려줌
   if (!ctx.session || !app) return null;
   return <div style={{ marginTop: 14 }}><h4>🗄️ DB 접속 정보</h4><DbCredCard app={app} session={ctx.session} admin={!!data?.me.admin} reload={load} /></div>;
 }
