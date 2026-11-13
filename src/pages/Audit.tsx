@@ -8,7 +8,7 @@ const RESULT: Record<AuditLog['result'], string> = { ok: '성공', error: '실�
 const ACTION: Record<string, string> = {
   approve: '신청 승인', run: '이어서 만들기', add_owner: '담당자 추가', update_owner: '담당자 수정', remove_owner: '담당자 빼기', sync_owner: 'GitHub 권한 확인',
   'provision:done': '앱 만들기 완료', remove_app: '앱 목록에서 삭제', unreserve_slug: '주소 예약 해제',
-  'fn:deploy': '서버 함수 자동 배포', 'dbcred:reveal': 'DB 비밀번호 처음 받기', 'dbcred:rotate': 'DB 비밀번호 새로 발급',
+  'fn:deploy': '서버 함수 자동 배포', 'fn:auto_deploy': '자동 배포 켜기·끄기', 'dbcred:reveal': 'DB 비밀번호 처음 받기', 'dbcred:rotate': 'DB 비밀번호 새로 발급',
   'user:role': '사용자 역할 변경', 'user:disable': '사용자 사용 중지', 'user:enable': '사용자 다시 사용', 'user:reset_password': '사용자 비밀번호 초기화', 'user:delete': '사용자 계정 삭제',
 };
 const DEL: Record<string, string> = { 'delete:start': '앱 삭제 시작', 'delete:done': '앱 삭제 완료', 'delete:preview': '삭제 미리 보기', 'delete:run': '이어서 삭제' };

@@ -3,6 +3,7 @@
 //   iss = token.actions.githubusercontent.com, aud = bmr-apps-fn-deploy, repository_owner = bmr-apps, ref = refs/heads/main,
 //   이벤트 push/workflow_dispatch, 워크플로 = <저장소>/.github/workflows/functions-check.yml@refs/heads/main,
 //   repository 가 허브 apps 표의 repo_url 과 같아야 한다 → 그 앱의 <slug>-fn 하나만 배포 (요청 본문은 읽지 않음).
+//   관리자가 그 앱의 '서버 함수 자동 배포'(apps.fn_auto_deploy)를 켜 둔 경우에만 배포한다 (꺼져 있으면 403 disabled).
 // 코드: 업로드를 받지 않고, 토큰에 서명된 커밋의 supabase/functions/<slug>-fn/ 폴더를 GitHub 에서 직접 읽어 올린다
 //   (그 사이 main 에 함수 폴더가 바뀐 더 새 커밋이 있으면 건너뜀 — 그 커밋의 실행이 배포).
 // 안전장치: 허용 목록 밖 외부 호출 불가(관리 API 는 그 앱 함수 조회·배포만, 새 함수 만들기 없음), 파일 수·크기 제한,
@@ -21,6 +22,7 @@ const ISSUER = 'https://token.actions.githubusercontent.com';
 const AUD = 'bmr-apps-fn-deploy';
 const JWKS = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 const LIMIT = { perAppHour: 20, files: 80, fileBytes: 4 * 1024 * 1024, totalBytes: 10 * 1024 * 1024 };
+const OFF_MSG = '이 앱은 서버 함수 자동 배포가 꺼져 있습니다. 관리자에게 요청하세요.';
 const SLUG_RE = /^[a-z][a-z0-9-]{1,38}$/;
 const PATH_RE = /^[A-Za-z0-9._@+-]+(?:\/[A-Za-z0-9._@+-]+)*$/;
 const CODE_RE = /\.(?:[cm]?[jt]sx?)$/i;
@@ -116,7 +118,7 @@ Deno.serve(async (req) => {
   const runUrl = runId ? `https://github.com/${c.repository}/actions/runs/${runId}` : '';
   let slug = '';
   try {
-    const apps = await db`select slug, repo_url from public.apps`;
+    const apps = await db`select slug, repo_url, fn_auto_deploy from public.apps`;
     const app = apps.find((a) => String(a.repo_url ?? '').toLowerCase().replace(/\.git$/, '').replace(/\/$/, '') === `https://github.com/${repo}`);
     if (!app || !SLUG_RE.test(String(app.slug))) return json(404, { error: '허브에 등록된 앱 저장소가 아닙니다.' });
     slug = String(app.slug);
@@ -127,6 +129,12 @@ Deno.serve(async (req) => {
     if (String(c.workflow_ref ?? '').toLowerCase() !== `${repo}/.github/workflows/functions-check.yml@refs/heads/main`) {
       await audit(who, slug, 'denied', `다른 워크플로 (${clean(c.workflow_ref, 200)}) ${runUrl}`);
       return json(403, { error: '서버 함수 검사·배포 워크플로(functions-check.yml)가 아닙니다.' });
+    }
+    if (app.fn_auto_deploy !== true) {
+      // 꺼진 앱: 같은 앱에 한 시간 안에 같은 기록이 없을 때만 남긴다 (push 마다 쌓이지 않게)
+      const [{ n: seen }] = await db`select count(*)::int as n from public.audit_log where action = 'fn:deploy' and target = ${slug} and result = 'denied' and detail like '자동 배포 꺼짐%' and at > now() - interval '1 hour'`;
+      if (!seen) await audit(who, slug, 'denied', `자동 배포 꺼짐 · 커밋 ${clean(c.sha, 7)} · ${runUrl}`);
+      return json(403, { ok: false, disabled: true, error: OFF_MSG });
     }
     const [{ n }] = await db`select count(*)::int as n from public.audit_log where action = 'fn:deploy' and target = ${slug} and result <> 'denied' and at > now() - interval '1 hour'`;
     if (n >= LIMIT.perAppHour) { await audit(who, slug, 'denied', `시간당 ${LIMIT.perAppHour}회 넘음 ${runUrl}`); return json(429, { error: `한 시간에 ${LIMIT.perAppHour}번까지 배포합니다. 잠시 뒤 다시 실행하세요.` }); }

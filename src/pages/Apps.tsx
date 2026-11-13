@@ -75,7 +75,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
   const save = async (e: FormEvent) => {
     e.preventDefault(); if (!edit) return;
     const row = { ...edit, url: edit.url || `https://apps.bmrschool.net/${edit.slug}`, repo_url: edit.repo_url || null, supabase_ref: edit.supabase_ref || null };
-    const { id, slug, ...rest } = row;
+    const { id, slug, fn_auto_deploy: _f, ...rest } = row as typeof row & { fn_auto_deploy?: boolean };
     const { error } = id ? await sb.from('apps').update(rest).eq('id', id) : await sb.from('apps').insert({ slug, ...rest });
     if (error) return setErr(errMsg(error));
     setEdit(null); load(); ctx.refreshCounts?.();
@@ -158,6 +158,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
             {cur.supabase_ref && <><dt>Supabase</dt><dd><code>{cur.supabase_ref}</code></dd></>}
             {cur.note && <><dt>메모</dt><dd>{cur.note}</dd></>}
           </dl>
+          {ctx.isAdmin && <FnAutoDeploy app={cur} reload={load} />}
           <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} ctx={ctx} reload={load} />
           <DevInfoSection ctx={ctx} appId={cur.id} />
           <DbCredSection ctx={ctx} appId={cur.id} />
@@ -200,6 +201,34 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
         </Modal>)}
     </section>
   );
+}
+
+/** 관리자만: 서버 함수 자동 배포 스위치. 막는 것은 DB(RLS + 트리거)가 하고, 바꿀 때마다 audit_log(fn:auto_deploy)에 남는다 */
+function FnAutoDeploy({ app, reload }: { app: App; reload: () => void }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const on = app.fn_auto_deploy === true;
+  const flip = async () => {
+    const next = !on;
+    if (next && !confirm(`'${app.name}'의 서버 함수 자동 배포를 켤까요?\n\n켜면 이 저장소에 push 할 수 있는 사람은 누구나 함수 코드로 프로젝트 공용 키(서비스 키·DB 주소 등)를 읽을 수 있습니다.`)) return;
+    setBusy(true); setErr('');
+    const { error } = await sb.from('apps').update({ fn_auto_deploy: next }).eq('id', app.id);
+    setBusy(false);
+    if (error) return setErr(errMsg(error));
+    reload();
+  };
+  return (
+    <div className="card" style={{ margin: '12px 0' }}>
+      <label style={{ display: 'flex', flexDirection: 'row', gap: 10, alignItems: 'center', justifyContent: 'flex-start', cursor: 'pointer', margin: 0 }}>
+        <input type="checkbox" checked={on} disabled={busy} onChange={flip} style={{ width: 18, height: 18, margin: 0, flex: 'none' }} />
+        <b>서버 함수 자동 배포</b>
+        <span className={`badge ${on ? 'r-approved' : 'r-rejected'}`}>{on ? '켜짐' : '꺼짐'}</span>
+      </label>
+      <p className="muted" style={{ fontSize: 13, margin: '6px 0 0' }}>
+        {on ? <>main 에 push 하면 검사 후 <code>{app.slug}-fn</code> 이 자동으로 배포됩니다.</> : <>꺼져 있으면 push 해도 배포되지 않고, 개발자가 관리자에게 배포를 요청합니다.</>}
+      </p>
+      <p className="warn" style={{ fontSize: 13, marginTop: 8 }}>⚠️ 켜 두면 이 저장소에 push 할 수 있는 사람은 누구나 함수 코드로 프로젝트 공용 키를 읽을 수 있습니다. 믿을 수 있는 개발자에게만 켜 주세요. 바꿀 때마다 감사 기록에 남습니다.</p>
+      {err && <p className="error">{err}</p>}
+    </div>);
 }
 
 export function HealthDot({ h, label }: { h?: Health; label?: boolean }) {

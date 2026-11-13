@@ -169,7 +169,7 @@ create policy "멤버만 읽기" on library.books for select to authenticated us
         <h3>배포</h3>
         <ul>
           <li><b>화면</b>: <code>main</code> 브랜치에 push 하면 GitHub Actions 가 빌드해서 1~2분 뒤 앱 주소에 반영합니다. '준비 중' 페이지(<code>index.html</code>)를 내 화면으로 바꾸면 됩니다.</li>
-          <li><b>서버 함수</b>: <code>supabase/functions/&lt;주소 이름&gt;-fn/</code> 을 고쳐 <code>main</code> 에 push 하면, 검사(<code>deno check</code>)가 통과한 뒤 그 앱의 <code>&lt;주소 이름&gt;-fn</code> 하나만 자동으로 배포됩니다(1~2분, 결과는 저장소 Actions 의 Summary). 저장소에 비밀값은 필요 없습니다. 함수 비밀값 넣기와 다른 이름의 새 함수 배포는 관리자에게 요청하고, 비밀값은 이름만 알려 준 뒤 값은 안전하게 전달하세요.</li>
+          <li><b>서버 함수</b>: <code>supabase/functions/&lt;주소 이름&gt;-fn/</code> 을 고쳐 <code>main</code> 에 push 하면, 관리자가 그 앱의 '서버 함수 자동 배포'를 켜 둔 경우에만 검사(<code>deno check</code>) 뒤 그 앱의 <code>&lt;주소 이름&gt;-fn</code> 하나가 자동으로 배포됩니다(1~2분, 결과는 저장소 Actions 의 Summary). 꺼져 있으면 관리자에게 배포를 요청하세요. 켜졌는지는 내 서비스 → 앱 정보 → 개발 정보에서 볼 수 있습니다. 저장소에 비밀값은 필요 없습니다. 함수 비밀값 넣기와 다른 이름의 새 함수 배포는 관리자에게 요청하고, 비밀값은 이름만 알려 준 뒤 값은 안전하게 전달하세요.</li>
         </ul>
         <p className="muted">더 자세한 설명(로그인, 정책 예시, 함수 예제)은 저장소의 <code>README.md</code> 에 있습니다.</p>
       </Step>

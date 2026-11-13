@@ -18,7 +18,9 @@ export const sb = createClient(SUPABASE_URL || 'http://invalid.local', ANON || '
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'bmr-apps-hub-auth' },
 });
 
-export type App = { id: number; slug: string; name: string; description: string; url: string; repo_url: string | null; supabase_ref: string | null; status: Status; note: string; sort: number; created_at: string; updated_at: string };
+export type App = { id: number; slug: string; name: string; description: string; url: string; repo_url: string | null; supabase_ref: string | null; status: Status; note: string; sort: number; created_at: string; updated_at: string;
+  /** 켜면 앱 저장소 main push 때 <slug>-fn 자동 배포 (관리자만 바꿈, 바꿀 때마다 감사 기록) */
+  fn_auto_deploy: boolean };
 export type Status = 'preparing' | 'active' | 'paused' | 'retired';
 export type GhStatus = 'invited' | 'active' | 'failed' | 'no_repo';
 export type Owner = { id: number; app_id: number; name: string; email: string | null; github_username: string | null; role: string; gh_status: GhStatus | null; gh_status_at: string | null; gh_error: string | null };
