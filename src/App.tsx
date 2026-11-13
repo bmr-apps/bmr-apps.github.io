@@ -9,7 +9,7 @@ import { MembersPage } from './pages/Members';
 import { AuditPage } from './pages/Audit';
 import { DbCredPage } from './pages/DbCred';
 import { AccountPage } from './pages/Account';
-import { Clock, Mark, Palette, appIcon, useTheme, type Cmd } from './ui';
+import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
 export function go(path: string) { history.pushState(null, '', path); dispatchEvent(new PopStateEvent('popstate')); }
@@ -205,7 +205,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     <div className={`layout${inHub ? ' with-side' : ''}`}>
       {inHub && <>
         <aside className={`side${menu ? ' open' : ''}`}>
-          <Link to="/" className="side-brand" aria-label="BMR APPS 메인 화면"><Mark /><span><b>BMR APPS</b><small>앱 관리 허브</small></span></Link>
+          <div className="side-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link></div>
           <nav>
             {groups.map(([g, t]) => t.some((x) => x.show) && (
               <div key={g} className="side-group">
@@ -227,10 +227,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
         <header className="top">
           {inHub && <button className="icon-btn burger" aria-label="메뉴 열기" onClick={() => setMenu(true)}>☰</button>}
           {!inHub && <Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>}
-          <div className="greet">
-            {inHub ? <><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></>
-              : <><h1><Link to="/" className="brand-title">BMR APPS</Link></h1><p>별무리 개발자들이 만들어 운영하는 서비스 모음</p></>}
-          </div>
+          {inHub ? <div className="greet"><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></div> : <div className="grow" />}
           <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
           <Clock />
           <button className="icon-btn" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
@@ -242,11 +239,10 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
         <main>{children}</main>
         <footer className="foot">
           <div className="foot-in">
-            <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 만들어 운영하는 서비스 모음</p></div>
+            <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 만들어 운영하는 서비스 모음<small>별무리학교 · apps.bmrschool.net</small></p></div>
             <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">서비스 모음</Link>{ctx.session ? <Link to="/hub/apps">관리 허브</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
             {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/db">DB 접속 정보</Link><Link to="/hub/status">운영 상태</Link></nav>}
           </div>
-          <div className="foot-bar"><span>별무리학교 · apps.bmrschool.net</span><span><kbd>Ctrl K</kbd> 빠른 이동</span></div>
         </footer>
       </div>
       {pal && <Palette cmds={cmds} onClose={() => setPal(false)} />}

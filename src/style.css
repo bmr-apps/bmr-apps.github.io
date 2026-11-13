@@ -59,7 +59,7 @@ main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 28px 32px 48px; 
 
 /* 사이드바 */
 .side { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 4px; padding: 0 0 14px; background: var(--side); border-right: var(--border); overflow-y: auto; z-index: 30; }
-.side-brand { display: flex; gap: 12px; align-items: center; padding: 0 16px 0 0; height: 72px; flex: none; color: var(--text); text-decoration: none; border-bottom: var(--border); margin-bottom: 10px; }
+.side-brand { display: flex; gap: 12px; align-items: center; padding: 0 22px; height: 72px; flex: none; color: var(--text); text-decoration: none; border-bottom: var(--border); margin-bottom: 10px; }
 .side-brand:hover { background: transparent; color: var(--text); }
 .side-brand b { display: block; font-size: 17px; font-weight: 900; letter-spacing: .02em; } .side-brand small { color: var(--muted); font-size: 12px; font-weight: 700; }
 .side-group { margin: 0 12px 12px; }
@@ -80,12 +80,12 @@ a.me { color: inherit; text-decoration: none; } a.me:hover { background: var(--g
 .scrim { display: none; }
 
 /* 워드마크 (BMR APPS 자체 표시) */
-.mark { flex: none; display: grid; place-content: center; width: 72px; height: 72px; border-right: var(--border); background: var(--bg); color: var(--text); font-weight: 900; font-size: 17px; line-height: .98; letter-spacing: .02em; text-align: left; text-decoration: none; }
-.mark span { display: block; } .mark span:last-child { font-size: 12.5px; letter-spacing: .14em; margin-top: 3px; }
+.mark { flex: none; display: grid; place-content: center; width: 52px; height: 52px; border: var(--border) !important; box-sizing: border-box; background: var(--bg); color: var(--text); font-weight: 900; font-size: 14px; line-height: .98; letter-spacing: .02em; text-align: left; text-decoration: none; }
+.mark span { display: block; } .mark span:last-child { font-size: 10px; letter-spacing: .14em; margin-top: 2px; }
 a.mark:hover { background: var(--yellow); color: #000; }
 
 /* 상단 */
-.top { display: flex; align-items: center; gap: 12px; padding: 0 20px 0 0; height: 72px; position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: var(--border); }
+.top { display: flex; align-items: center; gap: 12px; padding: 0 20px; height: 72px; position: sticky; top: 0; z-index: 20; background: var(--bg); border-bottom: var(--border); }
 .layout.with-side .top { padding-left: 32px; }
 .logo { flex: none; width: 46px; height: 46px; display: grid; place-items: center; font-size: 22px; background: var(--yellow); border: var(--bw) solid #000; color: #000; text-decoration: none; }
 a.logo, a.brand-title, a.eyebrow { cursor: pointer; }
@@ -93,7 +93,8 @@ a.logo:hover, a.brand-title:hover, a.eyebrow:hover { text-decoration: none; }
 .brand-title { color: inherit; text-decoration: none; }
 .greet .brand-title:hover { background: var(--hover); color: #000; }
 .logo.big { width: 64px; height: 64px; font-size: 30px; margin: 0 auto 10px; }
-.logo.big.mark { width: 84px; height: 84px; border: var(--border); font-size: 20px; }
+.logo.big.mark { width: 84px; height: 84px; font-size: 20px; }
+.logo.big.mark span:last-child { font-size: 13px; }
 .greet { flex: 1; min-width: 0; padding-left: 18px; }
 .layout.with-side .greet { padding-left: 0; }
 .greet h1 { font-size: 22px; font-weight: 900; margin: 0; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -262,14 +263,14 @@ dl.meta dt { color: var(--text); font-weight: 900; } dl.meta dd { margin: 0; ove
 .foot { margin-top: 40px; border-top: var(--border); padding: 36px 32px 28px; font-size: 14px; }
 .foot-in { max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; gap: 28px 48px; align-items: flex-start; }
 .foot-brand { display: flex; gap: 14px; align-items: center; margin-right: auto; }
-.foot-brand .mark { border: var(--border); width: 64px; height: 64px; font-size: 15px; }
+.foot-brand .mark { width: 64px; height: 64px; font-size: 16px; }
 .foot-brand .mark span:last-child { font-size: 11px; }
-.foot-brand p { margin: 0; font-weight: 700; max-width: 22em; }
+.foot-brand p { margin: 0; font-weight: 700; max-width: 26em; }
+.foot-brand p small { display: block; margin-top: 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
 .foot nav { display: flex; flex-direction: column; gap: 6px; }
 .foot nav b { font-size: 12px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 2px; }
 .foot nav a { font-weight: 800; text-decoration: none; width: fit-content; padding: 0 2px; }
 .foot nav a:hover { background: var(--hover); color: #000; }
-.foot-bar { max-width: 1200px; margin: 28px auto 0; border: var(--border); padding: 10px 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: space-between; font-size: 12.5px; font-weight: 700; }
 
 /* ---------- 모달·팔레트 ---------- */
 .overlay { position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center; padding: 8vh 16px 16px; overflow-y: auto; animation: fade .12s ease; }
@@ -327,9 +328,9 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
   .scrim { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 25; }
   .burger { display: grid; }
   .clock { display: none; }
-  .top, .layout.with-side .top { padding: 0 12px 0 0; gap: 8px; height: 64px; }
+  .top, .layout.with-side .top { padding: 0 12px; gap: 8px; height: 64px; }
   .layout.with-side .top { padding-left: 12px; }
-  .mark { width: 64px; height: 64px; font-size: 15px; } .mark span:last-child { font-size: 11px; }
+  .side-brand { padding: 0 16px; height: 64px; }
   main { padding: 20px 16px 32px; }
   .hero { grid-template-columns: 1fr; min-height: 0; }
   .hero-copy { border-right: 0; border-bottom: var(--border); padding: 32px 24px; }
