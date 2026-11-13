@@ -37,7 +37,7 @@ export function Mark({ className = '' }: { className?: string }) {
 }
 
 /* ---------- 앱 아이콘 ---------- */
-const ICONS: Record<string, string> = { designer: '🎨', library: '📚', lib: '📚', attendance: '🗓️', meal: '🍱', survey: '📋', calendar: '🗓️', notice: '📢', grade: '📊' };
+const ICONS: Record<string, string> = { library: '📚', lib: '📚', attendance: '🗓️', meal: '🍱', survey: '📋', calendar: '🗓️', notice: '📢', grade: '📊' };
 const POOL = ['🚀', '🧩', '🌱', '🔭', '🧪', '📒', '🎒', '🛠️', '💡', '🌟'];
 export function appIcon(slug: string) {
   if (ICONS[slug]) return ICONS[slug];

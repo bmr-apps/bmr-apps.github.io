@@ -1,5 +1,5 @@
 // hub-deprovision 끝까지 시험: zztest-del 을 hub-provision 으로 만들고 → 데이터·파일 넣고 → 관리자로 삭제 → 백업·삭제 확인.
-// beri·altsis·designer 는 지우지 않고 "그대로인지"만 비교한다. 비밀번호·토큰은 출력하지 않는다.
+// beri·altsis 는 지우지 않고 "그대로인지"만 비교한다. 비밀번호·토큰은 출력하지 않는다.
 // 정리: node scripts/test-hub-deprovision.mjs --cleanup  (시험 백업·계정·신청·삭제 기록·감사 기록)
 import { randomBytes } from 'node:crypto';
 import { SB_URL, apiKeys, sql, sbApi, ghJson, listSecretNames, listFunctions } from '../../bmr-app-templates/lib/common.mjs';
@@ -52,7 +52,7 @@ async function snapshot() {
     (select json_agg(n.nspname order by n.nspname) from pg_namespace n where n.nspname not like 'pg_%' and n.nspname <> '${SCHEMA}') as schemas,
     (select json_agg(rolname order by rolname) from pg_roles where rolname not like '${SCHEMA}%') as roles,
     (select json_agg(name order by name) from vault.secrets where name not like '%${SLUG}%') as vault,
-    (select json_agg(b order by b) from (select id || ':' || (select count(*) from storage.objects o where o.bucket_id = b.id) as b from storage.buckets b where id not in ('${SLUG}', 'hub-backups')) x) as buckets,
+    (select coalesce(json_agg(b order by b), '[]') from (select id || ':' || (select count(*) from storage.objects o where o.bucket_id = b.id) as b from storage.buckets b where id not in ('${SLUG}', 'hub-backups')) x) as buckets,
     (select json_agg(t order by t) from (select table_schema || '.' || table_name as t from information_schema.tables where table_schema = 'beri') x) as beri_tables,
     (select json_agg(p order by p) from (select schemaname || '.' || tablename || ':' || policyname as p from pg_policies where policyname not like '${SLUG}: %' and schemaname <> '${SCHEMA}') x) as policies,
     (select count(*) from public.app_requests where slug <> '${SLUG}') as requests`);
@@ -107,12 +107,11 @@ r = await rest(staff.at, 'app_deletions?select=id'); ok(r.ok && (await r.json())
 r = await storage('/object/list/hub-backups', { method: 'POST', headers: { apikey: pub, Authorization: `Bearer ${staff.at}` }, body: JSON.stringify({ prefix: '', limit: 10 }) });
 ok(r.ok ? (await r.json()).length === 0 : true, `개발자는 백업 버킷을 볼 수 없음 (${r.status})`);
 f = await del(admin.at, 'start', { app_id: appId, confirm_slug: 'zztest-de' }); ok(f.status === 400, `주소 이름 틀림 → 400 (${f.status})`);
-f = await del(admin.at, 'start', { app_id: 1, confirm_slug: 'designer' }); ok(f.status === 400, `designer(예약 주소) 삭제 거부 (${f.status})`);
 f = await del(admin.at, 'start', { app_id: 999999, confirm_slug: 'x' }); ok(f.status === 404, `없는 앱 → 404 (${f.status})`);
 f = await del(admin.at, 'preview', { app_id: 28 });
 ok(f.status === 200 && f.j.info && f.j.info.repo === 'none' && !f.j.info.schemaExists && !f.j.info.bucket && !f.j.info.fn, `altsis 미리 보기 (읽기만): 저장소·스키마·버킷·함수 없음 → 허브 행만 해당`);
 f = await del(admin.at, 'preview', { app_id: 16 });
-ok(f.status === 200, `beri 미리 보기 (읽기만): 저장소 ${f.j.info?.repo}, 스키마 ${f.j.info?.schemaOurs ? '표시 있음' : '표시 없음'}, 버킷 ${f.j.info?.bucket}`);
+if (f.status === 404) console.log('  (beri 는 이미 허브에서 지워져 미리 보기 건너뜀)'); else ok(f.status === 200, `beri 미리 보기 (읽기만): 저장소 ${f.j.info?.repo}, 스키마 ${f.j.info?.schemaOurs ? '표시 있음' : '표시 없음'}, 버킷 ${f.j.info?.bucket}`);
 f = await del(admin.at, 'preview', { app_id: appId });
 const pi = f.j.info;
 ok(f.status === 200 && pi.repo === 'ours' && pi.schemaOurs && pi.fn && pi.bucket && pi.bucketFiles === 1 && pi.vault && pi.exposed && pi.devOurs && pi.fnRoleOurs, `zztest-del 미리 보기: 모두 찾음 (비밀값 ${pi?.secrets?.join(',')})`);
