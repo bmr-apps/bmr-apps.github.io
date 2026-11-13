@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 // hub-provision 함수에 넣을 시작 틀(templates.ts)을 bmr-app-templates 에서 만든다.
 // 사용: node scripts/build-provision-templates.mjs [템플릿 폴더 (기본 /workspace/bmr-app-templates)]
-// 안내 README 는 여기서 미리 HTML 로 바꿔 둔다({{변수}} 는 그대로 남고, 함수가 앱마다 채운다).
+// 공개 index.html 은 '준비 중' 안내만 담는다({{변수}} 는 함수가 앱마다 채운다).
 import { readFileSync, readdirSync, statSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 
 const SRC = process.argv[2] || '/workspace/bmr-app-templates';
-const req = createRequire(join(SRC, 'package.json'));
-const { marked } = req('marked');
 const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
 
 const repoDir = join(SRC, 'starter', 'repo');
@@ -29,8 +26,9 @@ for (const p of walk(repoDir)) {
   files['package-lock.json'] = readFileSync(join(tmp, 'package-lock.json'), 'utf8').replaceAll(PH, '{{SLUG}}');
   rmSync(tmp, { recursive: true, force: true });
 }
-const guide = marked.parse(files['README.md'], { gfm: true });
-files['index.html'] = readFileSync(join(SRC, 'starter', 'layout.html'), 'utf8').replace('{{GUIDE_HTML}}', guide);
+// 공개 앱 주소에는 '준비 중' 안내만 (개발 정보는 허브의 '개발 정보'와 README.md 에)
+files['index.html'] = readFileSync(join(SRC, 'starter', 'layout.html'), 'utf8');
+if (/GUIDE_HTML|_dev|functions\/v1/.test(files['index.html'])) throw new Error('공개 페이지에 개발 정보가 들어 있습니다');
 const fn = readFileSync(join(SRC, 'starter', 'fn', 'index.ts'), 'utf8');
 const sql = { app: readFileSync(join(SRC, 'sql', '10_app.sql'), 'utf8'), starter: readFileSync(join(SRC, 'sql', '20_starter.sql'), 'utf8') };
 

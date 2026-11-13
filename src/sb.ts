@@ -2,7 +2,7 @@
 import { createClient, type Session } from '@supabase/supabase-js';
 
 export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
-const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+export const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 export const configured = !!(SUPABASE_URL && ANON);
 export const sb = createClient(SUPABASE_URL || 'http://invalid.local', ANON || 'missing', {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'bmr-apps-hub-auth' },

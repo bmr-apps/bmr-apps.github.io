@@ -4,6 +4,7 @@ import { sb, errMsg, fmtTime, provisionApi, GH_LABEL, STATUS_LABEL, type App, ty
 import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
 import { DeleteAppModal } from './DeleteApp';
 import { DbCredSection } from './DbCred';
+import { DevInfoSection } from './DevInfo';
 
 /** 첫 화면: 누구나 보는 운영 중 앱 바로가기 */
 export function Landing({ ctx }: { ctx: Ctx }) {
@@ -22,6 +23,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
           <p className="muted">필요한 앱을 눌러 바로 여세요. 새 앱이 필요하면 가입한 뒤, 개발자로 승인되면 신청할 수 있어요.</p>
           <div className="hero-cta">
             <a className="btn" href="#apps">서비스 둘러보기</a>
+            <Link to="/guide" className="btn">개발 시작 가이드</Link>
             {ctx.session ? <Link to="/hub/apps" className="btn alt">관리 허브</Link> : <Link to="/hub/login" className="btn alt">로그인 · 가입</Link>}
           </div>
         </div>
@@ -50,7 +52,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
 }
 
 const empty = { slug: '', name: '', description: '', url: '', repo_url: '', supabase_ref: '', status: 'active' as Status, note: '', sort: 100 };
-type F = 'all' | Status;
+type F = 'all' | 'mine' | Status;
 
 /** 대시보드: 요약 카드 + 서비스 목록 + 담당 개발자 (관리자는 추가·수정) */
 export function AppsPage({ ctx }: { ctx: Ctx }) {
@@ -80,7 +82,10 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
   };
   const c = ctx.counts;
   const n = (s: Status) => apps.filter((a) => a.status === s).length;
-  const shown = apps.filter((a) => filter === 'all' || a.status === filter);
+  // 내 서비스: 담당자 메일이 지금 로그인한 메일과 같은 앱
+  const myEmail = (ctx.session?.user.email ?? '').toLowerCase();
+  const mineIds = new Set(owners.filter((o) => myEmail && (o.email ?? '').toLowerCase() === myEmail).map((o) => o.app_id));
+  const shown = apps.filter((a) => filter === 'all' || (filter === 'mine' ? mineIds.has(a.id) : a.status === filter));
   const cur = apps.find((a) => a.id === open);
   const watched = (c?.healthOk ?? 0) + (c?.healthBad ?? 0) + (c?.healthNone ?? 0);
   if (!ctx.isStaff) {
@@ -118,11 +123,11 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
 
       <div className="section-head">
         <h2>서비스 · 담당 개발자</h2>
-        <Pills value={filter} onChange={setFilter} items={[['all', '전체', apps.length], ['active', '운영 중', n('active')], ['preparing', '준비 중', n('preparing')], ['paused', '일시 중지', n('paused')], ['retired', '종료', n('retired')]]} />
+        <Pills value={filter} onChange={setFilter} items={[['all', '전체', apps.length], ...(ctx.isStaff ? [['mine', '내 서비스', apps.filter((a) => mineIds.has(a.id)).length] as [F, string, number]] : []), ['active', '운영 중', n('active')], ['preparing', '준비 중', n('preparing')], ['paused', '일시 중지', n('paused')], ['retired', '종료', n('retired')]]} />
         {ctx.isAdmin && <button onClick={() => setEdit({ ...empty })}>+ 앱 추가</button>}
       </div>
       {err && <p className="error">{err}</p>}
-      {shown.length === 0 ? <div className="card empty">해당하는 서비스가 없습니다.</div> : (
+      {shown.length === 0 ? <div className="card empty">{filter === 'mine' ? <>담당으로 등록된 서비스가 없습니다. 담당자 메일이 지금 로그인한 메일(<b>{myEmail}</b>)과 같아야 해요. <Link to="/guide">시작 가이드</Link>에서 앱 신청 방법을 볼 수 있어요.</> : '해당하는 서비스가 없습니다.'}</div> : (
         <div className="tiles">{shown.map((a) => {
           const own = owners.filter((o) => o.app_id === a.id);
           return (
@@ -133,6 +138,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
               <span className="tile-foot">
                 <span className={`sdot s-${a.status}`} />{STATUS_LABEL[a.status]}
                 <HealthDot h={health[a.id]} />
+                {mineIds.has(a.id) && <span className="badge s-preparing">내 서비스</span>}
                 <span className="tile-url">{own.length ? `🧑‍💻 ${own.map((o) => o.name).join(', ')}` : '담당자 없음'}</span>
               </span>
               <span className="tile-cta" aria-hidden="true">자세히 →</span>
@@ -153,6 +159,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
             {cur.note && <><dt>메모</dt><dd>{cur.note}</dd></>}
           </dl>
           <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} ctx={ctx} reload={load} />
+          <DevInfoSection ctx={ctx} appId={cur.id} />
           <DbCredSection ctx={ctx} appId={cur.id} />
           {ctx.isAdmin && <div className="row end">
             <button className="ghost" onClick={() => setEdit({ ...cur, repo_url: cur.repo_url ?? '', supabase_ref: cur.supabase_ref ?? '' })}>✏️ 앱 정보 수정</button>
