@@ -73,6 +73,13 @@ node scripts/build-provision-templates.mjs && node scripts/setup-provision.mjs  
 - 한도: DB 100MB · 버킷 300MB/5000개 · 저장소 zip 80MB 를 넘으면 백업 단계에서 멈춤(아무것도 안 지움) → 직접 백업 후 처리.
 - 시험: `node scripts/test-hub-deprovision.mjs` (zztest-del 생성 → 삭제 → 백업·삭제·다른 앱 비교), 정리: `node scripts/test-hub-deprovision.mjs --cleanup`.
 
+## 시작 가이드 · 개발 정보 · 준비 중 페이지
+- `/guide` (src/pages/Guide.tsx): 로그인 없이 보는 9단계 시작 가이드. 메인·상단/하단·사이드바·Ctrl K 에서 연결. `guide`, `guides`, `start`, `getting-started` 는 예약 slug.
+- 허브 앱 상세의 **개발 정보** (src/pages/DevInfo.tsx): `public.app_dev_info(p_app_id)` RPC 가 그 앱 담당 개발자(app_owners 이메일 일치 + staff)와 관리자에게만 값을 돌려주고 나머지는 null (서버에서 막음). 비밀값은 없음. DB 비밀번호는 기존 'DB 접속 정보'에서 처음 한 번만 받음.
+- 대시보드 **내 서비스** 필터: 내가 담당자인 앱만.
+- 새 앱 공개 주소(index.html)는 `starter/layout.html` 의 '준비 중' 안내만 보여 줌 (허브의 이름·설명을 실시간으로 반영). 자세한 개발 정보는 저장소 README 와 허브 개발 정보에 있음. `scripts/build-provision-templates.mjs` 가 공개 페이지에 개발 정보가 섞이면 빌드를 멈춤.
+- 처음부터 끝까지 시험: `node scripts/test-dev-info.mjs` (zztest-guide 앱을 만들고 확인한 뒤 hub-deprovision 으로 지우고 시험 계정을 정리함).
+
 ## 배포
 `main`에 push하면 `.github/workflows/deploy.yml`이 빌드해 Pages로 배포합니다.
 저장소 Settings → Pages → Source: **GitHub Actions**, Actions 변수 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`(공개 키만).
