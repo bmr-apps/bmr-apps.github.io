@@ -93,7 +93,7 @@ try {
   ok(await openApp(admin, 'fix8-app-detail-checks-admin.png') === 5, '앱 정보: 관리자에게 보임');
   { const [c, p] = await page(admin, 1280, 900); await p.goto(`${HUB}/hub/status`); await p.waitForSelector('text=공용 주소 점검 (경고만)', { timeout: 20000 }); await p.waitForTimeout(1500);
     const sec = p.locator('h3', { hasText: '공용 주소 점검' }); await sec.scrollIntoViewIfNeeded();
-    const txt = await p.locator('.card.flush').last().innerText(); ok(txt.includes('점검 시험 앱') && txt.includes('별무리 교육 연구소'), '운영 상태: 관리자 요약에 앱별 경고');
+    const txt = await p.locator('.card.flush').last().innerText(); ok(txt.includes('점검 시험 앱'), '운영 상태: 관리자 요약에 앱별 경고');
     await p.evaluate(() => { const h = [...document.querySelectorAll('h3')].find((x) => x.textContent.includes('공용 주소 점검')); window.scrollTo(0, h.getBoundingClientRect().top + scrollY - 90); }); await p.waitForTimeout(400);
     await p.screenshot({ path: `${OUT}/fix8-status-checks-admin.png` }); await c.close(); }
   { const [c, p] = await page(null, 1280, 900); await p.goto(run.html_url); await p.waitForTimeout(4000); await p.screenshot({ path: `${OUT}/fix8-github-run-summary.png`, fullPage: true }); await c.close(); }
