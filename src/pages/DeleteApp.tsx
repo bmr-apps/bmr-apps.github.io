@@ -82,7 +82,7 @@ export function DeleteAppModal({ app, ctx, onClose, onDone, onSoftDelete }: { ap
           </ul>)}
         {active && <p className="warn">진행 중이던 삭제(#{active})가 있습니다. <button className="ghost small" disabled={busy} onClick={() => drive('run', active)}>이어서 하기</button></p>}
         <p className="muted">지우지 않고 숨기기만 하려면 <button className="link" onClick={onSoftDelete}>상태를 '종료'로 바꾸기</button> (나중에 되살릴 수 있음).</p>
-        <label>확인을 위해 주소 이름 <b>{app.slug}</b> 을(를) 그대로 입력하세요<input value={confirm} onChange={(e) => setConfirm(e.target.value.trim())} placeholder={app.slug} autoComplete="off" /></label>
+        <label><span>확인을 위해 주소 이름 <b>{app.slug}</b> 을(를) 그대로 입력하세요</span><input value={confirm} onChange={(e) => setConfirm(e.target.value.trim())} placeholder={app.slug} autoComplete="off" /></label>
         <label>메모 (선택)<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 시험용 앱 정리" /></label>
       </>}
       {d && <>
