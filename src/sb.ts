@@ -4,6 +4,16 @@ import { createClient, type Session } from '@supabase/supabase-js';
 export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 export const ANON = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 export const configured = !!(SUPABASE_URL && ANON);
+/** 구글에서 돌아올 때 오류가 있으면(?error_description / #error_description) 읽고 주소에서 지운다. sb 클라이언트가 주소를 읽기 전에 실행된다. */
+export const oauthError: string | null = (() => {
+  if (typeof location === 'undefined') return null;
+  const h = new URLSearchParams(location.hash.replace(/^#/, '')), q = new URLSearchParams(location.search);
+  const raw = h.get('error_description') || q.get('error_description') || h.get('error') || q.get('error');
+  if (!raw) return null;
+  history.replaceState(null, '', location.pathname);
+  return /banned/i.test(raw) ? '사용이 중지된 계정입니다. 관리자에게 문의하세요.' : `구글 로그인에 실패했습니다 (${raw.replace(/\+/g, ' ').slice(0, 120)}). 다시 시도하거나 이메일로 로그인하세요.`;
+})();
+
 export const sb = createClient(SUPABASE_URL || 'http://invalid.local', ANON || 'missing', {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: 'bmr-apps-hub-auth' },
 });
@@ -32,6 +42,21 @@ export async function login(email: string, password: string) {
   const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
   if (error) throw new Error(/banned|disabled/i.test(error.message) ? '사용이 중지된 계정입니다. 관리자에게 문의하세요.' : '이메일 또는 비밀번호가 올바르지 않습니다.');
 }
+/** 구글 로그인: 구글 화면 → Supabase → 허브로 돌아옴. 로그인 화면에서 눌렀으면 대시보드, 다른 허브 화면이면 그 화면으로 */
+export async function loginWithGoogle() {
+  const here = location.pathname.replace(/\/+$/, '');
+  const next = here.startsWith('/hub') && here !== '/hub/login' && here !== '/hub' ? here : '/hub/apps';
+  const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: location.origin + next, queryParams: { prompt: 'select_account' } } });
+  if (error) throw new Error('구글 로그인을 시작하지 못했습니다. 잠시 뒤 다시 시도하세요.');
+}
+
+/** 이 계정의 로그인 방법 (email / google …) */
+export function loginMethods(u: { app_metadata?: { providers?: string[]; provider?: string }; identities?: { provider: string }[] } | null | undefined): string[] {
+  const s = new Set<string>([...(u?.app_metadata?.providers ?? []), ...(u?.identities ?? []).map((i) => i.provider)]);
+  if (!s.size && u?.app_metadata?.provider) s.add(u.app_metadata.provider);
+  return [...s];
+}
+
 export async function signUp(email: string, password: string, name: string) {
   const { data, error } = await sb.auth.signUp({ email: email.trim(), password, options: { data: { name: name.trim(), full_name: name.trim() } } });
   if (error) throw new Error(/already/i.test(error.message) ? '이미 가입된 이메일입니다.' : /password/i.test(error.message) ? '비밀번호는 8자 이상으로 해 주세요.' : '가입하지 못했습니다. 잠시 뒤 다시 시도하세요.');

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { configured, sb, login, signUp, daysLeft, ROLE_LABEL, type Profile, type Status } from './sb';
+import { configured, sb, login, signUp, loginWithGoogle, oauthError, daysLeft, ROLE_LABEL, type Profile, type Status } from './sb';
 import { Landing, AppsPage } from './pages/Apps';
 import { GuidePage, QuickStartPage } from './pages/Guide';
 import { RequestsPage } from './pages/Requests';
@@ -263,8 +263,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
 function LoginPage({ session }: { session: Session | null }) {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [name, setName] = useState('');
-  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(oauthError ?? ''); const [busy, setBusy] = useState(false); const [gBusy, setGBusy] = useState(false);
   useEffect(() => { if (session && location.pathname === '/hub/login') go('/hub/apps'); }, [session]);
+  const google = async () => { setErr(''); setGBusy(true); try { await loginWithGoogle(); } catch (x) { setErr((x as Error).message); setGBusy(false); } };
   const submit = useCallback(async (e: FormEvent) => {
     e.preventDefault(); setErr(''); setBusy(true);
     try {
@@ -276,13 +277,19 @@ function LoginPage({ session }: { session: Session | null }) {
     <form className="card narrow login" onSubmit={submit}>
       <Link to="/" className="logo big mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>
       <h2>{mode === 'login' ? '로그인' : '가입'}</h2>
-      <p className="muted">{mode === 'login' ? '이메일과 비밀번호로 로그인합니다.' : '이름, 이메일, 비밀번호만 입력하면 바로 이용할 수 있습니다.'}</p>
+      <p className="muted">{mode === 'login' ? '구글 계정이나 이메일·비밀번호로 로그인합니다.' : '구글 계정으로 바로 가입하거나, 이름·이메일·비밀번호를 입력하세요.'}</p>
+      <button type="button" className="gbtn" onClick={google} disabled={gBusy}>
+        <svg className="g-logo" viewBox="0 0 48 48" aria-hidden="true" width="20" height="20"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        <span>{gBusy ? '구글로 이동 중…' : mode === 'login' ? '구글로 로그인' : '구글로 가입하기'}</span>
+      </button>
+      <div className="or"><span>또는 이메일로</span></div>
       {mode === 'signup' && <label>이름<input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" /></label>}
       <label>이메일<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required placeholder="name@bmrschool.org" /></label>
       <label>비밀번호<input type="password" minLength={8} value={pw} onChange={(e) => setPw(e.target.value)} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required /></label>
       {err && <p className="error">{err}</p>}
       <button disabled={busy}>{busy ? '처리 중…' : mode === 'login' ? '로그인' : '가입하기'}</button>
       <button type="button" className="ghost" onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setErr(''); }}>{mode === 'login' ? '처음이면 가입하기' : '로그인으로 돌아가기'}</button>
+      <p className="muted small-note">처음 가입하면 <b>일반 사용자</b>로 시작해요. 앱 신청은 관리자가 <b>개발자</b>로 올린 뒤에 할 수 있어요. 같은 메일로 이미 가입했다면 구글로 로그인해도 같은 계정으로 들어갑니다.</p>
     </form>
   );
 }

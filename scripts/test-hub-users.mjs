@@ -153,14 +153,14 @@ try {
 
   // 신청 기록이 있는 사용자 삭제 후에도 신청이 남는지
   await sql(`insert into public.app_requests (requested_by, requester_name, requester_email, app_name, slug, purpose, data_handled, has_student_pii, github_username, status)
-    values ('${doomed.id}', '시험', '${doomed.email}', '시험앱', 'hub-users-tmp', '시험', '', false, 'hub-users-tmp', 'pending')`);
+    values ('${doomed.id}', '시험', '${doomed.email}', '시험앱', 'zztest-users-tmp', '시험', '', false, 'zztest-users-tmp', 'pending')`);
   guard(doomed.email, 'delete');
   r = await call(adminTok.at, 'delete', { user_id: doomed.id, confirm_email: doomed.email }); j = await r.json();
   ok(r.status === 200, '계정 삭제');
   const [gone] = await sql(`select count(*)::int n from auth.users where id = '${doomed.id}'`);
-  const [kept] = await sql(`select count(*)::int n, count(requested_by)::int linked from public.app_requests where slug = 'hub-users-tmp'`);
+  const [kept] = await sql(`select count(*)::int n, count(requested_by)::int linked from public.app_requests where slug = 'zztest-users-tmp'`);
   ok(gone.n === 0 && kept.n === 1 && kept.linked === 0, '계정은 지워지고 신청 기록은 남음 (requested_by 비움)');
-  await sql(`delete from public.app_requests where slug = 'hub-users-tmp'`);
+  await sql(`delete from public.app_requests where slug = 'zztest-users-tmp'`);
   created.splice(created.findIndex((x) => x.id === doomed.id), 1);
 
   // 감사 기록에 비밀값 없음
