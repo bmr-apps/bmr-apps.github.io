@@ -79,6 +79,7 @@ node scripts/build-provision-templates.mjs && node scripts/setup-provision.mjs  
 - 허브 앱 상세의 **개발 정보** (src/pages/DevInfo.tsx): `public.app_dev_info(p_app_id)` RPC 가 그 앱 담당 개발자(app_owners 이메일 일치 + staff)와 관리자에게만 값을 돌려주고 나머지는 null (서버에서 막음). 비밀값은 없음. DB 비밀번호는 기존 'DB 접속 정보'에서 처음 한 번만 받음.
 - 대시보드 **내 서비스** 필터: 내가 담당자인 앱만.
 - 새 앱 공개 주소(index.html)는 `starter/layout.html` 의 '준비 중' 안내만 보여 줌 (허브의 이름·설명을 실시간으로 반영). 자세한 개발 정보는 저장소 README 와 허브 개발 정보에 있음. `scripts/build-provision-templates.mjs` 가 공개 페이지에 개발 정보가 섞이면 빌드를 멈춤.
+- **구글 로그인**: bmr-dev-apps 프로젝트 전체에 켜져 있음 (Auth 설정 `external_google_enabled`, 클라이언트 비밀값은 Supabase 에만 있음 — 저장소에 두지 않음). 허용된 돌아올 주소: `https://apps.bmrschool.net/**`, `http://localhost:5173/**`, `http://localhost:3000/**`. 안내는 `/guide#google-login`, 새 앱 저장소의 `src/auth.js`.
 - 처음부터 끝까지 시험: `node scripts/test-dev-info.mjs` (zztest-guide 앱을 만들고 확인한 뒤 hub-deprovision 으로 지우고 시험 계정을 정리함).
 
 ## 배포

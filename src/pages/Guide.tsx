@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link, type Ctx } from '../App';
 
 /** /guide — 누구나 읽는 시작 가이드 (가입 전에도). 비밀값은 넣지 않는다 */
@@ -20,6 +20,8 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 
 export function GuidePage({ ctx }: { ctx: Ctx }) {
   const role = ctx.me?.role;
+  // /guide#google-login 처럼 들어오면 그 부분으로 이동 (앱 안 이동 때도)
+  useEffect(() => { const id = decodeURIComponent(location.hash.slice(1)); if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView(), 50); }, []);
   return (
     <article className="guide">
       <header className="g-hero">
@@ -132,6 +134,36 @@ grant insert on library.books to authenticated;`}</C>
           <li>정책에는 <code>auth.uid()</code> 대신 <b><code>bmr.uid()</code></b> 를 씁니다 (선생님 DB 계정은 auth 스키마 권한이 없음).</li>
           <li>'로그인했다'와 '학교 사람이다'는 다릅니다. 학교 사람만 쓰게 하려면 <code>bmr.is_staff()</code> 나 멤버 표로 막으세요.</li>
         </ul>
+        <div id="google-login" className="g-google">
+          <h3>구글 로그인</h3>
+          <p>관리자가 BMR APPS 전체에 <b>구글 로그인을 켜 두었습니다.</b> 개발자는 따로 설정할 것 없이 코드만 넣으면 됩니다. 새 앱 저장소의 <code>src/auth.js</code> 에 같은 도우미가 들어 있어요.</p>
+          <C>{`import { supabase } from './supabase.js';
+
+// 이 앱 자기 주소로 돌아오기 (배포·로컬 모두)
+const APP_URL = new URL(import.meta.env.BASE_URL, location.origin).href;
+
+// 로그인: 구글 화면 → https://apps.bmrschool.net/library/ 로 돌아옴
+await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: APP_URL } });
+
+// 지금 로그인한 사람 · 로그아웃
+const { data: { user } } = await supabase.auth.getUser();
+await supabase.auth.signOut();`}</C>
+          <ul>
+            <li><b>돌아올 수 있는 주소</b>: <code>https://apps.bmrschool.net/**</code>, <code>http://localhost:5173/**</code>, <code>http://localhost:3000/**</code>. 다른 주소가 필요하면 관리자에게 요청하세요 (허용 안 된 주소면 사이트 첫 화면으로 돌아갑니다).</li>
+            <li><b>계정은 모든 앱이 함께 씁니다.</b> 로그인 사용자(<code>auth.users</code>)는 BMR APPS 전체에 하나라서, 구글 계정만 있으면 누구나 내 앱에도 로그인할 수 있어요. '로그인했다'만으로 권한을 주지 말고, <b>내 스키마의 멤버 표</b>로 이 앱 사람을 따로 관리하세요.</li>
+          </ul>
+          <C>{`-- 이 앱 멤버 (앱마다 내 스키마에 따로 → 다른 앱과 섞이지 않음)
+create table library.members (
+  user_id uuid primary key,
+  role text not null default 'member' check (role in ('member', 'admin'))
+);
+create function library.is_member() returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists (select 1 from library.members where user_id = (select bmr.uid()))
+$$;
+create policy "멤버만 읽기" on library.books for select to authenticated using ((select library.is_member()));`}</C>
+          <p className="muted">정책 안에서 로그인한 사람 아이디는 <code>auth.uid()</code> 와 같은 값인 <code>bmr.uid()</code> 로 씁니다. 첫 멤버는 SQL 로 넣고(<code>insert into library.members …</code>), 카카오 등 다른 소셜 로그인은 아직 꺼져 있습니다.</p>
+        </div>
         <h3>파일 저장</h3>
         <p>버킷은 비공개이고, 로그인한 사람은 <code>&lt;내 아이디&gt;/…</code> 폴더에 올릴 수 있습니다. <b>파일 경로(키)에 한글은 쓸 수 없어요</b> — 영문·숫자로 이름을 바꿔 올리세요(원래 이름은 표에 따로 저장).</p>
         <h3>배포</h3>
@@ -162,7 +194,7 @@ grant insert on library.books to authenticated;`}</C>
           <details><summary>DB 비밀번호를 잃어버렸어요</summary><p>대시보드 → 내 서비스 → 내 앱을 눌러 <b>앱 정보 → DB 접속 정보</b>에서 '새 비밀번호 발급'을 누르세요. 이전 비밀번호는 바로 끊깁니다.</p></details>
           <details><summary>화면에 데이터가 안 나와요</summary><p>대부분 RLS 정책이 없어서입니다. 그 표에 select 정책이 있는지 확인하세요.</p></details>
           <details><summary>React·Vue 를 써도 되나요?</summary><p>네. 시작 코드는 Vite 라서 원하는 도구를 더하면 됩니다.</p></details>
-          <details><summary>Supabase 대시보드나 소셜 로그인 설정은요?</summary><p>프로젝트 전체 설정이라 관리자가 합니다. 필요하면 요청해 주세요.</p></details>
+          <details><summary>Supabase 대시보드나 소셜 로그인 설정은요?</summary><p>구글 로그인은 이미 켜져 있어요(<a href="#google-login">구글 로그인</a>). 그 밖의 프로젝트 전체 설정은 관리자가 합니다. 필요하면 요청해 주세요.</p></details>
         </div>
         <p>더 궁금한 점은 관리자에게 물어보세요. 즐거운 개발 되세요! 🙌</p>
       </Step>
@@ -225,6 +257,7 @@ await supabase.from('documents')
 
 const { data } = await supabase.from('documents')
   .select('id, data, created_at').eq('collection', 'notice');`}</C>
+          <p className="muted">로그인이 필요하면 <b>구글 로그인</b>이 이미 켜져 있어요: <code>{"supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: 내 앱 주소 } })"}</code> · <Link to="/guide#google-login">자세히</Link></p>
         </div>
       </section>
       <div className="q-foot">
