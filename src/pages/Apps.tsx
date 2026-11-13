@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { go, Link, type Ctx } from '../App';
-import { sb, errMsg, fmtTime, provisionApi, GH_LABEL, STATUS_LABEL, type App, type GhStatus, type Health, type Owner, type Status } from '../sb';
+import { sb, errMsg, fmtTime, provisionApi, healthState, GH_LABEL, STATUS_LABEL, type App, type GhStatus, type Health, type Owner, type Status } from '../sb';
 import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
 import { DeleteAppModal } from './DeleteApp';
 import { DbCredSection } from './DbCred';
@@ -87,7 +87,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
   const mineIds = new Set(owners.filter((o) => myEmail && (o.email ?? '').toLowerCase() === myEmail).map((o) => o.app_id));
   const shown = apps.filter((a) => filter === 'all' || (filter === 'mine' ? mineIds.has(a.id) : a.status === filter));
   const cur = apps.find((a) => a.id === open);
-  const watched = (c?.healthOk ?? 0) + (c?.healthBad ?? 0) + (c?.healthNone ?? 0);
+  const watched = (c?.healthOk ?? 0) + (c?.healthChecking ?? 0) + (c?.healthBad ?? 0) + (c?.healthNone ?? 0);
   if (!ctx.isStaff) {
     const active = apps.filter((a) => a.status === 'active');
     return (
@@ -115,9 +115,9 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
       <div className="stats">
         <Stat tone="amber" icon="📝" label="승인 대기 신청" value={c ? c.reqPending : '–'} sub={ctx.isAdmin ? '검토가 필요한 새 앱 신청' : '내가 낸 신청 중 검토 대기'} onClick={() => go('/hub/requests')} />
         {ctx.isAdmin
-          ? <Stat tone="red" icon="🔑" label="만료 임박 토큰" value={c?.tokSoon ?? '–'} sub="14일 안에 만료 · 이미 만료" onClick={() => go('/hub/tokens')} />
+          ? <Stat tone="red" icon="👥" label="가입 승인 대기" value={c?.memPending ?? '–'} sub="역할을 정해야 하는 새 사용자" onClick={() => go('/hub/members')} />
           : <Stat tone="blue" icon="🧑‍💻" label="담당 개발자" value={owners.length} sub="등록된 담당자 수" />}
-        <Stat tone="green" icon="📡" label="운영 상태" value={c ? <>{c.healthOk}<small>/{watched}</small></> : '–'} sub={c ? (c.healthBad ? `⚠️ 이상 ${c.healthBad}개` : c.healthNone ? `기록 없음 ${c.healthNone}개` : '모두 정상') : ''} onClick={() => go('/hub/status')} />
+        <Stat tone="green" icon="📡" label="운영 상태" value={c ? <>{c.healthOk}<small>/{watched}</small></> : '–'} sub={c ? (c.healthBad ? `⚠️ 장애 ${c.healthBad}개` : c.healthChecking ? `확인 중 ${c.healthChecking}개 (한 번 실패)` : c.healthNone ? `기록 없음 ${c.healthNone}개` : '모두 정상') : ''} onClick={() => go('/hub/status')} />
         <Stat tone="violet" icon="🧩" label="서비스" value={<>{n('active')}<small>/{apps.length}</small></>} sub={`운영 중 · 준비 중 ${n('preparing')}개`} />
       </div>
 
@@ -204,7 +204,9 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
 
 export function HealthDot({ h, label }: { h?: Health; label?: boolean }) {
   if (!h) return <span className="hpill none" title="점검 기록 없음">● {label ? '점검 기록 없음' : '기록 없음'}</span>;
-  return <span className={`hpill ${h.ok ? 'ok' : 'bad'}`} title={`${fmtTime(h.checked_at)} · ${h.http_status ?? h.error} · ${h.response_ms ?? '-'}ms`}>● {h.ok ? '정상' : '이상'}{label && h.response_ms != null ? ` · ${h.response_ms}ms` : ''}</span>;
+  const k = healthState(h);
+  const tip = `${fmtTime(h.checked_at)} · ${h.http_status ?? h.error} · ${h.response_ms ?? '-'}ms${k === 'checking' ? ' · 한 번 실패, 다음 점검에서 다시 확인' : k === 'down' ? ` · ${h.fail_streak ?? 2}번 연속 실패` : ''}`;
+  return <span className={`hpill ${k === 'ok' ? 'ok' : k === 'checking' ? 'warn' : 'bad'}`} title={tip}>● {k === 'ok' ? '정상' : k === 'checking' ? '확인 중' : '장애'}{label && h.response_ms != null ? ` · ${h.response_ms}ms` : ''}</span>;
 }
 
 type OwnerForm = { id?: number; name: string; email: string; github_username: string; role: string };

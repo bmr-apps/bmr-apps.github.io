@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { configured, sb, login, signUp, loginWithGoogle, oauthError, daysLeft, ROLE_LABEL, type Profile, type Status } from './sb';
+import { configured, sb, login, signUp, loginWithGoogle, oauthError, ROLE_LABEL, healthState, type HealthState, type Profile, type Status } from './sb';
 import { Landing, AppsPage } from './pages/Apps';
 import { GuidePage, QuickStartPage } from './pages/Guide';
 import { RequestsPage } from './pages/Requests';
-import { TokensPage } from './pages/Tokens';
 import { StatusPage } from './pages/Status';
 import { MembersPage } from './pages/Members';
 import { AuditPage } from './pages/Audit';
@@ -26,8 +25,8 @@ function usePath() {
 /** 사이드바 배지·대시보드 요약에 쓰는 숫자 (읽기 전용 조회) */
 export type Counts = {
   apps: { id: number; slug: string; name: string; url: string; status: Status }[];
-  healthOk: number; healthBad: number; healthNone: number;
-  reqPending: number; tokSoon: number | null; memPending: number | null;
+  healthOk: number; healthChecking: number; healthBad: number; healthNone: number;
+  reqPending: number; memPending: number | null;
 };
 export type Ctx = { session: Session | null; isAdmin: boolean; isStaff: boolean; me: Profile | null; counts?: Counts | null; refreshCounts?: () => void };
 
@@ -38,24 +37,23 @@ function useCounts(enabled: boolean, isAdmin: boolean, path: string) {
     if (!enabled) { setC(null); return; }
     let live = true;
     (async () => {
-      const [a, h, r, t, m] = await Promise.all([
+      const [a, h, r, m] = await Promise.all([
         sb.from('apps').select('id, slug, name, url, status').order('sort').order('name'),
-        sb.from('app_health_latest').select('app_id, ok'),
+        sb.from('app_health_latest').select('app_id, ok, state'),
         sb.from('app_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-        isAdmin ? sb.from('token_logs').select('expires_at, revoked_at') : Promise.resolve(null),
         isAdmin ? sb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'pending') : Promise.resolve(null),
       ]);
       if (!live) return;
       const apps = (a.data ?? []) as Counts['apps'];
-      const hl = new Map(((h.data ?? []) as { app_id: number; ok: boolean }[]).map((x) => [x.app_id, x.ok]));
+      const hl = new Map(((h.data ?? []) as { app_id: number; ok: boolean; state?: HealthState }[]).map((x) => [x.app_id, healthState(x)]));
       const watched = apps.filter((x) => x.status !== 'retired');
       setC({
         apps,
-        healthOk: watched.filter((x) => hl.get(x.id) === true).length,
-        healthBad: watched.filter((x) => hl.get(x.id) === false).length,
+        healthOk: watched.filter((x) => hl.get(x.id) === 'ok').length,
+        healthChecking: watched.filter((x) => hl.get(x.id) === 'checking').length,
+        healthBad: watched.filter((x) => hl.get(x.id) === 'down').length,
         healthNone: watched.filter((x) => !hl.has(x.id)).length,
         reqPending: r.count ?? 0,
-        tokSoon: t ? ((t.data ?? []) as { expires_at: string | null; revoked_at: string | null }[]).filter((x) => !x.revoked_at && (daysLeft(x.expires_at) ?? 99) <= 14).length : null,
         memPending: m ? m.count ?? 0 : null,
       });
     })();
@@ -112,7 +110,7 @@ export function App() {
   else if (path === '/hub/db') page = <StaffOnly ctx={ctx}><DbCredPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub' || path === '/hub/apps') page = <AppsPage ctx={ctx} />;
   else if (path === '/hub/requests') page = <StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>;
-  else if (path === '/hub/tokens') page = <TokensPage ctx={ctx} />;
+  else if (path === '/hub/tokens') page = <div className="card narrow center"><div className="logo big">🧾</div><h2>토큰 기록은 없어졌습니다</h2><p className="muted">DB 비밀번호 받기·사용자 관리 같은 기록은 이제 감사 기록에 남습니다.</p>{ctx.isAdmin ? <Link to="/hub/audit" className="btn">감사 기록 보기</Link> : <Link to="/hub/apps" className="btn">대시보드로</Link>}</div>;
   else if (path === '/hub/status') page = <StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/members') page = <MembersPage ctx={ctx} />;
   else if (path === '/hub/audit') page = <AuditPage ctx={ctx} />;
@@ -161,9 +159,8 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       { to: '/hub/status', icon: '📡', label: '운영 상태', sub: '매시 자동 점검', show: true, badge: c?.healthBad, tone: 'red' },
     ]],
     ['관리자', [
-      { to: '/hub/tokens', icon: '🔑', label: '토큰 기록', sub: '발급·만료 관리', show: ctx.isAdmin, badge: c?.tokSoon, tone: 'red' },
       { to: '/hub/members', icon: '👥', label: '사용자 관리', sub: '역할·비밀번호·삭제', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
-      { to: '/hub/audit', icon: '🧾', label: '감사 기록', sub: '승인·생성·권한 변경', show: ctx.isAdmin },
+      { to: '/hub/audit', icon: '🧾', label: '감사 기록', sub: '승인·생성·권한·비밀번호 기록', show: ctx.isAdmin },
     ]],
   ];
   const tabs = groups.flatMap(([, t]) => t.filter((x) => x.show));

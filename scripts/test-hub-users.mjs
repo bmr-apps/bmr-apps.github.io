@@ -164,7 +164,7 @@ try {
   created.splice(created.findIndex((x) => x.id === doomed.id), 1);
 
   // 감사 기록에 비밀값 없음
-  const logs = await sql(`select label, issued_to, memo from public.token_logs where kind = 'hub_user' and issued_to like '${prefix}-%' order by id`);
+  const logs = await sql(`select action, target, detail from public.audit_log where action like 'user:%' and target like '${prefix}-%' order by id`);
   ok(logs.length >= 3 && logs.every((x) => !/Tmp-|password=/i.test(JSON.stringify(x))), `감사 기록 ${logs.length}건, 비밀값 없음`);
 } finally {
   for (const u of created) {
@@ -172,6 +172,8 @@ try {
   }
   const rest = await sql(`select id from auth.users where email like '${prefix}-%@example.com' or email like 'hub-users-test-%@example.com'`);
   for (const u of rest) { try { await adm(`users/${u.id}`, { method: 'DELETE' }); } catch {} }
+  // 시험 계정에 대한 감사 기록은 지운다 (실제 기록은 그대로)
+  await sql(`delete from public.audit_log where action like 'user:%' and (target like '${prefix}-%' or target like 'hub-users-test-%' or actor_email like '${prefix}-%')`);
   // 실제 계정 역할 원상 복구
   for (const p of remember) {
     await sql(`update public.profiles set role = '${p.role}' where email = '${p.email}'`);

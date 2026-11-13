@@ -10,7 +10,6 @@ GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, �
 - `/hub/apps` 서비스 목록·담당 개발자 (관리자: 앱 정보 수정 — slug 는 만든 뒤 잠김, 담당자 추가·수정·빼기 → GitHub push 권한 초대·회수, 초대됨/권한 있음/실패 표시)
 - `/hub/requests` 새 앱 신청(개발자) / 관리자 **'승인하고 바로 만들기'**·반려. 승인하면 `hub-provision` 이 개발 환경 전체를 바로 만들고 단계별 진행·오류·'다시 시도'를 보여 줌
 - `/hub/audit` 감사 기록 (관리자 전용: 승인·생성·담당자 GitHub 권한 변경·거부된 시도)
-- `/hub/tokens` 토큰 발급 기록 (관리자 전용, **값은 저장하지 않음**, 14일 안 만료 강조)
 - `/hub/status` 운영 상태 (Edge Function `hub-health`, 매시 정각 pg_cron)
 - `/hub/members` 사용자 관리 (관리자 전용: 역할·비밀번호 초기화·사용 중지·삭제)
 - `/hub/db` **DB 접속 정보 모아 보기** — 사이드바에서는 뺐고(Ctrl K·옛 링크·초대 메일로는 열림), 같은 기능(처음 받기·새로 발급·직접 바꾸기·관리자 초대)은 앱 상세 **앱 정보 → DB 접속 정보**(DbCredSection, 같은 DbCredCard)에 있음. 개발자(staff)·관리자만, 허브 계정 메일이 앱 담당자 메일과 같으면(관리자는 전체) 그 앱이 보임.
@@ -38,13 +37,13 @@ node scripts/build-provision-templates.mjs && node scripts/setup-provision.mjs  
 `hub-dbcred` 가 알려 주는 공용 접속기 주소는 `aws-1-ap-northeast-2.pooler.supabase.com`(서울). 지역이 바뀌면 함수 비밀값 `BMR_POOL_HOST` 로 바꿉니다.
 
 ### `hub-dbcred` (앱 DB 비밀번호 전달)
-- 마이그레이션 `20261112070000_dbcred.sql`: token_logs 종류 `supabase_db_password`, 시도 기록표 `bmr_admin.dbcred_attempts`(권한 없음, 함수만 씀).
+- 마이그레이션 `20261112070000_dbcred.sql`: (옛 token_logs 종류 `supabase_db_password` → 지금은 audit_log `dbcred:reveal`·`dbcred:rotate`), 시도 기록표 `bmr_admin.dbcred_attempts`(권한 없음, 함수만 씀).
 - 동작 `list`·`reveal`·`rotate`·`invite`(로그인 JWT 확인 후 서버에서 담당자/관리자 확인), `stage`(서버용 키만 — `bmr-app-templates/provision.mjs` 가 부름).
 - 1회용 비밀번호는 Vault `bmr_dbcred:<slug>`. 역할 비밀번호는 SCRAM 값으로만 넣어 평문이 DB 로그에 남지 않음. 출처 허용: apps.bmrschool.net, localhost.
 - 시험: `bmr-app-templates/test/dbcred.mjs`.
 
 ### `hub-users` (사용자 관리)
-- 마이그레이션 `20261112103000_hub_users.sql`: token_logs 종류 `hub_user`, 신청 기록은 계정 삭제 뒤에도 남김(`requested_by` 빈 값), 역할 변경은 서버 함수만, 시도 기록표 `bmr_admin.users_attempts`.
+- 마이그레이션 `20261112103000_hub_users.sql`: (옛 token_logs 종류 `hub_user` → 지금은 audit_log `user:*`), 신청 기록은 계정 삭제 뒤에도 남김(`requested_by` 빈 값), 역할 변경은 서버 함수만, 시도 기록표 `bmr_admin.users_attempts`.
 - 동작 `list`·`set_role`·`reset_password`·`delete` — 관리자 JWT 만. 사용 중지는 Auth 로그인 차단. 임시 비밀번호는 한 번만 돌려 주고 저장하지 않음. 본인·마지막 관리자는 삭제/강등 불가.
 - 시험: `node scripts/test-hub-users.mjs`.
 
@@ -94,3 +93,8 @@ cp .env.example .env.local   # 값 채우기
 npm ci && npm run dev        # http://localhost:5173
 npm run build && npx vite preview && node scripts/screenshot.mjs   # 가짜 데이터로 화면 캡처
 ```
+
+## 운영 상태 판정·보관 (2026-11-13)
+- `public.app_health_latest` 보기에 `fail_streak`(마지막 성공 뒤 연속 실패 횟수)·`state`(`ok` 정상 · `checking` 한 번 실패 = 확인 중 · `down` 2번 이상 연속 실패 = 장애)를 더함. 원본 `health_checks` 행은 그대로이고, 대시보드·운영 상태·사이드바 배지는 `state` 로 셈 (장애만 빨간 숫자).
+- 보관: pg_cron `hub-health-prune` 이 매일 03:40(한국 시간) `private.prune_health_checks()` 로 30일 지난 `health_checks` 행을 지움.
+- 토큰 기록(`token_logs`)은 없앰(마이그레이션 `20261113180000`). DB 비밀번호 받기·새로 발급은 `audit_log` 의 `dbcred:reveal`·`dbcred:rotate`(target = 앱 주소), 사용자 관리는 `user:*`(target = 대상 이메일)로 남김. 옛 주소 `/hub/tokens` 는 안내 화면.

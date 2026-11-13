@@ -199,7 +199,7 @@ section > .section-head:first-child { margin-top: 4px; }
 .sdot { width: 10px; height: 10px; display: inline-block; background: #b5b5b5; border: 1.5px solid #000; }
 .sdot.s-active { background: var(--green); } .sdot.s-preparing { background: var(--cyan); } .sdot.s-paused { background: var(--yellow); } .sdot.s-retired { background: #b5b5b5; }
 .hpill { font-size: 11.5px; font-weight: 850; padding: 1px 7px; margin-left: 4px; border: 1.5px solid currentColor; }
-.hpill.ok { background: var(--ok-soft); color: var(--ok); } .hpill.bad { background: var(--bad-soft); color: var(--bad); } .hpill.none { background: var(--gray-soft); color: var(--muted); }
+.hpill.ok { background: var(--ok-soft); color: var(--ok); } .hpill.bad { background: var(--bad-soft); color: var(--bad); } .hpill.none { background: var(--gray-soft); color: var(--muted); } .hpill.warn { background: var(--warn-soft); color: var(--warn); }
 
 /* 히어로 (공개 화면): 왼쪽 색 면 + 오른쪽 도형 */
 .hero { display: grid; grid-template-columns: 1.05fr 1fr; border: var(--border); margin: 0 0 8px; min-height: 360px; }
@@ -247,7 +247,7 @@ section > .section-head:first-child { margin-top: 4px; }
 .pill .cnt { margin-left: 4px; padding: 0 6px; background: var(--bg); color: var(--text); border-color: var(--line); } .pill.on .cnt { background: #fff; color: #000; border-color: #000; }
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 850; padding: 1px 8px; background: var(--gray-soft); color: var(--muted); border: 1.5px solid currentColor; vertical-align: middle; white-space: nowrap; }
 .s-active { background: var(--ok-soft); color: var(--ok); } .s-preparing { background: var(--blue-soft); color: var(--blue); } .s-paused { background: var(--warn-soft); color: var(--warn); } .s-retired { background: var(--gray-soft); color: var(--muted); }
-.r-pending, .k-amber { background: var(--warn-soft); color: var(--warn); } .r-approved, .h-ok, .k-green { background: var(--ok-soft); color: var(--ok); } .r-rejected, .h-bad, .k-red { background: var(--bad-soft); color: var(--bad); } .h-none, .k-gray { background: var(--gray-soft); color: var(--muted); }
+.r-pending, .h-warn, .k-amber { background: var(--warn-soft); color: var(--warn); } .r-approved, .h-ok, .k-green { background: var(--ok-soft); color: var(--ok); } .r-rejected, .h-bad, .k-red { background: var(--bad-soft); color: var(--bad); } .h-none, .k-gray { background: var(--gray-soft); color: var(--muted); }
 .badge.pii { background: var(--bad-soft); color: var(--bad); }
 .error { color: var(--bad); font-weight: 700; } .ok { color: var(--ok); font-weight: 700; }
 .warn, .alert { background: var(--yellow-light); border: var(--border); border-left-width: 8px; border-left-color: var(--yellow); color: var(--text); padding: 11px 15px; font-size: 14px; }

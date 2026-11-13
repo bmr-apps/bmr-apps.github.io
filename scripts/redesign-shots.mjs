@@ -31,7 +31,6 @@ await shot('light', '/hub/apps', 'redesign-app-detail-light.png', { act: async (
 await shot('dark', '/hub/status', 'redesign-status-dark.png');
 await shot('light', '/hub/status', 'redesign-status-light.png');
 await shot('light', '/hub/requests', 'redesign-requests-light.png', { full: true });
-await shot('dark', '/hub/tokens', 'redesign-tokens-dark.png', { full: true });
 await shot('light', '/hub/members', 'redesign-members-light.png');
 await shot('dark', '/hub/apps', 'redesign-palette-dark.png', { act: async (p) => { await p.keyboard.press('Control+K'); await p.waitForTimeout(400); } });
 await shot('light', '/', 'redesign-landing-light.png', { anon: true });

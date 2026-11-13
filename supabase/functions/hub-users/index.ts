@@ -74,9 +74,11 @@ async function adminCount() {
   return Number(c.n);
 }
 
+// 사용자 관리 기록은 감사 기록(public.audit_log)에 남긴다 (비밀번호 값은 절대 남기지 않음)
+const USER_ACTION: Record<string, string> = { '역할 변경': 'user:role', '사용 중지': 'user:disable', '다시 사용': 'user:enable', '비밀번호 초기화': 'user:reset_password', '계정 삭제': 'user:delete' };
 async function log(u: Me, t: Target, label: string, memo: string) {
-  await db`insert into public.token_logs (app_id, kind, label, issued_to, memo, created_by)
-    values (null, 'hub_user', ${label.slice(0, 100)}, ${t.email.slice(0, 100)}, ${memo.slice(0, 1000)}, ${u.id})`;
+  await db`insert into public.audit_log (actor, actor_email, action, target, result, detail)
+    values (${u.id}, ${u.email.slice(0, 200)}, ${USER_ACTION[label] ?? 'user:other'}, ${t.email.slice(0, 200)}, 'ok', ${memo.slice(0, 2000)})`;
 }
 
 const AUTH = { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'application/json' };

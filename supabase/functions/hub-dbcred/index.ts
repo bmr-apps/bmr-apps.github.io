@@ -1,7 +1,7 @@
 // hub-dbcred — 앱 담당 선생님께 DB 접속 정보를 허브 안에서 안전하게 전달한다.
 //  · 처음 비밀번호: provision 때 서버에서 만들어 Vault(암호화)에 넣어 두고, 담당자가 '한 번' 받으면 즉시 지운다.
 //  · 새 비밀번호: 서버에서 만들어 SCRAM 검증값으로만 DB 에 넣고, 화면에 한 번 보여 준 뒤 어디에도 남기지 않는다.
-//  · 모든 받기·새로 발급은 public.token_logs 에 남긴다(누가·어느 앱·무엇·언제, 비밀값 없음).
+//  · 모든 받기·새로 발급은 public.audit_log 에 남긴다(누가·어느 앱·무엇·언제, 비밀값 없음).
 //  · 서버 함수(<slug>-fn)는 따로 <schema>_fn 역할을 써서, 선생님이 비밀번호를 바꿔도 끊기지 않는다.
 // 호출: POST { action, app_id? , owner_id? }  Authorization: Bearer <허브 로그인 토큰>
 //   list            내가 담당(관리자는 전체)인 v2 앱 목록과 상태
@@ -90,9 +90,11 @@ async function rateLimit(req: Request, u: Me | null, action: string) {
   await db`insert into bmr_admin.dbcred_attempts (user_id, ip, action) values (${u?.id ?? null}, ${ip}, ${action})`;
   await db`delete from bmr_admin.dbcred_attempts where at < now() - interval '1 day'`;
 }
-async function log(u: Me, app: App, label: string, memo: string) {
-  await db`insert into public.token_logs (app_id, kind, label, issued_to, memo, created_by)
-    values (${app.id}, 'supabase_db_password', ${label}, ${(u.name || u.email).slice(0, 100)}, ${memo}, ${u.id})`;
+// DB 비밀번호 받기·새로 발급은 감사 기록(public.audit_log)에 남긴다 (비밀번호 값은 남기지 않음)
+const DB_ACTION = { reveal: 'dbcred:reveal', rotate: 'dbcred:rotate' } as const;
+async function log(u: Me, app: App, kind: keyof typeof DB_ACTION, memo: string) {
+  await db`insert into public.audit_log (actor, actor_email, action, target, result, detail)
+    values (${u.id}, ${u.email.slice(0, 200)}, ${DB_ACTION[kind]}, ${app.slug}, 'ok', ${`${(u.name || u.email).slice(0, 100)} · ${memo}`.slice(0, 2000)})`;
 }
 async function stageInitial(app: App) {
   const pw = newPassword();
@@ -141,7 +143,9 @@ Deno.serve(async (req) => {
       const out = [];
       for (const a of apps) {
         const [p] = await db`select exists (select 1 from vault.secrets where name = ${vaultName(a.slug)}) as pending`;
-        const last = await db`select label, issued_to, created_at from public.token_logs where app_id = ${a.id} and kind = 'supabase_db_password' order by created_at desc limit 3`;
+        const last = await db`select case action when 'dbcred:reveal' then 'DB 비밀번호 처음 받기' else 'DB 비밀번호 새로 발급' end as label,
+            split_part(detail, ' · ', 1) as issued_to, at as created_at
+          from public.audit_log where target = ${a.slug} and action in ('dbcred:reveal', 'dbcred:rotate') and result = 'ok' order by at desc limit 3`;
         const owners = u.admin ? await db`select o.id, o.name, o.email, exists (select 1 from auth.users x where lower(x.email) = lower(o.email)) as has_account,
             exists (select 1 from public.profiles p where lower(p.email) = lower(o.email) and p.role in ('staff','admin')) as staff
           from public.app_owners o where o.app_id = ${a.id} order by o.id` : [];
@@ -165,10 +169,10 @@ Deno.serve(async (req) => {
           return d.length ? String(s.decrypted_secret) : null;
         });
         if (!pw) return json(req, 410, { error: '처음 비밀번호는 이미 받았습니다. 잊었으면 "새 비밀번호 발급"을 누르세요.' });
-        await log(u, a, 'DB 비밀번호 처음 받기', `${a.role} · 허브에서 1회 표시 (서버 사본 삭제)`);
+        await log(u, a, 'reveal', `${a.role} · 허브에서 1회 표시 (서버 사본 삭제)`);
         return json(req, 200, { conn: connInfo(a, pw), once: true });
       }
-      const [c] = await db`select count(*) as n from public.token_logs where app_id = ${a.id} and kind = 'supabase_db_password' and created_at > now() - interval '1 day'`;
+      const [c] = await db`select count(*) as n from public.audit_log where target = ${a.slug} and action = 'dbcred:rotate' and result = 'ok' and at > now() - interval '1 day'`;
       if (Number(c.n) >= LIMIT.rotatePerAppDay) return json(req, 429, { error: '오늘은 더 발급할 수 없습니다. 내일 다시 시도하세요.' });
       const pw = newPassword();
       const v = await scram(pw);
@@ -176,7 +180,7 @@ Deno.serve(async (req) => {
         await t.unsafe(`alter role ${a.role} password '${v}'`);
         await t`delete from vault.secrets where name = ${vaultName(a.slug)}`; // 받지 않은 처음 비밀번호도 무효
       });
-      await log(u, a, 'DB 비밀번호 새로 발급', `${a.role} · 이전 비밀번호 무효, 허브에서 1회 표시 (저장 안 함)`);
+      await log(u, a, 'rotate', `${a.role} · 이전 비밀번호 무효, 허브에서 1회 표시 (저장 안 함)`);
       return json(req, 200, { conn: connInfo(a, pw), once: true });
     }
 

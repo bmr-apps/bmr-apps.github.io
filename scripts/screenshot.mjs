@@ -13,10 +13,6 @@ const data = {
   app_owners: [{ id: 1, app_id: 1, name: '조은길', email: 'dev@bmrschool.org', github_username: 'devgoodway', role: '책임' }],
   app_health_latest: [{ app_id: 1, checked_at: now, url: apps[0].url, http_status: 200, ok: true, response_ms: 605, error: null }],
   health_checks: Array.from({ length: 12 }, (_, i) => ({ app_id: 1, checked_at: now, url: apps[0].url, http_status: 200, ok: i !== 3, response_ms: 600, error: null })),
-  token_logs: [
-    { id: 1, app_id: null, kind: 'github_pat', label: 'bmr-apps-bot', issued_to: '조은길', issued_at: '2026-11-11', expires_at: '2027-02-09', revoked_at: null, memo: 'bmr-apps 전체 저장소', created_at: now },
-    { id: 2, app_id: 1, kind: 'supabase_service_role', label: 'designer 서버', issued_to: '조은길', issued_at: '2026-08-20', expires_at: '2026-11-20', revoked_at: null, memo: '', created_at: now },
-  ],
   app_requests: [{ id: 1, requested_by: 'u1', requester_name: '김선생', requester_email: null, app_name: '도서 대출 관리', slug: 'library', purpose: '도서 대출·반납 기록', data_handled: '학생 이름·학번', has_student_pii: true, github_username: 'kim-teacher', status: 'pending', review_note: '', reviewed_at: null, app_id: null, created_at: now }],
 };
 const b = await chromium.launch({ executablePath: '/usr/bin/google-chrome' });
@@ -41,7 +37,6 @@ async function shot(path, file, loggedIn, height = 900) {
 await shot('/', 'screenshot.png', false, 700);
 await shot('/hub/apps', 'screenshot-apps.png', true);
 await shot('/hub/requests', 'screenshot-requests.png', true);
-await shot('/hub/tokens', 'screenshot-tokens.png', true);
 await shot('/hub/status', 'screenshot-status.png', true, 600);
 await shot('/hub/login', 'screenshot-login.png', false, 700);
 await b.close();
