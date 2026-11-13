@@ -56,7 +56,7 @@ export function DevInfoSection({ ctx, appId }: { ctx: Ctx; appId: number }) {
             <Row k="Supabase"><code>{SUPABASE_URL}</code></Row>
             <Row k="공개 키"><code className="wrap-any">{ANON}</code> <span className="muted">(브라우저에 넣어도 되는 공개 값 · 저장소 .env.example 에도 있음)</span></Row>
             <Row k="스키마"><code>{d.schema}</code>{d.tables && <span className="muted"> · 표 {d.tables.length ? d.tables.join(', ') : '없음'}</span>}</Row>
-            <Row k="DB 계정"><code>{d.dev_role}</code> <span className="muted">· 비밀번호는 아래 'DB 접속 정보'에서 {d.pending_initial ? '처음 한 번 받기' : '새로 발급'}</span></Row>
+            <Row k="DB 계정"><code>{d.dev_role}</code> <span className="muted">· 비밀번호는 이 창 아래 'DB 접속 정보'(앱 정보 → DB 접속 정보)에서 {d.pending_initial ? '처음 한 번 받기' : '새로 발급'}</span></Row>
             <Row k="접속"><code>{d.pool_host}</code> · 포트 <code>5432</code>(세션) / <code>6543</code>(짧은 요청) · DB <code>postgres</code> · 사용자 <code>{d.dev_role}.{d.ref}</code></Row>
             {d.bucket && <Row k="파일 버킷"><code>{d.bucket}</code> <span className="muted">(비공개 · 한글 파일 이름 불가)</span></Row>}
             {d.fn && <Row k="서버 함수"><code>{d.fn}</code> <span className="muted">· 상태 {health || '확인 중…'}</span><br /><code className="wrap-any">{fnUrl}/hello</code></Row>}

@@ -70,13 +70,17 @@ main { width: 100%; max-width: 1200px; margin: 0 auto; padding: 28px 32px 48px; 
 .side-item:hover { background: var(--green-light); border-color: var(--line); color: var(--text); }
 .side-item.on { background: var(--yellow); border-color: #000; color: #000; }
 .side-item .grow0 { flex: 1; }
+.side-item.sub { margin-left: 22px; padding: 6px 10px; font-size: 13.5px; font-weight: 750; }
+.side-item.sub .emo { font-size: 14px; }
 .emo { width: 22px; text-align: center; font-size: 16px; }
 .count { min-width: 22px; height: 20px; padding: 0 6px; font-size: 11.5px; font-weight: 900; display: inline-grid; place-items: center; color: #000; background: var(--cyan); border: 1.5px solid #000; }
 .count.c-red { background: var(--coral); } .count.c-amber { background: var(--yellow); }
 .side-foot { flex: none; margin-top: auto; padding: 10px 12px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: var(--border); background: var(--side); }
-a.me { color: inherit; text-decoration: none; } a.me:hover { background: var(--green-light); color: var(--text); }
+a.me { color: inherit; text-decoration: none; border: var(--bw) solid transparent; } a.me:hover { background: var(--green-light); border-color: var(--line); color: var(--text); }
+a.me.on { background: var(--yellow); border-color: #000; color: #000; } a.me.on small { color: #222; }
+.me-go { flex: none; font-size: 22px; font-weight: 900; line-height: 1; padding: 0 2px; }
 .me { display: flex; gap: 10px; align-items: center; padding: 8px; min-width: 0; }
-.me > span:last-child { min-width: 0; } .me b { display: block; font-size: 14px; font-weight: 850; } .me small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.me > .me-txt { flex: 1; min-width: 0; } .me b { display: block; font-size: 14px; font-weight: 850; } .me small { display: block; color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar { flex: none; width: 34px; height: 34px; display: inline-grid; place-items: center; font-weight: 900; color: #000; background: var(--cyan); border: var(--bw) solid #000; }
 .avatar.sm { width: 26px; height: 26px; font-size: 12px; vertical-align: middle; margin-right: 4px; }
 .scrim { display: none; }
@@ -208,13 +212,22 @@ section > .section-head:first-child { margin-top: 4px; }
 .hero-cta .btn.alt { background: #000; color: #fff; }
 .hero-cta .btn:hover { background: var(--hover); color: #000; }
 .eyebrow { font-size: 13px; font-weight: 900; letter-spacing: .16em; color: #000; text-transform: uppercase; }
-.hero-art { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); background: var(--yellow); overflow: hidden; }
-.hero-art i { display: grid; place-items: center; font-style: normal; font-size: 34px; border-right: var(--border); border-bottom: var(--border); }
-.hero-art i:nth-child(4n) { border-right: 0; } .hero-art i:nth-child(n+9) { border-bottom: 0; }
-.hero-art .c-cyan { background: var(--cyan-mid); } .hero-art .c-green { background: var(--green); } .hero-art .c-coral { background: var(--coral); }
-.hero-art .c-purple { background: var(--purple); } .hero-art .c-white { background: #fff; } .hero-art .c-yellow { background: var(--yellow); } .hero-art .c-navy { background: var(--navy); }
-.hero-art .round { border-radius: 50%; margin: 14%; border: var(--bw) solid #000 !important; }
-.hero-art .half { border-radius: 999px 999px 0 0; }
+.hero-art { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: var(--bw); background: var(--line); overflow: hidden; }
+/* 칸 = 바탕색 + (선택) ::before 도형. 격자선은 gap(2px)만으로 그려서 어디서나 같은 두께 */
+.hero-art i { position: relative; overflow: hidden; background: var(--b, var(--yellow)); --s: #000; }
+.hero-art i::before { content: ""; position: absolute; background: var(--s); }
+.hero-art i.n::before { content: none; }
+.hero-art .b-paper { --b: var(--bg); } .hero-art .b-yellow { --b: var(--yellow); } .hero-art .b-cyan { --b: var(--cyan); } .hero-art .b-green { --b: var(--green); } .hero-art .b-coral { --b: var(--coral); } .hero-art .b-purple { --b: var(--purple); } .hero-art .b-navy { --b: var(--navy); }
+.hero-art .s-paper { --s: var(--bg); } .hero-art .s-yellow { --s: var(--yellow); } .hero-art .s-cyan { --s: var(--cyan); } .hero-art .s-green { --s: var(--green); } .hero-art .s-coral { --s: var(--coral); } .hero-art .s-purple { --s: var(--purple); } .hero-art .s-navy { --s: var(--navy); }
+.hero-art .circle::before { inset: 0; margin: auto; height: 78%; aspect-ratio: 1; max-width: 78%; border-radius: 50%; }
+.hero-art .q-br::before { inset: 0; border-top-left-radius: 100% 100%; }
+.hero-art .q-bl::before { inset: 0; border-top-right-radius: 100% 100%; }
+.hero-art .q-tr::before { inset: 0; border-bottom-left-radius: 100% 100%; }
+.hero-art .arch::before { left: 0; right: 0; bottom: 0; top: 18%; border-radius: 50% 50% 0 0 / 60% 60% 0 0; }
+.hero-art .half-b::before { left: 0; right: 0; bottom: 0; height: 50%; }
+.hero-art .tri::before { inset: 0; clip-path: polygon(0 100%, 100% 100%, 100% 0); }
+.hero-art .diamond::before { inset: 14%; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.hero-art .stripes::before { inset: 0; background: repeating-linear-gradient(90deg, var(--s) 0 12%, transparent 12% 25%); }
 .band { margin: 36px 0 0; padding: 32px 32px 40px; background: var(--bg-alt); border: var(--border); }
 .band .section-head { margin-top: 0; }
 
@@ -336,7 +349,8 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
   main { padding: 20px 16px 32px; }
   .hero { grid-template-columns: 1fr; min-height: 0; }
   .hero-copy { border-right: 0; border-bottom: var(--border); padding: 32px 24px; }
-  .hero-art { height: 180px; }
+  .hero-art { aspect-ratio: 2 / 1; grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .hero-art i:nth-child(n+9) { display: none; }
   .band { margin: 24px 0 0; padding: 22px 16px 26px; }
   .foot { padding: 28px 16px 22px; }
 }
@@ -400,8 +414,6 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
 .g-faq summary { font-weight: 850; cursor: pointer; }
 .g-faq details[open] summary { margin-bottom: 6px; }
 .g-faq p { margin: 0; }
-.top-link { font-weight: 900; text-decoration: none; padding: 8px 12px; border: var(--border); color: var(--text); white-space: nowrap; }
-.top-link:hover { background: var(--hover); color: #000; }
 .side-logout { width: 100%; margin-top: 6px; }
 @media (max-width: 860px) {
   .g-hero { grid-template-columns: 1fr; } .g-hero-copy { border-right: 0; border-bottom: var(--border); padding: 28px 22px; }
@@ -411,4 +423,17 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
   .g-fields { grid-template-columns: 1fr; } .g-fields dd { margin-bottom: 6px; }
   .devinfo dl.meta { grid-template-columns: 1fr; } .devinfo dl.meta dd { margin-bottom: 6px; }
 }
-@media (max-width: 560px) { .top-link { padding: 6px 8px; font-size: 13px; } }
+
+/* 빠른 시작 */
+.g-quick-link { display: flex; align-items: center; gap: 16px; padding: 16px 20px; margin: 0 0 28px; border: var(--border); background: var(--green); color: #000; text-decoration: none; }
+.g-quick-link:hover { background: var(--yellow); color: #000; }
+.g-quick-link b { display: block; font-size: 19px; font-weight: 900; } .g-quick-link small { display: block; font-size: 14px; font-weight: 600; }
+.g-quick-badge { flex: none; width: 46px; height: 46px; display: grid; place-items: center; font-size: 24px; background: #fff; border: var(--bw) solid #000; }
+.g-quick-go { margin-left: auto; font-size: 26px; font-weight: 900; }
+.q-hero { grid-template-columns: 1fr; } .q-hero .g-hero-copy { border-right: 0; background: var(--green); }
+.q-hero .eyebrow { color: #000; }
+.q-steps { list-style: none; margin: 0; padding: 0; }
+.q-body ul { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+.q-code .g-num { font-size: 22px; }
+.q-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 18px 20px; border: var(--border); background: var(--yellow); color: #000; }
+.q-foot p { margin: 0; font-weight: 600; } .q-foot .btn { background: #fff; color: #000; }

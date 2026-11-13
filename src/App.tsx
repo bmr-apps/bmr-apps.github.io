@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNo
 import type { Session } from '@supabase/supabase-js';
 import { configured, sb, login, signUp, daysLeft, ROLE_LABEL, type Profile, type Status } from './sb';
 import { Landing, AppsPage } from './pages/Apps';
-import { GuidePage } from './pages/Guide';
+import { GuidePage, QuickStartPage } from './pages/Guide';
 import { RequestsPage } from './pages/Requests';
 import { TokensPage } from './pages/Tokens';
 import { StatusPage } from './pages/Status';
@@ -14,8 +14,8 @@ import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
 export function go(path: string) { history.pushState(null, '', path); dispatchEvent(new PopStateEvent('popstate')); }
-export function Link({ to, children, className, onClick, 'aria-label': ariaLabel }: { to: string; children: ReactNode; className?: string; onClick?: () => void; 'aria-label'?: string }) {
-  return <a href={to} className={className} aria-label={ariaLabel} onClick={(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onClick?.(); go(to); }}>{children}</a>;
+export function Link({ to, children, className, onClick, title, 'aria-label': ariaLabel }: { to: string; children: ReactNode; className?: string; onClick?: () => void; title?: string; 'aria-label'?: string }) {
+  return <a href={to} className={className} title={title} aria-label={ariaLabel} onClick={(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); onClick?.(); go(to); }}>{children}</a>;
 }
 function usePath() {
   const [p, setP] = useState(location.pathname);
@@ -103,6 +103,7 @@ export function App() {
   if (path === '/') page = <Landing ctx={ctx} />;
   else if (path === '/hub/login') page = <LoginPage session={session} />;
   else if (path === '/guide') page = <GuidePage ctx={ctx} />;
+  else if (path === '/guide/quick') page = <QuickStartPage ctx={ctx} />;
   else if (!session) page = <LoginPage session={null} />;
   else if (!meReady) page = <p className="muted">불러오는 중…</p>;
   else if (!me) page = <div className="card narrow center"><h2>프로필을 찾지 못했습니다</h2><p>다시 로그인하거나 관리자에게 문의하세요.</p></div>;
@@ -142,7 +143,7 @@ function displayName(ctx: Ctx) {
   return cands.find((x) => x && !GENERIC.has(x.toLowerCase())) || (u?.email ?? ctx.me?.email ?? '').split('@')[0] || '선생';
 }
 
-type Tab = { to: string; icon: string; label: string; sub: string; show: boolean; badge?: number | null; tone?: string };
+type Tab = { to: string; icon: string; label: string; sub: string; show: boolean; badge?: number | null; tone?: string; child?: boolean };
 
 function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: ReactNode }) {
   const [theme, toggleTheme] = useTheme();
@@ -152,11 +153,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const inHub = !!ctx.session && ctx.me?.role !== 'disabled' && path !== '/' && path !== '/hub/login';
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
-      { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
-      { to: '/hub/db', icon: '🗄️', label: 'DB 접속 정보', sub: '내 앱 비밀번호 받기', show: true },
-      { to: '/hub/account', icon: '👤', label: '내 계정', sub: '비밀번호 바꾸기', show: true },
       { to: '/guide', icon: '🧭', label: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', show: true },
-      { to: '/', icon: '🌐', label: '메인', sub: '누구나 보는 서비스 모음', show: true },
+      { to: '/guide/quick', icon: '⚡', label: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', show: true, child: true },
+      { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
     ]],
     ['운영', [
       { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·승인', show: true, badge: c?.reqPending, tone: 'amber' },
@@ -186,8 +185,15 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
 
   const cmds = useMemo<Cmd[]>(() => {
     const list: Cmd[] = [];
-    if (ctx.session && ctx.me?.role !== 'disabled') tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
-    else { list.push({ id: 'home', group: '메뉴', icon: '🌐', title: '메인', sub: '운영 중인 앱 바로가기', run: () => go('/') }); list.push({ id: 'guide', group: '메뉴', icon: '🧭', title: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', run: () => go('/guide') }); }
+    list.push({ id: 'home', group: '메뉴', icon: '🌐', title: '메인', sub: '누구나 보는 서비스 모음', run: () => go('/') });
+    if (ctx.session && ctx.me?.role !== 'disabled') {
+      tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
+      list.push({ id: 'account', group: '메뉴', icon: '👤', title: '내 계정', sub: '허브 로그인 비밀번호 바꾸기', run: () => go('/hub/account') });
+      if (ctx.isStaff) list.push({ id: 'db', group: '메뉴', icon: '🗄️', title: 'DB 접속 정보 모아 보기', sub: '앱마다 앱 정보 → DB 접속 정보에서도 할 수 있어요', run: () => go('/hub/db') });
+    } else {
+      list.push({ id: 'guide', group: '메뉴', icon: '🧭', title: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', run: () => go('/guide') });
+      list.push({ id: 'quick', group: '메뉴', icon: '⚡', title: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', run: () => go('/guide/quick') });
+    }
     const apps = (inHub ? c?.apps : pubApps)?.filter((a) => a.status !== 'retired') ?? [];
     apps.forEach((a) => list.push({ id: 'app' + a.id, group: '서비스 열기', icon: appIcon(a.slug), title: a.name, sub: a.url.replace(/^https?:\/\//, ''), run: () => { open(a.url, '_blank', 'noopener'); } }));
     list.push({ id: 'theme', group: '동작', icon: theme === 'dark' ? '☀️' : '🌙', title: theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로', sub: '테마 바꾸기', run: toggleTheme });
@@ -214,14 +220,14 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
               <div key={g} className="side-group">
                 <div className="side-label">{g}</div>
                 {t.filter((x) => x.show).map((x) => (
-                  <Link key={x.to} to={x.to} className={`side-item${isActive(x.to) ? ' on' : ''}`}>
+                  <Link key={x.to} to={x.to} className={`side-item${x.child ? ' sub' : ''}${isActive(x.to) ? ' on' : ''}`}>
                     <span className="emo">{x.icon}</span><span className="grow0">{x.label}</span>
                     {!!x.badge && <span className={`count c-${x.tone}`}>{x.badge}</span>}
                   </Link>))}
               </div>))}
           </nav>
           <div className="side-foot">
-            <Link to="/hub/account" className="me"><span className="avatar">{(name || '?').slice(0, 1)}</span><span><b>{name}</b><small>{ctx.me ? ROLE_LABEL[ctx.me.role] : ''} · {ctx.session?.user.email}</small></span></Link>
+            <Link to="/hub/account" className={`me${path === '/hub/account' ? ' on' : ''}`} title="내 계정 · 비밀번호 바꾸기" aria-label={`내 계정: ${name}`}><span className="avatar">{(name || '?').slice(0, 1)}</span><span className="me-txt"><b>{name}</b><small>{ctx.me ? ROLE_LABEL[ctx.me.role] : ''} · {ctx.session?.user.email}</small></span><span className="me-go" aria-hidden="true">›</span></Link>
             <button type="button" className="ghost small side-logout" onClick={logout}>🚪 로그아웃</button>
           </div>
         </aside>
@@ -232,7 +238,6 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           {inHub && <button className="icon-btn burger" aria-label="메뉴 열기" onClick={() => setMenu(true)}>☰</button>}
           {!inHub && <Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>}
           {inHub ? <div className="greet"><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></div> : <div className="grow" />}
-          {!inHub && path !== '/guide' && <Link to="/guide" className="top-link">시작 가이드</Link>}
           <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
           <Clock />
           <button className="icon-btn" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
@@ -245,8 +250,8 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
         <footer className="foot">
           <div className="foot-in">
             <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 만들어 운영하는 서비스 모음<small>별무리학교 · apps.bmrschool.net</small></p></div>
-            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link>{ctx.session ? <Link to="/hub/apps">관리 허브</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
-            {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/db">DB 접속 정보</Link><Link to="/hub/status">운영 상태</Link></nav>}
+            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.session ? <Link to="/hub/apps">관리 허브</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
+            {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/account">내 계정</Link><Link to="/hub/status">운영 상태</Link></nav>}
           </div>
         </footer>
       </div>

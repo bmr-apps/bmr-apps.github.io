@@ -29,6 +29,7 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
           <p>BMR APPS 는 <b>별무리 개발자들이 만들어 운영하는 서비스</b>를 한곳에 모으는 곳입니다. 앱을 신청해 승인되면 저장소·주소·데이터베이스·파일 저장소·서버 함수가 자동으로 준비되고, 선생님은 화면과 데이터만 만들면 됩니다.</p>
           <div className="hero-cta">
             {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하고 시작하기</Link> : <Link to={role === 'staff' || role === 'admin' ? '/hub/requests' : '/hub/apps'} className="btn alt">{role === 'staff' || role === 'admin' ? '앱 신청하러 가기' : '관리 허브로'}</Link>}
+            <Link to="/guide/quick" className="btn">⚡ 빠른 시작</Link>
             <a className="btn" href="#signup">1단계부터 읽기</a>
           </div>
         </div>
@@ -37,6 +38,12 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
           <ol>{STEPS.map((s) => <li key={s.id}><a href={`#${s.id}`}>{s.t}</a></li>)}</ol>
         </nav>
       </header>
+
+      <Link to="/guide/quick" className="g-quick-link">
+        <span className="g-quick-badge" aria-hidden="true">⚡</span>
+        <span><b>바쁘다면 빠른 시작부터</b><small>가입부터 첫 배포까지 꼭 필요한 5단계만 한 화면에 모았어요.</small></span>
+        <span className="g-quick-go" aria-hidden="true">→</span>
+      </Link>
 
       <Step n={1}>
         <p><Link to="/hub/login">로그인 화면</Link>에서 <b>처음이면 가입하기</b>를 눌러 이름·이메일·비밀번호(8자 이상)를 넣으면 바로 가입됩니다. 처음에는 <b>일반 사용자</b>로 시작해요.</p>
@@ -86,7 +93,7 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
         <ol className="g-ol">
           <li>허브 <b>대시보드</b>에서 <b>내 서비스</b> 탭을 누르고 내 앱 카드를 엽니다.</li>
           <li><b>🛠️ 개발 정보</b>에 저장소·주소·Supabase 주소·공개 키·스키마·DB 계정·접속 주소·버킷·함수와 예제 코드가 있습니다. <b>담당자와 관리자만</b> 볼 수 있어요.</li>
-          <li>바로 아래 <b>DB 접속 정보</b>에서 <b>처음 비밀번호 받기</b>를 누르면 비밀번호가 <b>딱 한 번</b> 보입니다. 바로 복사해 안전한 곳(<code>.env.local</code>, 비밀번호 관리 프로그램)에 두세요.</li>
+          <li>같은 앱 정보 창의 <b>DB 접속 정보</b>(앱 정보 → DB 접속 정보)에서 <b>처음 비밀번호 받기</b>를 누르면 비밀번호가 <b>딱 한 번</b> 보입니다. 바로 복사해 안전한 곳(<code>.env.local</code>, 비밀번호 관리 프로그램)에 두세요.</li>
           <li>잊어버렸다면 <b>새 비밀번호 발급</b>을 누르세요. 이전 비밀번호는 바로 못 쓰게 됩니다.</li>
         </ol>
       </Step>
@@ -152,13 +159,78 @@ grant insert on library.books to authenticated;`}</C>
         <div className="g-faq">
           <details><summary>'내 서비스'에 내 앱이 안 보여요</summary><p>앱 담당자로 등록된 메일과 지금 로그인한 메일이 같아야 합니다. 다르면 관리자에게 담당자 메일 확인을 요청하세요. 개발자 승급 전이라면 승급부터!</p></details>
           <details><summary>push 했는데 화면이 그대로예요</summary><p>저장소의 Actions 탭에서 배포가 끝났는지 확인하고, 브라우저에서 새로고침하세요. <code>vite.config.js</code> 의 <code>base</code> 는 바꾸지 마세요.</p></details>
-          <details><summary>DB 비밀번호를 잃어버렸어요</summary><p>개발 정보 아래 DB 접속 정보에서 '새 비밀번호 발급'을 누르세요. 이전 비밀번호는 바로 끊깁니다.</p></details>
+          <details><summary>DB 비밀번호를 잃어버렸어요</summary><p>대시보드 → 내 서비스 → 내 앱을 눌러 <b>앱 정보 → DB 접속 정보</b>에서 '새 비밀번호 발급'을 누르세요. 이전 비밀번호는 바로 끊깁니다.</p></details>
           <details><summary>화면에 데이터가 안 나와요</summary><p>대부분 RLS 정책이 없어서입니다. 그 표에 select 정책이 있는지 확인하세요.</p></details>
           <details><summary>React·Vue 를 써도 되나요?</summary><p>네. 시작 코드는 Vite 라서 원하는 도구를 더하면 됩니다.</p></details>
           <details><summary>Supabase 대시보드나 소셜 로그인 설정은요?</summary><p>프로젝트 전체 설정이라 관리자가 합니다. 필요하면 요청해 주세요.</p></details>
         </div>
         <p>더 궁금한 점은 관리자에게 물어보세요. 즐거운 개발 되세요! 🙌</p>
       </Step>
+    </article>
+  );
+}
+
+/** /guide/quick — 빠른 시작: 꼭 필요한 단계만 */
+const QUICK: { t: string; tone: string; body: ReactNode }[] = [
+  { t: '가입', tone: 'cyan', body: <><Link to="/hub/login">로그인 화면</Link> → <b>처음이면 가입하기</b>. 앱 담당자로 쓸 메일(학교 메일)로 가입하세요.</> },
+  { t: '개발자 승급 요청', tone: 'yellow', body: <>관리자에게 가입한 메일과 함께 "개발자로 올려 주세요"라고 요청합니다. 승급되면 <b>앱 신청</b> 메뉴가 열려요.</> },
+  { t: '앱 신청', tone: 'green', body: <>허브 → <b>앱 신청</b> → <b>새 앱 신청하기</b>. 앱 이름, <b>주소 이름</b>(영문 소문자·숫자·하이픈, <b>나중에 못 바꿈</b>), GitHub 아이디, 목적, 다루는 데이터, 학생 개인정보 여부를 적습니다.</> },
+  { t: '승인 후: 초대 수락 · 개발 정보 · DB 비밀번호', tone: 'coral', body: <>
+    <ul>
+      <li>GitHub 메일(또는 github.com 알림)의 <b>저장소 초대를 수락</b>해야 push 할 수 있어요.</li>
+      <li>허브 <b>대시보드 → 내 서비스</b> → 내 앱을 누르면 <b>🛠️ 개발 정보</b>(주소·키·스키마·예제 코드)가 보입니다.</li>
+      <li>같은 창의 <b>DB 접속 정보</b>에서 <b>처음 비밀번호 받기</b> — <b>딱 한 번</b> 보이니 바로 <code>.env.local</code> 에 저장하세요. (표를 직접 만들 때 필요, 잊으면 새로 발급)</li>
+    </ul></> },
+  { t: 'clone → 고치기 → push = 배포', tone: 'purple', body: <>
+    <C>{`git clone https://github.com/bmr-apps/<주소 이름>.git
+cd <주소 이름>
+npm install
+cp .env.example .env.local     # DATABASE_URL 의 비밀번호 칸만 채우기
+npm run dev                    # 내 컴퓨터에서 확인
+git add -A && git commit -m "첫 화면" && git push   # 1~2분 뒤 apps.bmrschool.net/<주소 이름>/ 에 반영`}</C>
+    <p className="muted">처음에는 '준비 중' 안내가 보이는 <code>index.html</code> 을 내 화면으로 바꾸면 됩니다.</p></> },
+];
+
+export function QuickStartPage({ ctx }: { ctx: Ctx }) {
+  const staff = ctx.me?.role === 'staff' || ctx.me?.role === 'admin';
+  return (
+    <article className="guide quick">
+      <header className="g-hero q-hero">
+        <div className="g-hero-copy">
+          <Link to="/guide" className="eyebrow">시작 가이드 · 빠른 시작</Link>
+          <h1>⚡ 빠른 시작</h1>
+          <p>가입부터 첫 배포까지 꼭 필요한 것만. 자세한 설명은 <Link to="/guide">전체 시작 가이드</Link>에 있어요.</p>
+          <div className="hero-cta">
+            {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하기</Link> : <Link to={staff ? '/hub/requests' : '/hub/apps'} className="btn alt">{staff ? '앱 신청하러 가기' : '관리 허브로'}</Link>}
+            <Link to="/guide" className="btn">전체 가이드</Link>
+          </div>
+        </div>
+      </header>
+      <ol className="q-steps">
+        {QUICK.map((q, i) => (
+          <li key={q.t} className="g-step">
+            <div className={`g-num g-${q.tone}`} aria-hidden="true">{i + 1}</div>
+            <div className="g-body"><h2>{q.t}</h2>{typeof q.body === 'string' ? <p>{q.body}</p> : <div className="q-body">{q.body}</div>}</div>
+          </li>))}
+      </ol>
+      <section className="g-step q-code">
+        <div className="g-num g-yellow" aria-hidden="true">{'{ }'}</div>
+        <div className="g-body">
+          <h2>JSON 문서 하나 저장해 보기</h2>
+          <p>앱마다 <code>documents</code> 표가 준비되어 있어 표를 만들지 않고 바로 저장할 수 있어요. 쓰기는 BMR APPS 계정으로 <b>로그인한 사람</b>만, 읽기는 누구나 (기본 정책).</p>
+          <C>{`import { supabase } from './supabase.js';   // 시작 코드에 들어 있음
+
+await supabase.from('documents')
+  .insert({ collection: 'notice', data: { title: '첫 공지', body: '안녕하세요' } });
+
+const { data } = await supabase.from('documents')
+  .select('id, data, created_at').eq('collection', 'notice');`}</C>
+        </div>
+      </section>
+      <div className="q-foot">
+        <p><b>지킬 것 두 가지</b> · 비밀번호·키는 저장소·채팅·캡처에 올리지 않기 (저장소는 공개) · 학생 개인정보는 관리자와 상의한 방법으로만.</p>
+        <Link to="/guide" className="btn">전체 시작 가이드 읽기 →</Link>
+      </div>
     </article>
   );
 }

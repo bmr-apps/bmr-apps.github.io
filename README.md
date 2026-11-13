@@ -6,14 +6,14 @@ GitHub Pages 조직 사이트(`bmr-apps/bmr-apps.github.io`)로 배포되고, �
 ## 화면 (허브 화면은 /hub/ 아래, 앱 주소 /<slug> 와 겹치지 않음)
 - `/` 누구나 보는 운영 중 앱 바로가기
 - `/hub/login` 로그인·가입 (이름·이메일·비밀번호, 확인 메일 없이 바로 로그인)
-- `/hub/account` 내 계정 · 허브 로그인 비밀번호 바꾸기
+- `/hub/account` 내 계정 · 허브 로그인 비밀번호 바꾸기 (사이드바 아래 사용자 상자를 누르거나 Ctrl K)
 - `/hub/apps` 서비스 목록·담당 개발자 (관리자: 앱 정보 수정 — slug 는 만든 뒤 잠김, 담당자 추가·수정·빼기 → GitHub push 권한 초대·회수, 초대됨/권한 있음/실패 표시)
 - `/hub/requests` 새 앱 신청(개발자) / 관리자 **'승인하고 바로 만들기'**·반려. 승인하면 `hub-provision` 이 개발 환경 전체를 바로 만들고 단계별 진행·오류·'다시 시도'를 보여 줌
 - `/hub/audit` 감사 기록 (관리자 전용: 승인·생성·담당자 GitHub 권한 변경·거부된 시도)
 - `/hub/tokens` 토큰 발급 기록 (관리자 전용, **값은 저장하지 않음**, 14일 안 만료 강조)
 - `/hub/status` 운영 상태 (Edge Function `hub-health`, 매시 정각 pg_cron)
 - `/hub/members` 사용자 관리 (관리자 전용: 역할·비밀번호 초기화·사용 중지·삭제)
-- `/hub/db` **DB 접속 정보** — 개발자(staff)·관리자만. 허브 계정 메일이 앱 담당자 메일과 같으면(관리자는 전체) 그 앱이 보임.
+- `/hub/db` **DB 접속 정보 모아 보기** — 사이드바에서는 뺐고(Ctrl K·옛 링크·초대 메일로는 열림), 같은 기능(처음 받기·새로 발급·직접 바꾸기·관리자 초대)은 앱 상세 **앱 정보 → DB 접속 정보**(DbCredSection, 같은 DbCredCard)에 있음. 개발자(staff)·관리자만, 허브 계정 메일이 앱 담당자 메일과 같으면(관리자는 전체) 그 앱이 보임.
   '처음 비밀번호 받기'(한 번만, 받으면 서버 사본 삭제) · '새 비밀번호 발급'(즉시 이전 값 무효, 저장 안 함) · 직접 바꾸는 SQL 안내 · 최근 기록.
   관리자는 앱 상세(`/hub/apps` → 앱)에서도 같은 카드를 보고, 담당자 계정·개발자 여부 확인과 **가입 안내 메일**(누를 때만 발송)을 할 수 있음.
 
@@ -74,6 +74,7 @@ node scripts/build-provision-templates.mjs && node scripts/setup-provision.mjs  
 - 시험: `node scripts/test-hub-deprovision.mjs` (zztest-del 생성 → 삭제 → 백업·삭제·다른 앱 비교), 정리: `node scripts/test-hub-deprovision.mjs --cleanup`.
 
 ## 시작 가이드 · 개발 정보 · 준비 중 페이지
+- `/guide/quick` 빠른 시작 (가입 → 승급 → 신청 → 초대 수락·개발 정보·DB 비밀번호 → clone·push, documents 저장 예제). 가이드 위쪽·사이드바(시작 가이드 아래)·꼬리말·Ctrl K 에서 연결.
 - `/guide` (src/pages/Guide.tsx): 로그인 없이 보는 9단계 시작 가이드. 메인·상단/하단·사이드바·Ctrl K 에서 연결. `guide`, `guides`, `start`, `getting-started` 는 예약 slug.
 - 허브 앱 상세의 **개발 정보** (src/pages/DevInfo.tsx): `public.app_dev_info(p_app_id)` RPC 가 그 앱 담당 개발자(app_owners 이메일 일치 + staff)와 관리자에게만 값을 돌려주고 나머지는 null (서버에서 막음). 비밀값은 없음. DB 비밀번호는 기존 'DB 접속 정보'에서 처음 한 번만 받음.
 - 대시보드 **내 서비스** 필터: 내가 담당자인 앱만.
