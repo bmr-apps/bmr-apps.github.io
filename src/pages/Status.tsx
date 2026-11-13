@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Ctx } from '../App';
 import { sb, errMsg, fmtTime, runHealth, STATUS_LABEL, type App, type Health } from '../sb';
 import { Pills, Stat, appIcon } from '../ui';
+import { ChecksSummary } from './Checks';
 
 export function StatusPage({ ctx }: { ctx: Ctx }) {
   const [apps, setApps] = useState<App[]>([]); const [latest, setLatest] = useState<Record<number, Health>>({});
@@ -57,6 +58,7 @@ export function StatusPage({ ctx }: { ctx: Ctx }) {
             {!h ? <span className="badge h-none">기록 없음</span> : h.ok ? <span className="badge h-ok">● 성공</span> : <span className="badge h-bad" title={h.error ?? ''}>● 실패{h.error ? ` (${h.error})` : ''}</span>}
           </div>);
       })}
+      {ctx.isAdmin && <ChecksSummary apps={apps} />}
     </section>
   );
 }

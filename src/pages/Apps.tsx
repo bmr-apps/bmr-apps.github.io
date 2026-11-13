@@ -4,6 +4,7 @@ import { sb, errMsg, fmtTime, provisionApi, GH_LABEL, STATUS_LABEL, type App, ty
 import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
 import { DeleteAppModal } from './DeleteApp';
 import { DbCredSection } from './DbCred';
+import { ChecksSection } from './Checks';
 import { DevInfoSection } from './DevInfo';
 
 /** 첫 화면: 누구나 보는 운영 중 앱 바로가기 */
@@ -160,6 +161,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
           <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} ctx={ctx} reload={load} />
           <DevInfoSection ctx={ctx} appId={cur.id} />
           <DbCredSection ctx={ctx} appId={cur.id} />
+          <ChecksSection ctx={ctx} appId={cur.id} appUrl={cur.url} />
           {ctx.isAdmin && <div className="row end">
             <button className="ghost" onClick={() => setEdit({ ...cur, repo_url: cur.repo_url ?? '', supabase_ref: cur.supabase_ref ?? '' })}>✏️ 앱 정보 수정</button>
             <button className="danger" onClick={() => { setDel(cur); setOpen(null); }}>🗑️ 앱 삭제</button>

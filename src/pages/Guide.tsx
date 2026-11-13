@@ -147,7 +147,7 @@ await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo:
 
 // 지금 로그인한 사람 · 로그아웃
 const { data: { user } } = await supabase.auth.getUser();
-await supabase.auth.signOut();`}</C>
+await supabase.auth.signOut({ scope: 'local' });   // 이 앱에서만 (그냥 signOut() 은 모든 앱·기기 로그인을 끊음)`}</C>
           <ul>
             <li><b>돌아올 수 있는 주소</b>: <code>https://apps.bmrschool.net/**</code>, <code>http://localhost:5173/**</code>, <code>http://localhost:3000/**</code>. 다른 주소가 필요하면 관리자에게 요청하세요 (허용 안 된 주소면 사이트 첫 화면으로 돌아갑니다).</li>
             <li><b>계정은 모든 앱이 함께 씁니다.</b> 로그인 사용자(<code>auth.users</code>)는 BMR APPS 전체에 하나라서, 구글 계정만 있으면 누구나 내 앱에도 로그인할 수 있어요. '로그인했다'만으로 권한을 주지 말고, <b>내 스키마의 멤버 표</b>로 이 앱 사람을 따로 관리하세요.</li>
@@ -183,9 +183,27 @@ create policy "멤버만 읽기" on library.books for select to authenticated us
       </Step>
 
       <Step n={9}>
+        <div id="shared-origin" className="g-shared">
+          <h3>🛡️ 공용 주소에서 지킬 규칙</h3>
+          <p>모든 앱이 <code>apps.bmrschool.net/&lt;주소 이름&gt;/</code> 처럼 <b>한 주소</b>를 함께 씁니다. 브라우저 입장에서는 한 사이트라서, 조심하지 않으면 서로의 저장값·로그인·화면을 망가뜨릴 수 있어요.</p>
+          <ol className="g-ol">
+            <li><b>브라우저 저장소는 같은 서랍입니다.</b> localStorage·sessionStorage·IndexedDB·쿠키를 모든 앱이 같이 써요. 이름 앞에 꼭 <code>library:</code> 처럼 <b>내 주소 이름</b>을 붙이세요. 새 앱의 <code>src/store.js</code> 를 쓰면 자동으로 붙습니다.</li>
+            <li><b><code>localStorage.clear()</code> · <code>sessionStorage.clear()</code> 는 쓰지 않기.</b> 다른 앱의 저장값과 로그인까지 다 지워집니다. 내 것만 지우는 <code>local.clear()</code> 를 쓰세요.</li>
+            <li><b>경로는 상대 경로나 <code>/library/</code> 로.</b> <code>'/data.json'</code> 처럼 <code>/</code> 로 시작하면 사이트 맨 앞을 가리켜 다른 앱이나 허브로 갑니다. <code>'./data.json'</code> 이나 <code>import.meta.env.BASE_URL + 'data.json'</code> 을 쓰세요.</li>
+            <li><b>서비스 워커(PWA)는 범위를 내 주소로.</b> <code>{"register('/library/sw.js', { scope: '/library/' })"}</code> — 범위가 넓으면 다른 앱의 요청까지 가로챕니다.</li>
+            <li><b>외부 스크립트 조심.</b> 외부 주소에서 불러온 스크립트는 같은 주소의 <b>모든 앱</b> 저장값·로그인 정보를 읽을 수 있어요. npm 으로 설치해 함께 빌드하고, 꼭 필요하면 관리자와 상의하세요.</li>
+            <li><b>로그인·로그아웃은 앱마다.</b> 로그인 저장 칸이 앱마다 따로라 허브와 내 앱은 각각 로그인합니다. 로그아웃은 <code>{"signOut({ scope: 'local' })"}</code> 로 — 그냥 <code>signOut()</code> 은 모든 앱·기기의 로그인을 끊어요.</li>
+            <li><b>무료 한도는 모두가 나눠 씁니다.</b> DB 500MB · 파일 1GB · 서버 함수 호출 월 50만 번. 큰 파일·대량 데이터·잦은 자동 호출은 미리 상의해 주세요.</li>
+          </ol>
+          <C>{`import { local } from './store.js';   // 새 앱 시작 코드에 들어 있음
+local.set('theme', 'dark');            // 실제 이름 'library:theme'
+local.get('theme', 'light');
+local.clear();                         // 내 앱 것만 지움`}</C>
+          <p><b>자동 점검 (경고만)</b> — push 할 때마다 GitHub Actions 의 '공용 주소 점검'이 위 규칙을 살펴보고, 경고와 고치는 법을 실행 화면 Summary 와 <b>허브 → 내 서비스 → 앱 정보 → 공용 주소 점검</b>에 보여 줍니다. <b>배포는 막지 않아요.</b> 일부러 그렇게 쓴 줄은 그 줄 끝에 <code>// bmr-allow: 이유</code> 를 달면 건너뜁니다.</p>
+        </div>
         <ul>
           <li><b>비밀값은 코드·저장소·채팅·캡처에 올리지 않기.</b> 브라우저 코드에는 공개 키만. <code>VITE_</code> 로 시작하는 값은 모두 공개됩니다.</li>
-          <li>모든 앱이 <code>apps.bmrschool.net</code> 한 주소를 같이 씁니다. 브라우저 저장값 이름에는 내 주소 이름을 앞에 붙이고, 다른 앱 저장값은 건드리지 마세요.</li>
+          <li>모든 앱이 <code>apps.bmrschool.net</code> 한 주소를 같이 씁니다. 아래 <a href="#shared-origin">공용 주소에서 지킬 규칙</a>을 꼭 지켜 주세요.</li>
           <li>무료 한도를 모든 앱이 나눠 씁니다 (DB 500MB · 파일 1GB). 큰 파일·대량 데이터는 미리 상의해 주세요.</li>
         </ul>
         <div className="g-faq">

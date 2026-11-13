@@ -167,7 +167,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     ]],
   ];
   const tabs = groups.flatMap(([, t]) => t.filter((x) => x.show));
-  const logout = useCallback(async () => { await sb.auth.signOut(); go('/'); }, []);
+  const logout = useCallback(async () => { await sb.auth.signOut({ scope: 'local' }); go('/'); /* 허브에서만 로그아웃 (다른 앱·기기 로그인은 유지) */ }, []);
 
   useEffect(() => {
     const f = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPal((x) => !x); } };

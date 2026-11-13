@@ -15,3 +15,7 @@ verify_jwt = false
 
 [functions.hub-deprovision]
 verify_jwt = false
+
+# GitHub Actions OIDC 토큰을 함수 안에서 확인한다 (Supabase JWT 아님)
+[functions.hub-checks]
+verify_jwt = false

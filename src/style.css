@@ -457,3 +457,17 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
 .or::before, .or::after { content: ""; flex: 1; height: 2px; background: var(--line); }
 .small-note { font-size: 12.5px; margin: 0; text-align: center; }
 .methods { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* 공용 주소 점검 */
+.checks { margin-top: 18px; padding: 14px 18px; border: var(--border); border-top-width: 8px; border-top-color: var(--yellow); }
+.checks h4 { margin: 0; display: flex; align-items: center; gap: 8px; }
+.checks .row.between { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.check-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; }
+.check-list li { border: var(--border); padding: 10px 12px; background: var(--card); }
+.check-list li.block { border-color: var(--bad); }
+.check-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.check-list p { margin: 6px 0 0; } .check-list .fix { color: var(--muted); font-size: 13.5px; }
+.badge.c-warn { background: var(--yellow); color: #000; border-color: #000; } .badge.c-ok { background: var(--green-light); color: var(--ok); } .badge.c-new { background: var(--coral); color: #000; border-color: #000; }
+.checks .small { font-size: 12.5px; margin: 6px 0 0; }
+.g-shared { margin: 0 0 18px; padding: 4px 18px 10px; border: var(--border); border-left-width: 8px; border-left-color: var(--yellow); scroll-margin-top: 90px; }
+.g-shared > h3:first-child { margin-top: 12px; }
