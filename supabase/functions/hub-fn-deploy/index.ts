@@ -106,7 +106,7 @@ async function audit(who: string, target: string, result: 'ok' | 'error' | 'deni
 function lint(path: string, src: string, own: string, others: string[]): string | null {
   const bad: [RegExp, string][] = [
     [/SERVICE_ROLE/, 'SUPABASE_SERVICE_ROLE_KEY'], [/SUPABASE_SECRET_KEYS/, 'SUPABASE_SECRET_KEYS'], [/SUPABASE_DB_URL/, 'SUPABASE_DB_URL'],
-    [/\bBMR_(?:MGMT|GH)_TOKEN\b/, '허브 토큰'], [/\bHUB_CRON_SECRET\b/, '허브 비밀값'], [/Deno\s*\.\s*env\s*\.\s*toObject/, 'Deno.env.toObject()'],
+    [/\bBMR_(?:MGMT|GH)_TOKEN\b/, '허브 토큰'], [/\bBMR_RESEND_API_KEY\b/, '허브 메일 키'], [/\bRESEND_(?:API|ADMIN)_KEY\b/, 'Resend 키'], [/\bHUB_CRON_SECRET\b/, '허브 비밀값'], [/Deno\s*\.\s*env\s*\.\s*toObject/, 'Deno.env.toObject()'],
   ];
   for (const [re, what] of bad) if (re.test(src)) return `${path}: ${what} 는 앱 함수에서 쓸 수 없습니다.`;
   const rest = src.replaceAll(own, '');

@@ -12,7 +12,7 @@
 // (같은 프로젝트의 다른 앱 함수가 환경변수를 읽어도 토큰을 쓸 수 없게).
 import postgres from 'npm:postgres@3.4.5';
 import { DOMAIN, GH_RE, GitHub, HttpError, Mgmt, names, ORG, REF, Store, type Names } from './guard.ts';
-import { FN_SOURCE, REPO_FILES, SQL_APP, SQL_STARTER } from './templates.ts';
+import { FN_SOURCE, MAIL_SOURCE, REPO_FILES, SQL_APP, SQL_STARTER } from './templates.ts';
 import { PROVISION_KEY } from './_key.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
@@ -302,6 +302,7 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
       const files: Record<string, string> = {};
       for (const [p, t] of Object.entries(REPO_FILES)) files[p] = render(t, rv);
       files[`supabase/functions/${n.fn}/index.ts`] = render(FN_SOURCE, rv);
+      files[`supabase/functions/${n.fn}/mail.ts`] = render(MAIL_SOURCE, rv);
       const tree = await gh.call('POST', `${gh.path}/git/trees`, { tree: Object.entries(files).map(([path, content]) => ({ path, mode: '100644', type: 'blob', content })) });
       if (!tree.ok) throw new HttpError(502, `파일 올리기 실패 (tree ${tree.status})`);
       const cm = await gh.call('POST', `${gh.path}/git/commits`, {

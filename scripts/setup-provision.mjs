@@ -2,7 +2,7 @@
 // hub-provision 준비·배포. 비밀값은 화면·파일·저장소에 남기지 않는다.
 //  1) 열쇠: .secrets/hub-provision.key (이 컴퓨터에만, git 제외). 없으면 새로 만든다 (--rotate-key 로 새로).
 //  2) 비밀값: SUPABASE_ACCESS_TOKEN_DEVAPPS → BMR_MGMT_TOKEN, GITHUB_BMR_APPS_TOKEN → BMR_GH_TOKEN 을 AES-GCM 암호문으로 함수 비밀값에 저장
-//  3) 배포: hub-provision · hub-deprovision · hub-fn-deploy · hub-devtools(개발자 셀프서비스) 함수 파일 + 열쇠 모듈(_key.ts, 배포본에만)을 올린다.
+//  3) 배포: hub-provision · hub-deprovision · hub-fn-deploy · hub-devtools(개발자 셀프서비스) · hub-mail(앱 메일) 함수 파일 + 열쇠 모듈(_key.ts, 배포본에만)을 올린다.
 // 사용: node scripts/setup-provision.mjs [--secrets] [--deploy [--only <함수>]] [--rotate-key]   (인자 없으면 둘 다)
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -18,7 +18,7 @@ const args = new Set(process.argv.slice(2));
 const all = !args.has('--secrets') && !args.has('--deploy');
 const argv = process.argv.slice(2);
 const only = argv.includes('--only') ? argv[argv.indexOf('--only') + 1] : '';
-const KEYED = ['hub-provision', 'hub-deprovision', 'hub-fn-deploy', 'hub-devtools'];
+const KEYED = ['hub-provision', 'hub-deprovision', 'hub-fn-deploy', 'hub-devtools', 'hub-mail'];
 if (only && !KEYED.includes(only)) { console.error(`--only 는 ${KEYED.join(' · ')} 중 하나`); process.exit(1); }
 if (!TOKEN) { console.error('SUPABASE_ACCESS_TOKEN_DEVAPPS 가 없습니다'); process.exit(1); }
 const api = (p, o = {}) => fetch(`https://api.supabase.com/v1/projects/${REF}${p}`, { ...o, headers: { Authorization: `Bearer ${TOKEN}`, ...(o.headers || {}) } });
@@ -40,14 +40,16 @@ function enc(name, value) {
 if (all || args.has('--secrets') || fresh) {
   if (!GH) { console.error('GITHUB_BMR_APPS_TOKEN 이 없습니다'); process.exit(1); }
   const body = [{ name: 'BMR_MGMT_TOKEN', value: enc('BMR_MGMT_TOKEN', TOKEN) }, { name: 'BMR_GH_TOKEN', value: enc('BMR_GH_TOKEN', GH) }];
+  if (process.env.RESEND_API_KEY) body.push({ name: 'BMR_RESEND_API_KEY', value: enc('BMR_RESEND_API_KEY', process.env.RESEND_API_KEY) });
   const r = await api('/secrets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) { console.error('비밀값 저장 실패', r.status); process.exit(1); }
   const names = (await (await api('/secrets')).json()).map((x) => x.name);
-  console.log('함수 비밀값(암호문) 저장:', ['BMR_MGMT_TOKEN', 'BMR_GH_TOKEN'].map((n) => `${n} ${names.includes(n) ? '✓' : '✗'}`).join(', '));
+  const want = body.map((x) => x.name);
+  console.log('함수 비밀값(암호문) 저장:', want.map((n) => `${n} ${names.includes(n) ? '✓' : '✗'}`).join(', '));
 }
 
 if (all || args.has('--deploy') || fresh) {
-  // 같은 열쇠로 네 함수 배포: hub-provision(만들기, 지우기 없음) · hub-deprovision(백업 후 지우기) · hub-fn-deploy(앱 함수 자동 배포) · hub-devtools(비밀값·함수·로그 셀프서비스)
+  // 같은 열쇠로 함수 배포: hub-provision(만들기, 지우기 없음) · hub-deprovision(백업 후 지우기) · hub-fn-deploy(앱 함수 자동 배포) · hub-devtools(비밀값·함수·로그 셀프서비스)
   //   --only <함수> 로 하나만 배포
   for (const fnName of only ? [only] : KEYED) {
     const dir = join(ROOT, 'supabase', 'functions', fnName);

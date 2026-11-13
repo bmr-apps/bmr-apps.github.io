@@ -30,6 +30,7 @@ for (const p of walk(repoDir)) {
 files['index.html'] = readFileSync(join(SRC, 'starter', 'layout.html'), 'utf8');
 if (/GUIDE_HTML|_dev|functions\/v1/.test(files['index.html'])) throw new Error('공개 페이지에 개발 정보가 들어 있습니다');
 const fn = readFileSync(join(SRC, 'starter', 'fn', 'index.ts'), 'utf8');
+const mail = readFileSync(join(SRC, 'starter', 'fn', 'mail.ts'), 'utf8');
 const sql = { app: readFileSync(join(SRC, 'sql', '10_app.sql'), 'utf8'), starter: readFileSync(join(SRC, 'sql', '20_starter.sql'), 'utf8') };
 
 const out = `// 자동 생성 파일 — 고치지 마세요. 원본: bmr-app-templates (node scripts/build-provision-templates.mjs)
@@ -37,6 +38,7 @@ const out = `// 자동 생성 파일 — 고치지 마세요. 원본: bmr-app-te
 export const TEMPLATE_VERSION = 'bmr-app-templates v2';
 export const REPO_FILES: Record<string, string> = ${JSON.stringify(files, null, 0)};
 export const FN_SOURCE: string = ${JSON.stringify(fn)};
+export const MAIL_SOURCE: string = ${JSON.stringify(mail)};
 export const SQL_APP: string = ${JSON.stringify(sql.app)};
 export const SQL_STARTER: string = ${JSON.stringify(sql.starter)};
 `;
