@@ -6,6 +6,7 @@ import { DeleteAppModal } from './DeleteApp';
 import { DbCredSection } from './DbCred';
 import { ChecksSection } from './Checks';
 import { DevInfoSection } from './DevInfo';
+import { SelfServiceSection } from './SelfService';
 
 /** 첫 화면: 누구나 보는 운영 중 앱 바로가기 */
 export function Landing({ ctx }: { ctx: Ctx }) {
@@ -161,6 +162,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
           {ctx.isAdmin && <FnAutoDeploy app={cur} reload={load} />}
           <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} ctx={ctx} reload={load} />
           <DevInfoSection ctx={ctx} appId={cur.id} />
+          <SelfServiceSection ctx={ctx} appId={cur.id} onChanged={load} />
           <DbCredSection ctx={ctx} appId={cur.id} />
           <ChecksSection ctx={ctx} appId={cur.id} appUrl={cur.url} />
           {ctx.isAdmin && <div className="row end">

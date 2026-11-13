@@ -28,12 +28,21 @@ function blocked(what: string, method: string, path: string): never {
 }
 
 export class Mgmt {
-  constructor(private n: Names, private token: string, private otherPrefixes: string[]) {}
+  constructor(private n: Names, private token: string, private otherPrefixes: string[], private otherSlugs: string[] = []) {}
+  /** 개발자가 만든 추가 함수(<slug>-이름)인지 — hub-devtools/rules.ts 의 fnKind 와 같은 규칙 (다른 앱 이름 공간 제외) */
+  isExtraFn(fn: string) {
+    if (fn === this.n.fn || !fn.startsWith(`${this.n.slug}-`)) return false;
+    const suffix = fn.slice(this.n.slug.length + 1);
+    if (!suffix || suffix.length > 20 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(suffix)) return false;
+    return !this.otherSlugs.some((o) => o !== this.n.slug && o.length > this.n.slug.length && (fn === o || fn.startsWith(`${o}-`)));
+  }
   private rules(): [string, RegExp][] {
     const fn = esc(this.n.fn);
     return [
       ['POST', /^\/database\/query$/], ['GET', /^\/secrets$/], ['DELETE', /^\/secrets$/], ['GET', /^\/functions$/],
       ['GET', new RegExp(`^/functions/${fn}$`)], ['GET', new RegExp(`^/functions/${fn}/body$`)], ['DELETE', new RegExp(`^/functions/${fn}$`)],
+      // 추가 함수: 보기·백업·지우기 (call 전에 isExtraFn 으로 한 번 더 확인)
+      ['GET', new RegExp(`^/functions/${esc(this.n.slug)}-[a-z0-9-]+(?:/body)?$`)], ['DELETE', new RegExp(`^/functions/${esc(this.n.slug)}-[a-z0-9-]+$`)],
       ['GET', /^\/postgrest$/], ['PATCH', /^\/postgrest$/],
     ];
   }
@@ -79,6 +88,23 @@ export class Mgmt {
     const r = await this.call('GET', `/functions/${this.n.fn}/body`);
     if (!r.ok) { await r.body?.cancel(); throw new HttpError(502, `함수 본문 내려받기 실패 (${r.status})`); }
     return new Uint8Array(await r.arrayBuffer());
+  }
+  async extraFunctions(): Promise<string[]> {
+    const r = await this.call('GET', '/functions');
+    if (!r.ok) { await r.body?.cancel(); throw new HttpError(502, `함수 목록 실패 (${r.status})`); }
+    return ((await r.json()) as { slug: string }[]).map((f) => f.slug).filter((f) => this.isExtraFn(f));
+  }
+  async extraFunctionBody(fn: string): Promise<Uint8Array> {
+    if (!this.isExtraFn(fn)) blocked('Supabase 관리', 'GET', `/functions/${fn}/body`);
+    const r = await this.call('GET', `/functions/${fn}/body`);
+    if (!r.ok) { await r.body?.cancel(); throw new HttpError(502, `함수 본문 내려받기 실패 (${r.status})`); }
+    return new Uint8Array(await r.arrayBuffer());
+  }
+  async deleteExtraFunction(fn: string) {
+    if (!this.isExtraFn(fn)) blocked('Supabase 관리', 'DELETE', `/functions/${fn}`);
+    const r = await this.call('DELETE', `/functions/${fn}`);
+    await r.body?.cancel();
+    if (!r.ok && r.status !== 404) throw new HttpError(502, `함수 ${fn} 삭제 실패 (${r.status})`);
   }
   async deleteFunction() {
     const r = await this.call('DELETE', `/functions/${this.n.fn}`);

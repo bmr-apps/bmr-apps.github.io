@@ -37,10 +37,11 @@ function useCounts(enabled: boolean, isAdmin: boolean, path: string) {
     if (!enabled) { setC(null); return; }
     let live = true;
     (async () => {
-      const [a, h, r, m] = await Promise.all([
+      const [a, h, r, dr, m] = await Promise.all([
         sb.from('apps').select('id, slug, name, url, status').order('sort').order('name'),
         sb.from('app_health_latest').select('app_id, ok, state'),
         sb.from('app_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        isAdmin ? sb.from('dev_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending') : Promise.resolve(null),
         isAdmin ? sb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'pending') : Promise.resolve(null),
       ]);
       if (!live) return;
@@ -53,7 +54,7 @@ function useCounts(enabled: boolean, isAdmin: boolean, path: string) {
         healthChecking: watched.filter((x) => hl.get(x.id) === 'checking').length,
         healthBad: watched.filter((x) => hl.get(x.id) === 'down').length,
         healthNone: watched.filter((x) => !hl.has(x.id)).length,
-        reqPending: r.count ?? 0,
+        reqPending: (r.count ?? 0) + (dr ? dr.count ?? 0 : 0),
         memPending: m ? m.count ?? 0 : null,
       });
     })();
@@ -155,7 +156,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
     ]],
     ['운영', [
-      { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·승인', show: true, badge: c?.reqPending, tone: 'amber' },
+      { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·개발자 요청 승인', show: true, badge: c?.reqPending, tone: 'amber' },
       { to: '/hub/status', icon: '📡', label: '운영 상태', sub: '매시 자동 점검', show: true, badge: c?.healthBad, tone: 'red' },
     ]],
     ['관리자', [

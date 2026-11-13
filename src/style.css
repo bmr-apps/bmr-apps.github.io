@@ -472,3 +472,17 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
 .g-shared { margin: 0 0 18px; padding: 4px 18px 10px; border: var(--border); border-left-width: 8px; border-left-color: var(--yellow); scroll-margin-top: 90px; }
 .g-shared > h3:first-child { margin-top: 12px; }
 .modal:focus { outline: none; }
+
+/* 개발자 셀프서비스 */
+.selfservice { border-top-color: var(--purple, #7c5cff); }
+table.compact th, table.compact td { padding: 6px 10px; font-size: 13px; }
+.prefixed { display: flex; align-items: center; gap: 4px; }
+.prefixed code { white-space: nowrap; }
+.prefixed input { flex: 1; min-width: 0; text-transform: uppercase; }
+.logs-wrap { max-height: 420px; overflow: auto; border: 1px solid var(--line-soft); }
+table.logs td { vertical-align: top; }
+table.logs .logmsg { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
+table.logs .nowrap { white-space: nowrap; }
+tr.log-bad td { background: var(--bad-soft); }
+tr.log-warn td { background: var(--warn-soft); }
+.muted.small, p.small { font-size: 12.5px; }

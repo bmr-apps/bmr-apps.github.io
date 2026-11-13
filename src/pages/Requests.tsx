@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { Ctx } from '../App';
 import { sb, errMsg, fmtTime, provisionApi, STEP_LABEL, type Request } from '../sb';
 import { Pills } from '../ui';
+import { DevRequestsPanel } from './SelfService';
 
 const ST = { pending: '검토 대기', approved: '승인', rejected: '반려' } as const;
 const blank = { requester_name: '', requester_email: '', app_name: '', slug: '', purpose: '', data_handled: '', has_student_pii: '' as '' | 'yes' | 'no', github_username: '' };
@@ -30,6 +31,7 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
   const others = ctx.isAdmin ? list : mine;
   return (
     <section>
+      <DevRequestsPanel ctx={ctx} />
       <div className="section-head"><h2>📝 새 앱 신청</h2><button className={showForm ? 'ghost' : ''} onClick={() => setShowForm(!showForm)}>{showForm ? '신청서 접기' : '✨ 새 앱 신청하기'}</button></div>
       {msg && <p className="ok" role="status">{msg}</p>}{err && !showForm && <p className="error" role="alert">{err}</p>}
       {showForm && <form className="card form accent" onSubmit={submit}>

@@ -60,8 +60,8 @@ export function DevInfoSection({ ctx, appId }: { ctx: Ctx; appId: number }) {
             <Row k="접속"><code>{d.pool_host}</code> · 포트 <code>5432</code>(세션) / <code>6543</code>(짧은 요청) · DB <code>postgres</code> · 사용자 <code>{d.dev_role}.{d.ref}</code></Row>
             {d.bucket && <Row k="파일 버킷"><code>{d.bucket}</code> <span className="muted">(비공개 · 한글 파일 이름 불가)</span></Row>}
             {d.fn && <Row k="서버 함수"><code>{d.fn}</code> <span className="muted">· 상태 {health || '확인 중…'}</span><br /><code className="wrap-any">{fnUrl}/hello</code></Row>}
-            {d.fn && <Row k="함수 자동 배포">{d.fn_auto_deploy ? <><b>켜짐</b> <span className="muted">· main 에 push 하면 검사 후 <code>{d.fn}</code> 자동 배포 (관리자가 정함)</span></> : <><b>꺼짐</b> <span className="muted">· push 해도 배포되지 않습니다. 배포는 관리자에게 요청하세요 (켜기·끄기는 관리자만)</span></>}</Row>}
-            {d.secret_prefix && <Row k="함수 비밀값"><code>{d.secret_prefix}…</code> <span className="muted">로 시작하는 이름만 (값은 관리자가 넣음)</span></Row>}
+            {d.fn && <Row k="함수 자동 배포">{d.fn_auto_deploy ? <><b>켜짐</b> <span className="muted">· main 에 push 하면 검사 후 <code>{d.fn}</code> 자동 배포 (관리자가 정함)</span></> : <><b>꺼짐</b> <span className="muted">· push 해도 배포되지 않습니다. 아래 '개발자 셀프서비스'에서 켜 달라고 요청하세요 (관리자가 1클릭 승인)</span></>}</Row>}
+            {d.secret_prefix && <Row k="함수 비밀값"><code>{d.secret_prefix}…</code> <span className="muted">로 시작하는 이름만 · 아래 '개발자 셀프서비스'에서 직접 넣고 지움 (값은 다시 볼 수 없음)</span></Row>}
           </dl>
           <h5>1. 내려받고 실행하기</h5>
           <Code>{`git clone ${repo ?? `https://github.com/bmr-apps/${d.slug}`}.git
@@ -87,7 +87,7 @@ const path = \`\${user.id}/\${Date.now()}.png\`;   // 키에 한글·공백 대�
 await supabase.storage.from('${d.bucket}').upload(path, file);`}</Code></>}
           <ul className="devnotes">
             <li><b>화면 배포</b>: <code>main</code> 에 push → GitHub Actions 가 빌드해 {site} 에 올립니다.</li>
-            <li><b>서버 함수</b>: <code>supabase/functions/{d.fn}/</code> 를 고쳐 <code>main</code> 에 push → {d.fn_auto_deploy ? <>검사 후 <code>{d.fn}</code> 가 자동 배포됩니다 (저장소 Actions → 서버 함수 검사·배포)</> : <>자동 배포가 꺼져 있어 관리자에게 배포를 요청하세요</>}.</li>
+            <li><b>서버 함수</b>: <code>supabase/functions/{d.fn}/</code> 를 고쳐 <code>main</code> 에 push → {d.fn_auto_deploy ? <>검사 후 <code>{d.fn}</code> 가 자동 배포됩니다 (저장소 Actions → 서버 함수 검사·배포)</> : <>자동 배포가 꺼져 있어 배포되지 않습니다. 아래에서 켜 달라고 요청하세요</>}. 추가 함수는 <code>supabase/functions/{d.slug}-이름/</code> 폴더로 (3개까지).</li>
             <li><b>자세한 설명</b>: 저장소 <code>README.md</code> · <Link to="/guide">시작 가이드</Link></li>
           </ul>
         </>}

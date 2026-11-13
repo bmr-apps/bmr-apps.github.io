@@ -96,6 +96,28 @@ export async function dbcred<T = unknown>(session: Session, action: string, body
   return j as T;
 }
 
+// ---------- 개발자 셀프서비스 (Edge Function hub-devtools, 담당 개발자·관리자) ----------
+export async function devtools<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-devtools`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token }, body: JSON.stringify({ action, ...body }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw Object.assign(new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`), { status: r.status });
+  return j as T;
+}
+export type DevFn = { id: string; slug: string; version: number; status: string; updated_at: number | string; kind: 'main' | 'extra' };
+export type DevSecret = { name: string; updated_at: string | null; managed: boolean };
+export type DevRequest = { id: number; app_id: number; kind: 'fn_auto_deploy'; note: string; status: 'pending' | 'approved' | 'rejected' | 'canceled'; requested_by: string | null; requested_email: string; requested_name: string; decided_email: string; decision_note: string; decided_at: string | null; created_at: string };
+export type DevInfoRes = {
+  app: { id: number; slug: string; name: string; fn_auto_deploy: boolean; is_owner: boolean }; me: { admin: boolean };
+  secret_prefix: string; schema: string; secrets: DevSecret[]; functions: DevFn[];
+  limits: { extra_fn_max: number; secret_max: number; log_hours: number[] }; db_roles: string[];
+  last_request: { id: number; status: DevRequest['status']; note: string; decision_note: string; requested_name: string; created_at: string } | null;
+};
+export type LogRow = { at: string; source: string; fn?: string; role?: string; level: string; method: string; path: string; status: string; ms: string; code: string; message: string };
+export const DEV_REQ_KIND: Record<DevRequest['kind'], string> = { fn_auto_deploy: '서버 함수 자동 배포 켜기' };
+export const DEV_REQ_STATUS: Record<DevRequest['status'], string> = { pending: '대기 중', approved: '승인', rejected: '반려', canceled: '취소' };
+
 // ---------- 사용자 관리 (Edge Function hub-users, 관리자 전용) ----------
 export type HubUser = {
   id: string; email: string; name: string; role: Role; created_at: string;

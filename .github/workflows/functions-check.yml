@@ -21,7 +21,7 @@ jobs:
           deno-version: v2.x
       - name: 열쇠 자리 채우기 (빈 값)
         working-directory: supabase/functions
-        run: for d in hub-provision hub-deprovision hub-fn-deploy; do cp hub-provision/_key.ts.example "$d/_key.ts"; done
+        run: for d in hub-provision hub-deprovision hub-fn-deploy hub-devtools; do cp hub-provision/_key.ts.example "$d/_key.ts"; done
       - name: 타입 검사
         working-directory: supabase/functions
         run: deno check */index.ts

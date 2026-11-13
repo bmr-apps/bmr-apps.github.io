@@ -85,6 +85,11 @@ async function otherPrefixes(n: Names): Promise<string[]> {
   const rows = await db`select nspname from pg_namespace where obj_description(oid, 'pg_namespace') like 'bmr-app:%' and nspname <> ${n.schema}`;
   return rows.map((r) => String(r.nspname).toUpperCase() + '_');
 }
+async function otherSlugs(n: Names): Promise<string[]> {
+  const rows = await db`select slug from public.apps where slug <> ${n.slug}
+    union select split_part(obj_description(oid, 'pg_namespace'), ':', 2) from pg_namespace where obj_description(oid, 'pg_namespace') like 'bmr-app:%' and nspname <> ${n.schema}`;
+  return rows.map((r) => String(r.slug)).filter(Boolean);
+}
 async function inspect(n: Names, note: string, mgmt: Mgmt, gh: GitHub, store: Store | null): Promise<Inspect> {
   const tag = `bmr-app:${n.slug}:`;
   const [d] = await db`select
@@ -233,11 +238,13 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
       return note(`파일 ${objs.length}개 · ${Math.round(info.bucketBytes / 1024)}KB`);
     }
     case 'backup_fn': {
-      if (!info.fn) return note('서버 함수 없음');
       if (!info.appOurs) return note('앱 표시가 없어 함수를 건드리지 않음');
-      await put(c, 'function/meta.json', JSON.stringify({ meta: await mgmt.functionMeta(), secret_names: info.secrets }, null, 2), 'application/json');
-      await put(c, `function/${n.fn}.eszip`, await mgmt.functionBody(), 'application/octet-stream');
-      return note('함수 정보·배포본(eszip) — 원본 코드는 저장소 zip 에도 있음');
+      const extras = await mgmt.extraFunctions();
+      if (!info.fn && !extras.length) return note('서버 함수 없음');
+      await put(c, 'function/meta.json', JSON.stringify({ meta: info.fn ? await mgmt.functionMeta() : null, extra_functions: extras, secret_names: info.secrets }, null, 2), 'application/json');
+      if (info.fn) await put(c, `function/${n.fn}.eszip`, await mgmt.functionBody(), 'application/octet-stream');
+      for (const x of extras) await put(c, `function/${x}.eszip`, await mgmt.extraFunctionBody(x), 'application/octet-stream');
+      return note(`함수 정보·배포본(eszip)${extras.length ? ` · 추가 함수 ${extras.join(', ')}` : ''} — 원본 코드는 저장소 zip 에도 있음`);
     }
     case 'backup_repo': {
       if (info.repo === 'none') return note('저장소 없음');
@@ -280,9 +287,13 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
     }
     case 'del_fn': {
       if (!info.appOurs) return note('앱 표시가 없어 건너뜀');
-      if (!(await mgmt.functionExists())) return note('서버 함수 없음');
-      await mgmt.deleteFunction();
-      return note(`서버 함수 ${n.fn} 삭제`);
+      const extras = await mgmt.extraFunctions();
+      const main = await mgmt.functionExists();
+      if (!main && !extras.length) return note('서버 함수 없음');
+      for (const x of extras) await mgmt.deleteExtraFunction(x);
+      if (main) await mgmt.deleteFunction();
+      await db`delete from bmr_admin.fn_deploy_state where app_slug = ${n.slug}`;
+      return note(`서버 함수 ${[...(main ? [n.fn] : []), ...extras].join(', ')} 삭제`);
     }
     case 'del_secrets': {
       if (!info.appOurs) return note('앱 표시가 없어 건너뜀');
@@ -345,7 +356,7 @@ async function runDeletion(d: Del, u: Me): Promise<{ more: boolean }> {
   if (!lease) throw new HttpError(409, '다른 앱을 만들거나 지우는 중입니다. 잠시 뒤 다시 시도하세요.');
   const tk = await tokens();
   const c: Ctx = {
-    d: { ...d, steps: { ...(d.steps ?? {}) } }, n, mgmt: new Mgmt(n, tk.mgmt, await otherPrefixes(n)), gh: new GitHub(n.slug, tk.gh),
+    d: { ...d, steps: { ...(d.steps ?? {}) } }, n, mgmt: new Mgmt(n, tk.mgmt, await otherPrefixes(n), await otherSlugs(n)), gh: new GitHub(n.slug, tk.gh),
     store: new Store(n, SB_URL, SERVICE, d.backup_prefix), u, t0: Date.now(), files: new Map((d.backup_files ?? []).map((f) => [f.path, f.size])),
   } as Ctx;
   await db`update public.app_deletions set status = 'running', error = null, lease_until = now() + interval '3 minutes' where id = ${d.id}`;
@@ -408,7 +419,7 @@ Deno.serve(async (req) => {
 
     if (action === 'preview') {
       const a = await appRow(b.app_id); const n = names(a.slug); const tk = await tokens();
-      const info = await inspect(n, String(a.note ?? ''), new Mgmt(n, tk.mgmt, await otherPrefixes(n)), new GitHub(n.slug, tk.gh), new Store(n, SB_URL, SERVICE, `${n.slug}/preview`));
+      const info = await inspect(n, String(a.note ?? ''), new Mgmt(n, tk.mgmt, await otherPrefixes(n), await otherSlugs(n)), new GitHub(n.slug, tk.gh), new Store(n, SB_URL, SERVICE, `${n.slug}/preview`));
       const [active] = await db`select id from public.app_deletions where slug = ${n.slug} and status <> 'done'`;
       return json(req, 200, { ok: true, app: { id: a.id, slug: a.slug, name: a.name }, info, active_deletion: active?.id ?? null, caps: CAP });
     }

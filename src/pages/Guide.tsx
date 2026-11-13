@@ -169,8 +169,26 @@ create policy "멤버만 읽기" on library.books for select to authenticated us
         <h3>배포</h3>
         <ul>
           <li><b>화면</b>: <code>main</code> 브랜치에 push 하면 GitHub Actions 가 빌드해서 1~2분 뒤 앱 주소에 반영합니다. '준비 중' 페이지(<code>index.html</code>)를 내 화면으로 바꾸면 됩니다.</li>
-          <li><b>서버 함수</b>: <code>supabase/functions/&lt;주소 이름&gt;-fn/</code> 을 고쳐 <code>main</code> 에 push 하면, 관리자가 그 앱의 '서버 함수 자동 배포'를 켜 둔 경우에만 검사(<code>deno check</code>) 뒤 그 앱의 <code>&lt;주소 이름&gt;-fn</code> 하나가 자동으로 배포됩니다(1~2분, 결과는 저장소 Actions 의 Summary). 꺼져 있으면 관리자에게 배포를 요청하세요. 켜졌는지는 내 서비스 → 앱 정보 → 개발 정보에서 볼 수 있습니다. 저장소에 비밀값은 필요 없습니다. 함수 비밀값 넣기와 다른 이름의 새 함수 배포는 관리자에게 요청하고, 비밀값은 이름만 알려 준 뒤 값은 안전하게 전달하세요.</li>
+          <li><b>서버 함수</b>: <code>supabase/functions/&lt;주소 이름&gt;-fn/</code> 을 고쳐 <code>main</code> 에 push 하면, 그 앱의 '서버 함수 자동 배포'가 켜져 있을 때 검사(<code>deno check</code>) 뒤 자동으로 배포됩니다(1~2분, 결과는 저장소 Actions 의 Summary). 저장소에 비밀값은 필요 없습니다.</li>
         </ul>
+        <div id="selfservice" className="g-google">
+          <h3>🧰 개발자 셀프서비스 (관리자에게 부탁하지 않고 직접)</h3>
+          <p>내 서비스 → 앱 정보 창 아래 <b>개발자 셀프서비스</b>에서 담당 개발자가 직접 합니다. 서버가 '이 앱 담당 개발자(또는 관리자)인지'와 '이 앱 몫인지'를 확인하고, 모든 변경은 감사 기록에 남습니다.</p>
+          <ul>
+            <li><b>자동 배포 켜 달라고 요청</b>: 꺼져 있으면 <b>🙋 자동 배포 켜 달라고 요청</b>을 누르세요. 관리자가 1클릭으로 승인하면 바로 켜집니다. 켜고 끄기 자체는 관리자만 합니다.</li>
+            <li><b>함수 비밀값</b>: 이름은 <code>&lt;접두어&gt;_</code>(예: <code>LIBRARY_</code>, <code>my-app</code> 이면 <code>MY_APP_</code>)로 시작해야 합니다. 값은 <b>쓰기 전용</b> — 저장하면 다시 볼 수 없고, 감사 기록에도 이름만 남습니다. <code>SUPABASE_</code>·<code>BMR_</code>·<code>HUB_</code> 로 시작하는 이름과 허브가 관리하는 <code>&lt;접두어&gt;_DB_URL</code> 은 쓸 수 없어요. 함수에서는 <code>{"Deno.env.get('LIBRARY_API_KEY')"}</code> 로 읽습니다.</li>
+            <li><b>새 서버 함수</b>: 저장소에 <code>supabase/functions/&lt;주소 이름&gt;-이름/index.ts</code>(예: <code>library-export</code>)를 만들고 <code>main</code> 에 push 하면 자동 배포가 켜진 앱에서는 새 함수가 만들어집니다. 이름 끝부분은 영문 소문자·숫자(하이픈으로 이음) 20자까지, <b>앱마다 3개까지</b>. push 때는 바뀐 함수만 배포하고, Actions 에서 수동 실행하면 모두 다시 배포합니다. 안 쓰는 함수는 셀프서비스에서 지우고 저장소 폴더도 지우세요.</li>
+            <li><b>로그 보기</b>: 서버 함수(콘솔 출력·요청 결과)와 내 DB 계정(<code>&lt;스키마&gt;_dev</code>, <code>&lt;스키마&gt;_fn</code>) 로그를 최근 1·6·24시간 범위로 봅니다. <b>이 앱 것만</b> 보이고, 비밀값처럼 보이는 글자는 가려집니다. 그래도 로그에 학생 개인정보·비밀값을 찍지 마세요.</li>
+          </ul>
+          <C>{`// supabase/functions/library-export/index.ts  (새 함수 예시)
+Deno.serve(async (req) => {
+  const key = Deno.env.get('LIBRARY_API_KEY');   // 셀프서비스에서 넣은 비밀값
+  if (!key) return new Response('비밀값 없음', { status: 500 });
+  console.log('export 요청', new URL(req.url).pathname);   // 로그 보기에 나옴 (값은 찍지 않기)
+  return Response.json({ ok: true });
+});`}</C>
+          <p className="muted">공용 프로젝트라서 자동 배포가 켜진 다른 앱의 함수 코드도 이론상 모든 비밀값을 읽을 수 있습니다. 학교 전체에 중요한 키는 관리자와 먼저 상의하세요. 다른 로그인 방법·돌아올 주소 추가·버킷 정책 같은 것은 아직 관리자에게 요청합니다.</p>
+        </div>
         <p className="muted">더 자세한 설명(로그인, 정책 예시, 함수 예제)은 저장소의 <code>README.md</code> 에 있습니다.</p>
       </Step>
 
