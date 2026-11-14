@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 
 // GitHub Pages는 응답 헤더를 못 바꾸므로 CSP를 meta 태그로 넣는다 (개발 서버는 React 새로고침용 인라인 스크립트가 있어 빌드에만 적용).
 const cspFor = (SB: string) => [
-  "default-src 'self'", "script-src 'self'", "style-src 'self'", "img-src 'self' data:", "font-src 'self'",
+  "default-src 'self'", "script-src 'self'", "style-src 'self'", `img-src 'self' data: blob: ${SB}/storage/v1/object/public/hub-assets/`, "font-src 'self'",
   `connect-src 'self' ${SB} ${SB.replace('https://', 'wss://')}`, "base-uri 'self'", "form-action 'self'", "object-src 'none'",
 ].join('; ');
 const csp = (CSP: string): Plugin => ({
