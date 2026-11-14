@@ -6,7 +6,7 @@
 //       ANTHROPIC_API_KEY → BMR_ANTHROPIC_API_KEY (sk-ant-…)
 //       XAI_API_KEY → BMR_XAI_API_KEY         (xai-…)
 //  2) 마이그레이션(20261115100000_hub_ai) 적용·확인
-//  3) hub-ai 함수 배포 (열쇠는 업로드하는 index.ts 의 빈 자리에만 채운다 — 저장소에는 빈 값)
+//  3) hub-ai 함수 배포 (열쇠 모듈 _key.ts 는 배포본에만 — 다른 키 함수와 같음)
 //  4) --test 이면 배포 확인(/health)과 이번에 준 키로 업체에 짧은 시험 호출
 // 사용: node scripts/setup-ai.mjs [--secrets] [--migrate] [--deploy] [--test]
 //       (인자 없으면 --secrets --migrate --deploy)
@@ -30,7 +30,7 @@ const doTest = args.has('--test');
 
 /** 환경변수 이름 → 함수 비밀값 이름 */
 const PROVIDERS = [
-  ['gemini', 'GEMINI_API_KEY', 'BMR_GEMINI_API_KEY', 'Gemini', 'gemini-2.5-flash'],
+  ['gemini', 'GEMINI_API_KEY', 'BMR_GEMINI_API_KEY', 'Gemini', 'gemini-3.8-flash'],
   ['openai', 'OPENAI_API_KEY', 'BMR_OPENAI_API_KEY', 'OpenAI', 'gpt-4o-mini'],
   ['anthropic', 'ANTHROPIC_API_KEY', 'BMR_ANTHROPIC_API_KEY', 'Claude', 'claude-3-5-haiku-latest'],
   ['xai', 'XAI_API_KEY', 'BMR_XAI_API_KEY', 'Grok', 'grok-3-mini'],
@@ -51,9 +51,9 @@ function enc(name, value) {
 }
 
 /** 준 키만 (평문은 메모리에서만, 출력·파일로 남기지 않음) */
-const provided = PROVIDERS.map(([id, env, secret, label]) => {
+const provided = PROVIDERS.map(([id, env, secret, label, model]) => {
   const raw = (process.env[env] || process.env[secret] || '').trim();
-  return { id, env, secret, label, value: raw };
+  return { id, env, secret, label, model, value: raw };
 }).filter((p) => p.value);
 
 if (doSecrets) {
@@ -89,16 +89,11 @@ if (doMigrate) {
 
 if (doDeploy) {
   const dir = join(ROOT, 'supabase', 'functions', 'hub-ai');
-  // 열쇠는 별도 모듈(_key.ts) 대신 index.ts 안의 빈 자리에 채워 올린다 (저장소에는 빈 값만, 검사 워크플로는 그것으로 통과).
-  const PLACEHOLDER = "const PROVISION_KEY = '';";
-  const keyed = readFileSync(join(dir, 'index.ts'), 'utf8').replace(PLACEHOLDER, `const PROVISION_KEY = '${key.toString('base64')}';`);
-  if (!keyed.includes(`const PROVISION_KEY = '${key.toString('base64')}';`)) { console.error(`index.ts 에서 열쇠 자리(${PLACEHOLDER})를 찾지 못했습니다`); process.exit(1); }
+  // 열쇠는 배포본 _key.ts 에만 넣는다 (저장소·검사 워크플로에는 빈 예시만). setup-provision.mjs 와 같다.
   const fd = new FormData();
   fd.append('metadata', JSON.stringify({ entrypoint_path: 'index.ts', name: 'hub-ai', verify_jwt: false }));
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.ts') || f === '_key.ts') continue;
-    fd.append('file', new Blob([f === 'index.ts' ? keyed : readFileSync(join(dir, f))]), f);
-  }
+  for (const f of readdirSync(dir)) if (f.endsWith('.ts') && f !== '_key.ts') fd.append('file', new Blob([readFileSync(join(dir, f))]), f);
+  fd.append('file', new Blob([`export const PROVISION_KEY = '${key.toString('base64')}';\n`]), '_key.ts');
   const r = await api(`/functions/deploy?slug=hub-ai`, { method: 'POST', body: fd });
   if (!r.ok) { console.error('hub-ai 배포 실패', r.status, (await r.text()).slice(0, 600)); process.exit(1); }
   console.log('함수 hub-ai 배포 완료');

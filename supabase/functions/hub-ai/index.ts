@@ -5,18 +5,17 @@
 // 정하는 것: 업체 키는 허브만 갖고(암호문 BMR_*_API_KEY), 앱은 이 앱 신분만 증명한다.
 //            모델은 학교 전체(또는 이 앱) 허용 목록 안에서만, 요청·토큰 수는 앱별·학교 전체 한도 안에서만.
 // 남기는 것: 업체·모델·토큰 수·결과·오류만 (bmr_admin.ai_log). 프롬프트와 응답 본문은 남기지 않는다.
-// 업체 키를 푸는 열쇠(PROVISION_KEY)는 이 파일에 들어 있다. 저장소에는 빈 값이고, 배포할 때
-// scripts/setup-ai.mjs 가 .secrets/hub-provision.key 의 값을 아래 자리에만 채워 올린다 (다른 함수는 읽을 수 없음).
-// 열쇠 없이 배포되면(예: deploy-fn.mjs) 함수가 아예 뜨지 않게 아래에서 막는다 — 조용히 503 만 돌려주는 것보다 낫다.
+// 업체 키(BMR_*_API_KEY)는 암호문이며 푸는 열쇠는 이 함수 배포본(_key.ts)에만 있다.
+// 저장소에는 _key.ts 가 없고, scripts/setup-provision.mjs 또는 scripts/setup-ai.mjs 가 배포할 때만 넣는다.
+// 열쇠 없이 배포되면(예: 일반 CLI) 함수가 아예 뜨지 않게 아래에서 막는다.
 import postgres from 'npm:postgres@3.4.5';
+import { PROVISION_KEY } from './_key.ts';
 import {
   AI_DEFAULTS, MAX_CHARS, MAX_MESSAGES, MAX_TOKENS_CAP, PROVIDER_LABEL, PROVIDERS, type Provider, type Ask,
   parseModelSpec, effectiveModels, limitOf, modelAllowed, normalizeAsk,
 } from './models.ts';
 
-/** 배포할 때 setup-ai.mjs 가 이 자리에 열쇠(base64 32바이트)를 채운다. 저장소에는 빈 문자열 */
-const PROVISION_KEY = '';
-if (!PROVISION_KEY) throw new Error('hub-ai: 열쇠가 없습니다 — node scripts/setup-ai.mjs --deploy 로 배포하세요');
+if (!PROVISION_KEY) throw new Error('hub-ai: 열쇠가 없습니다 — node scripts/setup-provision.mjs --deploy --only hub-ai 또는 node scripts/setup-ai.mjs --deploy 로 배포하세요');
 
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;

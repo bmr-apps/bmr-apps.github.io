@@ -492,7 +492,7 @@ node scripts/deploy-fn.mjs hub-checks
 
 **이렇게 되어 있습니다**
 
-- 관리 토큰·GitHub 토큰·메일 키·**AI 업체 키**는 **AES-GCM 암호문**으로 함수 비밀값에 있고, 푸는 열쇠는 `hub-provision`·`hub-deprovision`·`hub-fn-deploy`·`hub-devtools`·`hub-mail` 배포본의 `_key.ts` 와 `hub-ai` 배포본 `index.ts` 안에만 있습니다(저장소에는 빈 자리만). 같은 프로젝트의 다른 함수가 환경변수를 읽어도 이 토큰들은 쓸 수 없습니다.
+- 관리 토큰·GitHub 토큰·메일 키·**AI 업체 키**는 **AES-GCM 암호문**으로 함수 비밀값에 있고, 푸는 열쇠는 `hub-provision`·`hub-deprovision`·`hub-fn-deploy`·`hub-devtools`·`hub-mail`·`hub-ai` 배포본의 `_key.ts` 안에만 있습니다(저장소에는 없습니다). 같은 프로젝트의 다른 함수가 환경변수를 읽어도 이 토큰들은 쓸 수 없습니다.
 - **DB 비밀번호**는 화면에 한 번만 보이고 서버 사본은 그 순간 지워집니다. 발급·재발급 기록은 남기되 값은 남기지 않습니다.
 - **함수 비밀값**은 쓰기 전용입니다(값을 다시 보여 주지 않고, 감사 기록엔 이름만).
 - 브라우저에는 **공개(anon/publishable) 키만** 둡니다. `VITE_` 로 시작하는 값은 모두 공개됩니다.

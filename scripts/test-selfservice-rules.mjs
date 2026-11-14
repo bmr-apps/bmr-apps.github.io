@@ -134,12 +134,12 @@ const devtoolsSrc = readFileSync(new URL('../supabase/functions/hub-devtools/ind
 ok(devtoolsSrc.includes("'bmrai_' + ") && devtoolsSrc.includes('ai_status') && devtoolsSrc.includes('ai_token_issue') && devtoolsSrc.includes('ai_settings_update'), 'hub-devtools: AI 세 동작 + bmrai_ 토큰 발급');
 const provSrc = readFileSync(new URL('../supabase/functions/hub-provision/index.ts', import.meta.url), 'utf8');ok(provSrc.includes("'ai'") && provSrc.includes("'bmrai_' + ") && provSrc.includes('ai_result'), 'hub-provision: 새 앱 승인 때 AI 토큰 자동 발급 단계');
 ok(provSrc.indexOf("'mail', 'ai'") > 0, 'hub-provision: AI 단계는 메일 단계 바로 뒤', provSrc.slice(provSrc.indexOf('export const STEPS'), provSrc.indexOf('export const STEPS') + 200));
-// hub-ai 는 _key.ts 모듈을 두지 않는다: 저장소에는 빈 자리만 두고 setup-ai 가 배포할 때만 채운다 (검사 워크플로가 _key.ts 없이 통과해야 함)
+// hub-ai 도 다른 키 함수처럼 _key.ts 에서 열쇠를 가져온다 (저장소에는 없고, 배포 스크립트가 배포본에만 넣음)
 const keyed = readFileSync(new URL('../supabase/functions/hub-ai/index.ts', import.meta.url), 'utf8');
-ok(!keyed.includes("from './_key.ts'"), 'hub-ai: _key.ts 모듈을 import 하지 않음 (검사 워크플로가 _key.ts 없이 통과)');
-ok(keyed.includes("const PROVISION_KEY = '';") && !/(?:const|let)\s+PROVISION_KEY\s*=\s*'[A-Za-z0-9+/=]{20,}'/.test(keyed), 'hub-ai: 열쇠는 빈 자리로만 저장소에 있음 (진짜 열쇠는 배포할 때만)');
+ok(keyed.includes("from './_key.ts'"), 'hub-ai: _key.ts 모듈에서 열쇠를 가져옴');
+ok(!/(?:const|let)\s+PROVISION_KEY\s*=\s*'[A-Za-z0-9+/=]{20,}'/.test(keyed), 'hub-ai: 저장소 코드에 진짜 열쇠가 없음');
 const setupAi = readFileSync(new URL('./setup-ai.mjs', import.meta.url), 'utf8');
-ok(setupAi.includes("const PLACEHOLDER = \"const PROVISION_KEY = '';\";") && setupAi.includes('PROVISION_KEY = \'${key.toString(\'base64\')}\';'), 'setup-ai.mjs: 배포할 때 index.ts 의 빈 자리에 열쇠를 채움');
+ok(setupAi.includes("export const PROVISION_KEY = '${key.toString('base64')}';") && setupAi.includes("'_key.ts'"), 'setup-ai.mjs: 배포할 때 _key.ts 에 열쇠를 넣음');
 ok(setupAi.includes('MIGRATION_VERSION = \'20261115100000\'') && setupAi.includes('hub-ai'), 'setup-ai.mjs: AI 마이그레이션 확인 + hub-ai 배포');
 
 console.log('[AI 요청 검사]');
