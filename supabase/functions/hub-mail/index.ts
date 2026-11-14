@@ -15,7 +15,7 @@ const ORIGINS = [HUB, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://
 const FROM_EMAIL = 'bmrapps@bmrschool.org';
 const SMTP_HOST = 'smtp.gmail.com';
 const SMTP_PORT = 465;
-const LIMIT = { perAppHour: 100, perAppDay: 500, globalDay: 1500, maxTo: 50, maxSubject: 200, maxBody: 100_000, maxName: 80 };
+const LIMIT = { perAppHour: 100, perAppDay: 500, globalDay: 1500, globalRecipientsDay: 8000, maxTo: 50, maxSubject: 200, maxBody: 100_000, maxName: 80 };
 const db = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
 if (new URL(SB_URL).hostname.split('.')[0] !== REF) throw new Error('hub-mail: 다른 프로젝트에서는 실행하지 않습니다');
 
@@ -137,15 +137,20 @@ async function appForUser(u: { id: string; email: string; role: string }, slug: 
   return { id: Number(a.id), slug: String(a.slug), name: String(a.name), status: String(a.status) };
 }
 
-async function rateCheck(appId: number): Promise<string | null> {
+async function rateCheck(appId: number, addRecipients: number): Promise<string | null> {
   const [c] = await db`select
       count(*) filter (where status = 'sent') as global_day,
       count(*) filter (where status = 'sent' and app_id = ${appId}) as app_day,
-      count(*) filter (where status = 'sent' and app_id = ${appId} and at > now() - interval '1 hour') as app_hour
+      count(*) filter (where status = 'sent' and app_id = ${appId} and at > now() - interval '1 hour') as app_hour,
+      coalesce(sum(recipient_count) filter (where status = 'sent'), 0) as global_recipients_day
     from bmr_admin.mail_log where at > now() - interval '1 day'`;
   if (Number(c.global_day) >= LIMIT.globalDay) return `학교 전체 하루 발송 한도(${LIMIT.globalDay}통)에 닿았습니다. 내일 다시 시도하세요.`;
   if (Number(c.app_day) >= LIMIT.perAppDay) return `이 앱은 하루에 ${LIMIT.perAppDay}통까지만 보낼 수 있습니다. 내일 다시 시도하세요.`;
   if (Number(c.app_hour) >= LIMIT.perAppHour) return `이 앱은 한 시간에 ${LIMIT.perAppHour}통까지만 보낼 수 있습니다. 잠시 뒤 다시 시도하세요.`;
+  const used = Number(c.global_recipients_day);
+  if (used + addRecipients > LIMIT.globalRecipientsDay) {
+    return `학교 전체 하루 받는 사람 한도(${LIMIT.globalRecipientsDay}명)를 넘습니다. 최근 24시간에 이미 ${used}명에게 보냈고, 이번 메일은 ${addRecipients}명이라 합치면 한도를 넘습니다. 내일 다시 시도하세요.`;
+  }
   return null;
 }
 
@@ -388,7 +393,7 @@ Deno.serve(async (req) => {
     const fromHeader = `${encodeHeader(fromName)} <${FROM_EMAIL}>`;
     const from = `${fromName} <${FROM_EMAIL}>`;
 
-    const limited = await rateCheck(app.id);
+    const limited = await rateCheck(app.id, toCount);
     if (limited) {
       await mailLog(app, toCount, subject, 'denied', limited, '', actor.email);
       await audit(actor, 'mail:send', app.slug, 'denied', `한도 · 받는 사람 ${toCount} · ${subject}`);

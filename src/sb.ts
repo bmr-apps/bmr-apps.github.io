@@ -129,8 +129,8 @@ export type DevMailRes = {
   has_secret: boolean; has_token_hash: boolean; set_at: string | null;
   state: 'active' | 'none' | 'mismatch';
   can_issue: boolean;
-  limits: { perAppHour: number; perAppDay: number; globalDay: number; maxTo: number };
-  counts: { app_24h: number; app_hour: number; global_24h: number; app_today: number };
+  limits: { perAppHour: number; perAppDay: number; globalDay: number; globalRecipientsDay: number; maxTo: number };
+  counts: { app_24h: number; app_hour: number; global_24h: number; app_today: number; global_recipients_24h: number };
   recent_logs: DevMailLog[];
 };
 export const DEV_REQ_KIND: Record<DevRequest['kind'], string> = { fn_auto_deploy: '서버 함수 자동 배포 켜기' };

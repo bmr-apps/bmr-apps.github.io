@@ -73,7 +73,8 @@ ok(R.secretNameProblem('zz-a', R.mailSecretOf('zz-a-b'), ALL) !== null, '다른 
 ok(R.mailAddressOf('class-designer') === 'bmrapps@bmrschool.org', '보내는 주소 = bmrapps@bmrschool.org', R.mailAddressOf('class-designer'));
 ok(R.mailState(true, true) === 'active' && R.mailState(false, false) === 'none' && R.mailState(true, false) === 'mismatch' && R.mailState(false, true) === 'mismatch', '상태: 활성(둘 다) · 미발급(둘 다 없음) · 불일치(한쪽만)');
 const hubMail = readFileSync(new URL('../supabase/functions/hub-mail/index.ts', import.meta.url), 'utf8');
-ok(['perAppHour', 'perAppDay', 'globalDay', 'maxTo'].every((k) => hubMail.includes(`${k}: ${R.MAIL_LIMITS[k]}`)), `hub-mail 한도 = MAIL_LIMITS (${JSON.stringify(R.MAIL_LIMITS)})`);
+ok(['perAppHour', 'perAppDay', 'globalDay', 'globalRecipientsDay', 'maxTo'].every((k) => hubMail.includes(`${k}: ${R.MAIL_LIMITS[k]}`)), `hub-mail 한도 = MAIL_LIMITS (${JSON.stringify(R.MAIL_LIMITS)})`);
+ok(hubMail.includes('sum(recipient_count)') && hubMail.includes('global_recipients_day') && hubMail.includes('used + addRecipients > LIMIT.globalRecipientsDay'), '학교 전체 받는 사람 한도는 보낸 메일의 recipient_count 합 + 이번 수신자 수가 8,000을 넘으면 거절');
 
 console.log('[비밀값 가리기]');
 const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4eHh4eHh4eCJ9.c2lnbmF0dXJlc2lnbmF0dXJl';

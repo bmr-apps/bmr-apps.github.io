@@ -163,9 +163,9 @@ function Mail({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
           {state === 'none' && <p className="muted small" style={{ margin: '6px 0 0' }}>아직 토큰이 없습니다. 발급하면 새 앱은 바로 메일을 보낼 수 있습니다.</p>}
           {state === 'active' && <p className="muted small" style={{ margin: '6px 0 0' }}>보낼 준비가 됐습니다. 앱 서버 함수에서 <code>{`Deno.env.get('${m.secret_name}')`}</code> 으로 토큰을 읽어 <code>hub-mail</code> 을 부릅니다.</p>}
           <p className="small" style={{ margin: '10px 0 2px' }}>
-            오늘 <b>{m.counts.app_today}</b>통 · 최근 1시간 <b>{m.counts.app_hour}</b>/{m.limits.perAppHour}통 · 이 앱 24시간 <b>{m.counts.app_24h}</b>/{m.limits.perAppDay}통 · 학교 전체 24시간 <b>{m.counts.global_24h}</b>/{m.limits.globalDay}통
+            오늘 <b>{m.counts.app_today}</b>통 · 최근 1시간 <b>{m.counts.app_hour}</b>/{m.limits.perAppHour}통 · 이 앱 24시간 <b>{m.counts.app_24h}</b>/{m.limits.perAppDay}통 · 학교 전체 24시간 <b>{m.counts.global_24h}</b>/{m.limits.globalDay}통 · 받는 사람 <b>{m.counts.global_recipients_24h}</b>/{m.limits.globalRecipientsDay}명
           </p>
-          <p className="muted small" style={{ margin: '0 0 8px' }}>한도는 최근 24시간·최근 1시간으로 세고(달력 날짜와 조금 다름), 한 통에 받는 사람 {m.limits.maxTo}명까지입니다. 학교 전체 한도는 모든 앱이 나눠 씁니다.</p>
+          <p className="muted small" style={{ margin: '0 0 8px' }}>한도는 최근 24시간·최근 1시간으로 세고(달력 날짜와 조금 다름), 한 통에 받는 사람 {m.limits.maxTo}명까지입니다. 학교 전체 한도(1,500통·받는 사람 8,000명)는 모든 앱이 나눠 씁니다.</p>
           <p className="small" style={{ margin: '0 0 4px' }}><b>최근 보낸 메일</b> <span className="muted">· 본문은 남기지 않습니다</span></p>
           {m.recent_logs.length === 0 ? <p className="muted small" style={{ margin: 0 }}>아직 보낸 메일이 없습니다.</p> : (
             <div className="logs-wrap"><table className="compact"><thead><tr><th>시각 (KST)</th><th>제목</th><th>수신자</th><th>상태</th><th>오류</th></tr></thead><tbody>

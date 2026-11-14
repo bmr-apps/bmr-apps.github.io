@@ -25,7 +25,7 @@ export const mailSecretOf = (slug: string) => `${prefixOf(slug)}MAIL_TOKEN`;
 export const MAIL_FROM_ADDRESS = 'bmrapps@bmrschool.org';
 export const mailAddressOf = (_slug: string) => MAIL_FROM_ADDRESS;
 /** hub-mail 의 한도와 같은 값 — 화면에 보여 줄 때 쓴다 (실제 판정은 hub-mail 이 한다) */
-export const MAIL_LIMITS = { perAppHour: 100, perAppDay: 500, globalDay: 1500, maxTo: 50 } as const;
+export const MAIL_LIMITS = { perAppHour: 100, perAppDay: 500, globalDay: 1500, globalRecipientsDay: 8000, maxTo: 50 } as const;
 /**
  * 메일 상태: 활성 = 해시와 비밀값이 둘 다 있음 · 미발급 = 둘 다 없음 · 불일치 = 한쪽만 있어 토큰이 맞지 않음(재발급 필요)
  */

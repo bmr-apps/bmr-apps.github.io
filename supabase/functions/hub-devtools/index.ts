@@ -210,7 +210,8 @@ Deno.serve(async (req) => {
         const [c] = await db`select
             count(*) filter (where status = 'sent' and app_id = ${a.id}) as app_24h,
             count(*) filter (where status = 'sent' and app_id = ${a.id} and at > now() - interval '1 hour') as app_hour,
-            count(*) filter (where status = 'sent') as global_24h
+            count(*) filter (where status = 'sent') as global_24h,
+            coalesce(sum(recipient_count) filter (where status = 'sent'), 0) as global_recipients_24h
           from bmr_admin.mail_log where at > now() - interval '24 hours'`;
         const [td] = await db`select count(*) as n from bmr_admin.mail_log
           where status = 'sent' and app_id = ${a.id}
@@ -237,6 +238,7 @@ Deno.serve(async (req) => {
         counts: {
           app_24h: Number(d.c?.app_24h ?? 0), app_hour: Number(d.c?.app_hour ?? 0),
           global_24h: Number(d.c?.global_24h ?? 0), app_today: Number(d.td?.n ?? 0),
+          global_recipients_24h: Number(d.c?.global_recipients_24h ?? 0),
         },
         recent_logs: d.rows.map((x) => ({
           at: x.at, recipient_count: Number(x.recipient_count ?? 0), subject: txt(x.subject, 200),
