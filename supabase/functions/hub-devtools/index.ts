@@ -203,29 +203,42 @@ Deno.serve(async (req) => {
       const secretName = mailSecretOf(a.slug);
       const secrets = await appSecrets(sb, a.slug);
       const has_secret = secrets.some((s) => s.name === secretName);
-      const [t] = await db`select set_at from bmr_admin.mail_tokens where app_id = ${a.id}`;
-      const has_token_hash = !!t;
-      // hub-mail 과 같은 기준: 한도는 '최근 24시간'·'최근 1시간'으로 센다 (달력 날짜 아님)
-      const [c] = await db`select
-          count(*) filter (where status = 'sent' and app_id = ${a.id}) as app_24h,
-          count(*) filter (where status = 'sent' and app_id = ${a.id} and at > now() - interval '1 hour') as app_hour,
-          count(*) filter (where status = 'sent') as global_24h
-        from bmr_admin.mail_log where at > now() - interval '24 hours'`;
-      const [td] = await db`select count(*) as n from bmr_admin.mail_log
-        where status = 'sent' and app_id = ${a.id}
-          and at >= (date_trunc('day', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul')`;
-      // 본문은 애초에 남기지 않는다. 제목·건수·결과·오류만
-      const rows = await db`select at, recipient_count, subject, status, error, actor from bmr_admin.mail_log
-        where app_id = ${a.id} order by at desc limit ${MAIL_LOG_ROWS}`;
+      // 발급 기록·발송 기록 표(마이그레이션 20261114100000_hub_mail)를 읽는다
+      const read = async () => {
+        const [t] = await db`select set_at from bmr_admin.mail_tokens where app_id = ${a.id}`;
+        // hub-mail 과 같은 기준: 한도는 '최근 24시간'·'최근 1시간'으로 센다 (달력 날짜 아님)
+        const [c] = await db`select
+            count(*) filter (where status = 'sent' and app_id = ${a.id}) as app_24h,
+            count(*) filter (where status = 'sent' and app_id = ${a.id} and at > now() - interval '1 hour') as app_hour,
+            count(*) filter (where status = 'sent') as global_24h
+          from bmr_admin.mail_log where at > now() - interval '24 hours'`;
+        const [td] = await db`select count(*) as n from bmr_admin.mail_log
+          where status = 'sent' and app_id = ${a.id}
+            and at >= (date_trunc('day', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul')`;
+        // 본문은 애초에 남기지 않는다. 제목·건수·결과·오류만
+        const rows = await db`select at, recipient_count, subject, status, error, actor from bmr_admin.mail_log
+          where app_id = ${a.id} order by at desc limit ${MAIL_LOG_ROWS}`;
+        return { t, c, td, rows };
+      };
+      let d: Awaited<ReturnType<typeof read>>;
+      try { d = await read(); }
+      catch (e) {
+        console.error('hub-devtools mail_status', String((e as Error)?.message ?? e).slice(0, 200));
+        return json(req, 503, { error: '메일 발급·발송 기록 표를 읽지 못했습니다. 메일 DB 준비(마이그레이션)가 안 됐을 수 있습니다. 관리자에게 알려 주세요.' });
+      }
+      const has_token_hash = !!d.t;
       const txt = (v: unknown, n: number) => String(v ?? '').slice(0, n);
       return json(req, 200, {
         app: { id: a.id, slug: a.slug, name: a.name },
         address: mailAddressOf(a.slug), secret_name: secretName,
-        has_secret, has_token_hash, set_at: t?.set_at ?? null, state: mailState(has_token_hash, has_secret),
+        has_secret, has_token_hash, set_at: d.t?.set_at ?? null, state: mailState(has_token_hash, has_secret),
         can_issue: u.admin || a.is_owner,
         limits: MAIL_LIMITS,
-        counts: { app_24h: Number(c?.app_24h ?? 0), app_hour: Number(c?.app_hour ?? 0), global_24h: Number(c?.global_24h ?? 0), app_today: Number(td?.n ?? 0) },
-        recent_logs: rows.map((x) => ({
+        counts: {
+          app_24h: Number(d.c?.app_24h ?? 0), app_hour: Number(d.c?.app_hour ?? 0),
+          global_24h: Number(d.c?.global_24h ?? 0), app_today: Number(d.td?.n ?? 0),
+        },
+        recent_logs: d.rows.map((x) => ({
           at: x.at, recipient_count: Number(x.recipient_count ?? 0), subject: txt(x.subject, 200),
           status: String(x.status ?? ''), error: txt(x.error, 500), actor: txt(x.actor, 200),
         })),
@@ -267,7 +280,12 @@ Deno.serve(async (req) => {
       if (dbErr) {
         console.error('hub-devtools mail_tokens', dbErr);
         await audit(u, a.slug, 'mail:token_issue', 'error', `${secretName} · 해시 저장 실패 (다시 발급 필요)`);
-        return json(req, 502, { error: '토큰은 넣었지만 해시를 남기지 못했습니다. 화면에서 한 번 더 발급해 주세요.' });
+        const missing = /does not exist|mail_tokens/i.test(dbErr);
+        return json(req, 502, {
+          error: missing
+            ? '메일 기록 표(마이그레이션)가 없어 토큰을 등록하지 못했습니다. 관리자에게 알려 주세요. 지금은 메일이 나가지 않습니다.'
+            : '토큰은 넣었지만 해시를 남기지 못했습니다. 화면에서 한 번 더 발급해 주세요.',
+        });
       }
       const [t] = await db`select set_at from bmr_admin.mail_tokens where app_id = ${a.id}`;
       await audit(u, a.slug, 'mail:token_issue', 'ok', `${secretName} · 새로 발급 (토큰 값은 기록하지 않음)`);
