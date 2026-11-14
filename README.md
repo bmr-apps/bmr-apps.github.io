@@ -241,9 +241,9 @@ await supabase.auth.signOut({ scope: 'local' });   // 이 앱에서만 (그냥 s
 
 ### 3-13. 메일 보내기
 
-앱이 알림·안내 메일을 보낼 때는 **서버 함수 안에서** 허브의 `hub-mail` 을 부릅니다. **보내는 주소는 허브가 정합니다** — `library@mail.bmrschool.net` (표시 이름만 앱이 정할 수 있음). Resend 키는 앱이 갖지 않고, 함수 비밀값 `<접두어>MAIL_TOKEN`(예: `LIBRARY_MAIL_TOKEN`)으로 이 앱 신분만 증명합니다.
+앱이 알림·안내 메일을 보낼 때는 **서버 함수 안에서** 허브의 `hub-mail` 을 부릅니다. **보내는 주소는 허브가 정합니다** — `bmrapps@bmrschool.org` (표시 이름만 앱이 정할 수 있음). 메일은 학교 Google Workspace 계정으로 보내고, 앱은 발송 비밀번호를 갖지 않습니다. 함수 비밀값 `<접두어>MAIL_TOKEN`(예: `LIBRARY_MAIL_TOKEN`)으로 이 앱 신분만 증명합니다.
 
-- 한도: **앱마다 하루 100통, 한 시간 20통, 한 통에 받는 사람 10명**. 학교 전체도 하루 100통입니다.
+- 한도: **앱마다 하루 500통, 한 시간 100통, 한 통에 받는 사람 50명**. 학교 전체는 하루 1,500통입니다.
 - **토큰은 직접 발급합니다.** 내 서비스 → 앱 정보 창의 **✉️ 앱 메일** 에서 **메일 토큰 발급**을 누르면 `<접두어>MAIL_TOKEN` 이 함수 비밀값에 들어가고 해시만 서버에 남습니다(값은 다시 볼 수 없음). **새 앱은 승인 때 자동으로 발급**됩니다. 잊어버렸거나 다른 사람이 알게 되었으면 **재발급**하세요 — 예전 토큰은 바로 무효가 됩니다. 같은 칸에서 한도 사용량과 최근 발송 결과를 볼 수 있습니다.
 - 앱이 **활성 상태**가 아니면 보낼 수 없습니다. 본문은 남기지 않고 제목·받는 사람 수·결과만 감사 기록에 남습니다.
 - 선택: `reply_to`(회신 주소), `from_name`(표시 이름, 기본은 앱 이름).
@@ -259,7 +259,7 @@ await supabase.auth.signOut({ scope: 'local' });   // 이 앱에서만 (그냥 s
 4. **서비스 워커(PWA)는 범위를 내 주소로.** `register('/library/sw.js', { scope: '/library/' })` — 범위가 넓으면 다른 앱의 요청까지 가로챕니다.
 5. **외부 스크립트 조심.** 외부 주소에서 불러온 스크립트는 같은 주소의 **모든 앱** 저장값·로그인 정보를 읽을 수 있어요. npm 으로 설치해 함께 빌드하고, 꼭 필요하면 관리자와 상의하세요.
 6. **로그인·로그아웃은 앱마다.** 로그인 저장 칸이 앱마다 따로라서 허브와 내 앱은 각각 로그인합니다. 로그아웃은 `signOut({ scope: 'local' })` 로 — 그냥 `signOut()` 은 모든 앱·기기의 로그인을 끊어요.
-7. **무료 한도는 모두가 나눠 씁니다.** DB 500MB · 파일 1GB · 서버 함수 호출 월 50만 번 · 메일 하루 100통(학교 전체). 큰 파일·대량 데이터·잦은 자동 호출은 미리 상의해 주세요.
+7. **무료 한도는 모두가 나눠 씁니다.** DB 500MB · 파일 1GB · 서버 함수 호출 월 50만 번 · 메일 하루 1,500통(학교 전체). 큰 파일·대량 데이터·잦은 자동 호출은 미리 상의해 주세요.
 
 **자동 점검 (경고만)** — push 할 때마다 앱 저장소의 GitHub Actions '공용 주소 점검'이 위 규칙을 살펴보고, 경고와 고치는 법을 실행 화면 Summary 와 **허브 → 내 서비스 → 앱 정보 → 공용 주소 점검**에 보여 줍니다. **배포는 막지 않아요.** 일부러 그렇게 쓴 줄은 그 줄 끝(또는 바로 윗줄)에 `// bmr-allow: 이유` 를 달면 건너뜁니다.
 
@@ -355,7 +355,9 @@ npm run dev                    # http://localhost:5173
 |---|---|---|
 | `SUPABASE_ACCESS_TOKEN_DEVAPPS` | `sql.mjs`·`migrate.mjs`·`deploy-fn.mjs`·`setup-provision.mjs`·`setup-mail.mjs` | Supabase Management API 토큰. `HUB_TOKEN_ENV` 로 변수 이름을 바꿀 수 있습니다. |
 | `GITHUB_BMR_APPS_TOKEN` | `setup-provision.mjs` | `bmr-apps` 조직 저장소를 만들고 초대하는 GitHub 토큰 |
-| `RESEND_API_KEY` | `setup-mail.mjs` | 메일 발송 전용 키 (`RESEND_ADMIN_KEY` 는 저장하지 않습니다) |
+| `GMAIL_APP_PASSWORD` | `setup-provision.mjs`·`setup-mail.mjs` | 학교 Gmail(`bmrapps@bmrschool.org`) 앱 비밀번호. 암호문 `BMR_GMAIL_APP_PASSWORD` 로 저장 |
+| `GMAIL_SMTP_USER` | `setup-provision.mjs`·`setup-mail.mjs` | 선택. 없으면 `bmrapps@bmrschool.org` |
+| `RESEND_API_KEY` | `setup-mail.mjs` | 로그인 메일용 Auth SMTP 키 (`RESEND_ADMIN_KEY` 는 저장하지 않습니다) |
 | `HUB_REF` | `sql.mjs`·`deploy-fn.mjs` | 대상 프로젝트 ref (기본값은 코드에 있는 허브 프로젝트) |
 | `HUB_DEPLOY_BY` | `deploy-record.mjs` | 배포 기록의 `actor_email` (기본 `admin-script`) |
 | `HUB_ADMIN_PASSWORD` | 캡처 스크립트 | 캡처용 관리자 로그인 (선택) |
@@ -401,7 +403,7 @@ node scripts/setup-provision.mjs --deploy --only hub-devtools
 node scripts/deploy-fn.mjs hub-checks
 ```
 
-- `setup-provision.mjs` 는 `.secrets/hub-provision.key`(이 컴퓨터에만, git 제외)를 만들고, `SUPABASE_ACCESS_TOKEN_DEVAPPS`·`GITHUB_BMR_APPS_TOKEN`(과 있으면 `RESEND_API_KEY`)을 **AES-GCM 암호문**으로 함수 비밀값에 넣습니다. 푸는 열쇠는 배포본 `_key.ts` 에만 있습니다.
+- `setup-provision.mjs` 는 `.secrets/hub-provision.key`(이 컴퓨터에만, git 제외)를 만들고, `SUPABASE_ACCESS_TOKEN_DEVAPPS`·`GITHUB_BMR_APPS_TOKEN`(과 있으면 `GMAIL_APP_PASSWORD`·`RESEND_API_KEY`)을 **AES-GCM 암호문**으로 함수 비밀값에 넣습니다. 푸는 열쇠는 배포본 `_key.ts` 에만 있습니다.
 - 열쇠를 새로 만들면(`--rotate-key`) 기존 암호문을 풀 수 없으므로 토큰을 다시 넣어야 합니다.
 - 배포에 성공하면 감사 기록에 `hub:deploy`(함수·버전·커밋)가 남습니다.
 
@@ -446,8 +448,8 @@ node scripts/deploy-fn.mjs hub-checks
 
 **절대 저장소·채팅·메일·화면 캡처에 올리지 않는 것**
 
-- `BMR_MGMT_TOKEN` (Supabase Management 토큰), `BMR_GH_TOKEN` (GitHub 조직 토큰), `BMR_RESEND_API_KEY` (메일 키)
-- `SUPABASE_ACCESS_TOKEN_DEVAPPS`, `GITHUB_BMR_APPS_TOKEN`, `RESEND_API_KEY` 같은 환경변수 값
+- `BMR_MGMT_TOKEN` (Supabase Management 토큰), `BMR_GH_TOKEN` (GitHub 조직 토큰), `BMR_GMAIL_SMTP_USER`·`BMR_GMAIL_APP_PASSWORD` (앱 메일 발송), `BMR_RESEND_API_KEY` (로그인 메일 Auth SMTP)
+- `SUPABASE_ACCESS_TOKEN_DEVAPPS`, `GITHUB_BMR_APPS_TOKEN`, `GMAIL_APP_PASSWORD`, `RESEND_API_KEY` 같은 환경변수 값
 - 앱의 **DB 비밀번호**, `service_role` 키, 외부 API 키
 - `.secrets/hub-provision.key` (열쇠 파일 — `.secrets/` 는 git 제외)
 - `supabase/functions/*/_key.ts` — **저장소에 없습니다.** `_key.ts.example`(빈 값)만 있고, 실제 열쇠는 배포 스크립트가 **배포본에만** 넣습니다. 검사 워크플로도 예시를 복사해 타입만 봅니다.

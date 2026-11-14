@@ -1,9 +1,9 @@
-// hub-mail — 앱 서버 함수가 학교 메일(Resend, mail.bmrschool.net)로 메일을 보낸다.
+// hub-mail — 앱 서버 함수가 학교 메일(Google Workspace Gmail SMTP, bmrapps@bmrschool.org)로 메일을 보낸다.
 // 호출: POST { to, subject, html?, text?, reply_to?, from_name?, slug? }
 //   Authorization: Bearer <앱 MAIL_TOKEN>
 //     또는 허브 로그인 토큰(관리자, 또는 그 앱 담당 개발자 — 이때 slug 필요)
-// 보내는 주소는 허브가 정한다: "<표시 이름>" <slug@mail.bmrschool.net>  (호출자가 from 을 고를 수 없음)
-// Resend 키(BMR_RESEND_API_KEY)는 암호문이며 푸는 열쇠는 이 함수 배포본(_key.ts)에만 있다.
+// 보내는 주소는 허브가 정한다: "<표시 이름>" <bmrapps@bmrschool.org>  (호출자가 from 을 고를 수 없음)
+// Gmail 비밀번호(BMR_GMAIL_APP_PASSWORD 등)는 암호문이며 푸는 열쇠는 이 함수 배포본(_key.ts)에만 있다.
 import postgres from 'npm:postgres@3.4.5';
 import { PROVISION_KEY } from './_key.ts';
 
@@ -12,8 +12,10 @@ const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 const REF = 'psupfmarnyxontorftio';
 const HUB = 'https://apps.bmrschool.net';
 const ORIGINS = [HUB, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173'];
-const MAIL_DOMAIN = 'mail.bmrschool.net';
-const LIMIT = { perAppHour: 20, perAppDay: 100, globalDay: 100, maxTo: 10, maxSubject: 200, maxBody: 100_000, maxName: 80 };
+const FROM_EMAIL = 'bmrapps@bmrschool.org';
+const SMTP_HOST = 'smtp.gmail.com';
+const SMTP_PORT = 465;
+const LIMIT = { perAppHour: 100, perAppDay: 500, globalDay: 1500, maxTo: 50, maxSubject: 200, maxBody: 100_000, maxName: 80 };
 const db = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
 if (new URL(SB_URL).hostname.split('.')[0] !== REF) throw new Error('hub-mail: 다른 프로젝트에서는 실행하지 않습니다');
 
@@ -33,18 +35,29 @@ const json = (req: Request, status: number, body: unknown) =>
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 const b64d = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-let resendKey: string | null = null;
-async function getResendKey(): Promise<string> {
-  if (resendKey) return resendKey;
-  const name = 'BMR_RESEND_API_KEY';
+async function decryptSecret(name: string): Promise<string> {
   const v = Deno.env.get(name) ?? '';
   if (!v.startsWith('enc:v1:')) throw new HttpError(500, '서버 설정(메일 키)이 없습니다. 관리자 봇에게 알려 주세요.');
   if (!PROVISION_KEY) throw new HttpError(500, '서버 설정(열쇠)이 없습니다. 관리자 봇에게 알려 주세요.');
-  const key = await crypto.subtle.importKey('raw', b64d(PROVISION_KEY), 'AES-GCM', false, ['decrypt']);
-  const raw = b64d(v.slice(7));
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(name) }, key, raw.slice(12));
-  resendKey = new TextDecoder().decode(pt);
-  return resendKey;
+  try {
+    const key = await crypto.subtle.importKey('raw', b64d(PROVISION_KEY), 'AES-GCM', false, ['decrypt']);
+    const raw = b64d(v.slice(7));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12), additionalData: new TextEncoder().encode(name) }, key, raw.slice(12));
+    return new TextDecoder().decode(pt);
+  } catch {
+    throw new HttpError(500, '서버 설정(메일 키)을 읽지 못했습니다. 관리자 봇에게 알려 주세요.');
+  }
+}
+
+type SmtpCreds = { user: string; pass: string };
+let smtpCreds: SmtpCreds | null = null;
+async function getSmtpCreds(): Promise<SmtpCreds> {
+  if (smtpCreds) return smtpCreds;
+  const user = (await decryptSecret('BMR_GMAIL_SMTP_USER')).trim();
+  const pass = (await decryptSecret('BMR_GMAIL_APP_PASSWORD')).replace(/\s+/g, '');
+  if (!user || !pass) throw new HttpError(500, '서버 설정(메일 키)이 없습니다. 관리자 봇에게 알려 주세요.');
+  smtpCreds = { user, pass };
+  return smtpCreds;
 }
 
 async function sha256hex(s: string): Promise<string> {
@@ -136,6 +149,184 @@ async function rateCheck(appId: number): Promise<string | null> {
   return null;
 }
 
+// ---------- Gmail SMTP (465 implicit TLS). 비밀번호·AUTH 내용은 로그에 남기지 않는다. ----------
+class SmtpError extends Error {
+  constructor(message: string, public kind: 'auth' | 'blocked' | 'other', public smtpCode?: number) {
+    super(message);
+    this.name = 'SmtpError';
+  }
+}
+
+function sanitizeSmtp(s: string): string {
+  return s
+    .replace(/AUTH\s+PLAIN\s+\S+/gi, 'AUTH PLAIN ***')
+    .replace(/AUTH\s+LOGIN[^\n]*/gi, 'AUTH LOGIN ***')
+    .slice(0, 300);
+}
+
+function classifyConnectError(e: unknown): SmtpError {
+  const raw = sanitizeSmtp(String((e as Error)?.message ?? e));
+  const low = raw.toLowerCase();
+  if (
+    low.includes('timed out') || low.includes('timeout') || low.includes('connection refused') ||
+    low.includes('network is unreachable') || low.includes('permission denied') ||
+    low.includes('not supported') || low.includes('os error 111') || low.includes('os error 101') ||
+    low.includes('os error 13') || low.includes('os error 110') || low.includes('connection reset') ||
+    low.includes('failed to connect') || (low.includes('tcp') && low.includes('blocked'))
+  ) {
+    return new SmtpError(`SMTP 연결 실패(포트 ${SMTP_PORT}): ${raw}`, 'blocked');
+  }
+  return new SmtpError(`SMTP 오류: ${raw}`, 'other');
+}
+
+function b64utf8(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (const x of bytes) bin += String.fromCharCode(x);
+  return btoa(bin);
+}
+
+function encodeHeader(s: string): string {
+  if (/^[\x20-\x7e]*$/.test(s)) return s;
+  const bytes = new TextEncoder().encode(s);
+  const parts: string[] = [];
+  for (let i = 0; i < bytes.length; i += 45) {
+    const slice = bytes.subarray(i, i + 45);
+    let bin = '';
+    for (const x of slice) bin += String.fromCharCode(x);
+    parts.push(`=?UTF-8?B?${btoa(bin)}?=`);
+  }
+  return parts.join(' ');
+}
+
+function rfc822Date(d = new Date()): string {
+  return d.toUTCString().replace(/GMT$/, '+0000');
+}
+
+function wrap76(s: string): string {
+  return s.replace(/(.{76})/g, '$1\r\n');
+}
+
+function mimeBody(subject: string, fromHeader: string, to: string[], replyTo: string[], text: string, html: string, messageId: string): string {
+  const headers = [
+    `From: ${fromHeader}`,
+    `To: ${to.join(', ')}`,
+    `Subject: ${encodeHeader(subject)}`,
+    `Date: ${rfc822Date()}`,
+    `Message-ID: ${messageId}`,
+    'MIME-Version: 1.0',
+  ];
+  if (replyTo.length) headers.push(`Reply-To: ${replyTo.join(', ')}`);
+  if (text && !html) {
+    headers.push('Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64');
+    return `${headers.join('\r\n')}\r\n\r\n${wrap76(b64utf8(text))}`;
+  }
+  if (html && !text) {
+    headers.push('Content-Type: text/html; charset=UTF-8', 'Content-Transfer-Encoding: base64');
+    return `${headers.join('\r\n')}\r\n\r\n${wrap76(b64utf8(html))}`;
+  }
+  const boundary = `bmr=${crypto.randomUUID()}`;
+  headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+  const parts = [
+    `--${boundary}\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap76(b64utf8(text))}`,
+    `--${boundary}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap76(b64utf8(html))}`,
+  ];
+  return `${headers.join('\r\n')}\r\n\r\n${parts.join('\r\n')}\r\n--${boundary}--`;
+}
+
+function stuffDots(body: string): string {
+  return body.replace(/\r\n\./g, '\r\n..').replace(/^\./, '..');
+}
+
+const te = new TextEncoder();
+const td = new TextDecoder();
+
+async function smtpRead(conn: Deno.Conn, acc: { s: string }): Promise<{ code: number; text: string }> {
+  const buf = new Uint8Array(4096);
+  for (let nReads = 0; nReads < 40; nReads++) {
+    const chunks = acc.s.split('\r\n');
+    for (let i = 0; i < chunks.length - 1; i++) {
+      const line = chunks[i];
+      if (/^\d{3} /.test(line)) {
+        const lines = chunks.slice(0, i + 1);
+        acc.s = chunks.slice(i + 1).join('\r\n');
+        return { code: Number(line.slice(0, 3)), text: lines.join('\n') };
+      }
+    }
+    const n = await conn.read(buf);
+    if (n === null) throw new SmtpError('SMTP 연결이 끊겼습니다', 'other');
+    acc.s += td.decode(buf.subarray(0, n));
+  }
+  throw new SmtpError('SMTP 응답이 너무 깁니다', 'other');
+}
+
+async function smtpWrite(conn: Deno.Conn, line: string) {
+  const data = te.encode(line + '\r\n');
+  let off = 0;
+  while (off < data.length) {
+    const n = await conn.write(data.subarray(off));
+    if (n == null || n <= 0) throw new SmtpError('SMTP 전송이 중단됐습니다', 'other');
+    off += n;
+  }
+}
+
+async function smtpSend(opts: {
+  user: string; pass: string; fromEmail: string; fromHeader: string;
+  to: string[]; subject: string; text: string; html: string; replyTo: string[];
+}): Promise<string> {
+  const messageId = `<${crypto.randomUUID()}@bmrschool.org>`;
+  let conn: Deno.Conn | null = null;
+  const timer = setTimeout(() => { try { conn?.close(); } catch { /* 이미 닫힘 */ } }, 20_000);
+  try {
+    try {
+      conn = await Deno.connectTls({ hostname: SMTP_HOST, port: SMTP_PORT });
+    } catch (e) {
+      throw classifyConnectError(e);
+    }
+    const acc = { s: '' };
+    const expect = async (ok: (c: number) => boolean, step: string) => {
+      const r = await smtpRead(conn!, acc);
+      if (!ok(r.code)) {
+        const text = sanitizeSmtp(r.text);
+        if (r.code === 535 || r.code === 534 || /not accepted|badcredentials|invalid login|username and password/i.test(r.text)) {
+          throw new SmtpError(`Gmail 로그인 거부(${r.code}): ${text}`, 'auth', r.code);
+        }
+        throw new SmtpError(`SMTP ${step} 실패(${r.code}): ${text}`, 'other', r.code);
+      }
+      return r;
+    };
+    await expect((c) => c === 220, '접속');
+    await smtpWrite(conn, 'EHLO apps.bmrschool.net');
+    await expect((c) => c === 250, 'EHLO');
+    const plain = btoa(`\0${opts.user}\0${opts.pass}`);
+    await smtpWrite(conn, `AUTH PLAIN ${plain}`);
+    await expect((c) => c === 235, 'AUTH');
+    await smtpWrite(conn, `MAIL FROM:<${opts.fromEmail}>`);
+    await expect((c) => c === 250, 'MAIL FROM');
+    for (const rcpt of opts.to) {
+      await smtpWrite(conn, `RCPT TO:<${rcpt}>`);
+      await expect((c) => c === 250 || c === 251, 'RCPT TO');
+    }
+    await smtpWrite(conn, 'DATA');
+    await expect((c) => c === 354, 'DATA');
+    const raw = mimeBody(opts.subject, opts.fromHeader, opts.to, opts.replyTo, opts.text, opts.html, messageId);
+    const payload = te.encode(stuffDots(raw) + '\r\n.\r\n');
+    let off = 0;
+    while (off < payload.length) {
+      const n = await conn.write(payload.subarray(off));
+      if (n == null || n <= 0) throw new SmtpError('SMTP 본문 전송이 중단됐습니다', 'other');
+      off += n;
+    }
+    const done = await expect((c) => c === 250, '저장');
+    try { await smtpWrite(conn, 'QUIT'); } catch { /* 무시 */ }
+    const queued = /\b([A-Za-z0-9-]{8,})\s*$/m.exec(done.text)?.[1] ?? '';
+    return queued || messageId;
+  } finally {
+    clearTimeout(timer);
+    try { conn?.close(); } catch { /* 이미 닫힘 */ }
+  }
+}
+
 const route = (req: Request) => {
   const p = new URL(req.url).pathname;
   const i = p.indexOf('/hub-mail');
@@ -193,7 +384,9 @@ Deno.serve(async (req) => {
     if (!html && !text) throw new HttpError(400, '본문(html 또는 text)을 적어 주세요.');
     if (html.length + text.length > LIMIT.maxBody) throw new HttpError(413, '본문이 너무 깁니다.');
     const replyTo = emails(b.reply_to, 'reply_to');
-    const from = `${displayName(b.from_name, app.name)} <${app.slug}@${MAIL_DOMAIN}>`;
+    const fromName = displayName(b.from_name, app.name);
+    const fromHeader = `${encodeHeader(fromName)} <${FROM_EMAIL}>`;
+    const from = `${fromName} <${FROM_EMAIL}>`;
 
     const limited = await rateCheck(app.id);
     if (limited) {
@@ -202,34 +395,27 @@ Deno.serve(async (req) => {
       throw new HttpError(429, limited);
     }
 
-    const payload: Record<string, unknown> = { from, to, subject };
-    if (html) payload.html = html;
-    if (text) payload.text = text;
-    if (replyTo.length === 1) payload.reply_to = replyTo[0];
-    else if (replyTo.length > 1) payload.reply_to = replyTo;
-
-    const key = await getResendKey();
-    const r = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const bodyText = await r.text();
-    let parsed: { id?: string; message?: string; error?: { message?: string } } = {};
-    try { parsed = bodyText ? JSON.parse(bodyText) as typeof parsed : {}; } catch { /* 그대로 */ }
-    if (!r.ok) {
-      const msg = String(parsed.error?.message || parsed.message || `Resend ${r.status}`).slice(0, 300);
+    const creds = await getSmtpCreds();
+    let id = '';
+    try {
+      id = await smtpSend({
+        user: creds.user, pass: creds.pass, fromEmail: FROM_EMAIL, fromHeader,
+        to, subject, text, html, replyTo,
+      });
+    } catch (e) {
+      const err = e instanceof SmtpError ? e : classifyConnectError(e);
+      const msg = sanitizeSmtp(err.message);
+      console.error('hub-mail smtp', err.kind, err.smtpCode ?? '', msg);
       await mailLog(app, toCount, subject, 'error', msg, '', actor.email);
       await audit(actor, 'mail:send', app.slug, 'error', `받는 사람 ${toCount} · ${subject} · ${msg}`);
-      throw new HttpError(r.status === 429 ? 429 : 502, r.status === 429 ? '메일 업체가 잠시 막고 있습니다. 잠시 뒤 다시 시도하세요.' : '메일을 보내지 못했습니다. 잠시 뒤 다시 시도하세요.');
+      throw new HttpError(502, '메일을 보내지 못했습니다. 잠시 뒤 다시 시도하세요.');
     }
-    const id = String(parsed.id ?? '');
     await mailLog(app, toCount, subject, 'sent', '', id, actor.email);
     await audit(actor, 'mail:send', app.slug, 'ok', `받는 사람 ${toCount} · ${subject}${id ? ' · ' + id : ''}`);
     return json(req, 200, { ok: true, id, from, to_count: toCount });
   } catch (e) {
     if (e instanceof HttpError) return json(req, e.status, { error: e.message });
-    console.error('hub-mail', (e as Error)?.message ?? e);
+    console.error('hub-mail', sanitizeSmtp(String((e as Error)?.message ?? e)));
     if (app) await audit(actor, 'mail:send', app.slug, 'error', '서버 오류');
     return json(req, 500, { error: '서버 오류가 났습니다.' });
   }

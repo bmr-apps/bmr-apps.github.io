@@ -41,6 +41,12 @@ if (all || args.has('--secrets') || fresh) {
   if (!GH) { console.error('GITHUB_BMR_APPS_TOKEN 이 없습니다'); process.exit(1); }
   const body = [{ name: 'BMR_MGMT_TOKEN', value: enc('BMR_MGMT_TOKEN', TOKEN) }, { name: 'BMR_GH_TOKEN', value: enc('BMR_GH_TOKEN', GH) }];
   if (process.env.RESEND_API_KEY) body.push({ name: 'BMR_RESEND_API_KEY', value: enc('BMR_RESEND_API_KEY', process.env.RESEND_API_KEY) });
+  const gmailPass = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+  if (gmailPass) {
+    const gmailUser = (process.env.GMAIL_SMTP_USER || 'bmrapps@bmrschool.org').trim();
+    body.push({ name: 'BMR_GMAIL_SMTP_USER', value: enc('BMR_GMAIL_SMTP_USER', gmailUser) });
+    body.push({ name: 'BMR_GMAIL_APP_PASSWORD', value: enc('BMR_GMAIL_APP_PASSWORD', gmailPass) });
+  }
   const r = await api('/secrets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!r.ok) { console.error('비밀값 저장 실패', r.status); process.exit(1); }
   const names = (await (await api('/secrets')).json()).map((x) => x.name);

@@ -173,9 +173,9 @@ create policy "멤버만 읽기" on library.books for select to authenticated us
         </ul>
         <div id="mail" className="g-google">
           <h3>이메일 보내기</h3>
-          <p>앱이 알림·안내 메일을 보낼 때는 <b>서버 함수 안에서</b> 허브의 <code>hub-mail</code> 을 부릅니다. <b>보내는 주소는 허브가 정합니다</b> — <code>&lt;주소 이름&gt;@mail.bmrschool.net</code> (표시 이름은 앱이 정할 수 있음). Resend 키는 앱이 갖지 않고, 함수 비밀값 <code>&lt;접두어&gt;MAIL_TOKEN</code>(예: <code>LIBRARY_MAIL_TOKEN</code>)으로 이 앱 신분만 증명합니다. 로그인(가입 확인·비밀번호 재설정) 메일은 같은 업체를 통해 <code>noreply@mail.bmrschool.net</code> 에서 나갑니다.</p>
+          <p>앱이 알림·안내 메일을 보낼 때는 <b>서버 함수 안에서</b> 허브의 <code>hub-mail</code> 을 부릅니다. <b>보내는 주소는 허브가 정합니다</b> — <code>bmrapps@bmrschool.org</code> (표시 이름은 앱이 정할 수 있음). 메일은 학교 Google Workspace 계정으로 보내고, 앱은 발송 비밀번호를 갖지 않습니다. 함수 비밀값 <code>&lt;접두어&gt;MAIL_TOKEN</code>(예: <code>LIBRARY_MAIL_TOKEN</code>)으로 이 앱 신분만 증명합니다. 로그인(가입 확인·비밀번호 재설정) 메일은 따로 <code>noreply@mail.bmrschool.net</code> 에서 나갑니다.</p>
           <ul>
-            <li>한도: <b>앱마다 하루 100통, 한 시간 20통, 한 통에 받는 사람 10명</b>. 학교 전체도 하루 100통입니다.</li>
+            <li>한도: <b>앱마다 하루 500통, 한 시간 100통, 한 통에 받는 사람 50명</b>. 학교 전체는 하루 1,500통입니다.</li>
             <li><b>토큰은 직접 발급합니다</b>: 내 서비스 → 앱 정보 창의 <b>✉️ 앱 메일</b>에서 <b>메일 토큰 발급</b>을 한 번 누르면 <code>&lt;접두어&gt;MAIL_TOKEN</code> 이 함수 비밀값에 들어가고, 해시만 서버에 남습니다(값은 화면·기록·로그에 남지 않아 다시 볼 수 없음). 새로 만든 앱은 승인 때 자동으로 발급됩니다. 잊어버렸거나 다른 사람이 알게 되었으면 <b>재발급</b>하세요 — 예전 토큰은 바로 무효가 됩니다. 그 화면에서 한도 사용량과 최근 발송 10건(시각·제목·수신자 수·상태·오류)도 볼 수 있습니다.</li>
             <li>앱이 활성 상태가 아니면 보낼 수 없습니다. 본문은 남기지 않고, 제목·받는 사람 수·결과만 감사 기록에 남습니다.</li>
             <li>선택: <code>reply_to</code>(회신 주소), <code>from_name</code>(표시 이름, 기본은 앱 이름).</li>
@@ -199,7 +199,7 @@ const r = await fetch(\`\${Deno.env.get('SUPABASE_URL')}/functions/v1/hub-mail\`
   }),
 });
 const { ok, id, from, error } = await r.json();`}</C>
-          <p className="muted">시작 틀의 <code>mail.ts</code> 에 <code>sendMail()</code> 도우미가 들어 있습니다. 토큰을 브라우저·저장소·로그에 넣지 마세요. 함수 비밀값은 프로젝트 공용이라 다른 앱 함수도 이론상 내 메일 토큰을 읽을 수 있습니다. 그래도 Resend 키 자체는 허브만 씁니다.</p>
+          <p className="muted">시작 틀의 <code>mail.ts</code> 에 <code>sendMail()</code> 도우미가 들어 있습니다. 토큰을 브라우저·저장소·로그에 넣지 마세요. 함수 비밀값은 프로젝트 공용이라 다른 앱 함수도 이론상 내 메일 토큰을 읽을 수 있습니다. 그래도 발송 비밀번호 자체는 허브만 씁니다.</p>
         </div>
         <div id="selfservice" className="g-google">
           <h3>🧰 개발자 셀프서비스 (관리자에게 부탁하지 않고 직접)</h3>
@@ -243,7 +243,7 @@ Deno.serve(async (req) => {
             <li><b>서비스 워커(PWA)는 범위를 내 주소로.</b> <code>{"register('/library/sw.js', { scope: '/library/' })"}</code> — 범위가 넓으면 다른 앱의 요청까지 가로챕니다.</li>
             <li><b>외부 스크립트 조심.</b> 외부 주소에서 불러온 스크립트는 같은 주소의 <b>모든 앱</b> 저장값·로그인 정보를 읽을 수 있어요. npm 으로 설치해 함께 빌드하고, 꼭 필요하면 관리자와 상의하세요.</li>
             <li><b>로그인·로그아웃은 앱마다.</b> 로그인 저장 칸이 앱마다 따로라 허브와 내 앱은 각각 로그인합니다. 로그아웃은 <code>{"signOut({ scope: 'local' })"}</code> 로 — 그냥 <code>signOut()</code> 은 모든 앱·기기의 로그인을 끊어요.</li>
-            <li><b>무료 한도는 모두가 나눠 씁니다.</b> DB 500MB · 파일 1GB · 서버 함수 호출 월 50만 번 · 메일 하루 100통(학교 전체). 큰 파일·대량 데이터·잦은 자동 호출은 미리 상의해 주세요.</li>
+            <li><b>무료 한도는 모두가 나눠 씁니다.</b> DB 500MB · 파일 1GB · 서버 함수 호출 월 50만 번 · 메일 하루 1,500통(학교 전체). 큰 파일·대량 데이터·잦은 자동 호출은 미리 상의해 주세요.</li>
           </ol>
           <C>{`import { local } from './store.js';   // 새 앱 시작 코드에 들어 있음
 local.set('theme', 'dark');            // 실제 이름 'library:theme'

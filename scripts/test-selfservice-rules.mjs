@@ -70,7 +70,7 @@ ok(MAIL_TS === 'CLASS_DESIGNER_MAIL_TOKEN', '비밀값 이름 = <접두어>MAIL_
 ok(R.mailSecretOf('my-app') === 'MY_APP_MAIL_TOKEN', '하이픈 앱 이름 → 밑줄 접두어', R.mailSecretOf('my-app'));
 ok(R.secretNameProblem('class-designer', MAIL_TS, ALL) === null, 'MAIL_TOKEN 은 비밀값 이름 검사를 통과 (셀프서비스 발급 가능)');
 ok(R.secretNameProblem('zz-a', R.mailSecretOf('zz-a-b'), ALL) !== null, '다른 앱의 MAIL_TOKEN 이름은 거부');
-ok(R.mailAddressOf('class-designer') === 'class-designer@mail.bmrschool.net', '보내는 주소 = <slug>@mail.bmrschool.net', R.mailAddressOf('class-designer'));
+ok(R.mailAddressOf('class-designer') === 'bmrapps@bmrschool.org', '보내는 주소 = bmrapps@bmrschool.org', R.mailAddressOf('class-designer'));
 ok(R.mailState(true, true) === 'active' && R.mailState(false, false) === 'none' && R.mailState(true, false) === 'mismatch' && R.mailState(false, true) === 'mismatch', '상태: 활성(둘 다) · 미발급(둘 다 없음) · 불일치(한쪽만)');
 const hubMail = readFileSync(new URL('../supabase/functions/hub-mail/index.ts', import.meta.url), 'utf8');
 ok(['perAppHour', 'perAppDay', 'globalDay', 'maxTo'].every((k) => hubMail.includes(`${k}: ${R.MAIL_LIMITS[k]}`)), `hub-mail 한도 = MAIL_LIMITS (${JSON.stringify(R.MAIL_LIMITS)})`);

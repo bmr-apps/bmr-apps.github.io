@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // 허브 메일(hub-mail) 준비·배포. 비밀값(토큰·키)은 화면·파일·저장소에 남기지 않는다.
-//  1) BMR_RESEND_API_KEY: RESEND_API_KEY(발송 전용)를 기존 열쇠로 암호문 저장 (RESEND_ADMIN_KEY 는 저장하지 않음)
+//  1) BMR_GMAIL_SMTP_USER · BMR_GMAIL_APP_PASSWORD: GMAIL_APP_PASSWORD(와 선택 GMAIL_SMTP_USER)를 기존 열쇠로 암호문 저장
+//     로그인 메일 Auth SMTP 용으로 RESEND_API_KEY 가 있으면 BMR_RESEND_API_KEY 도 함께 저장 (RESEND_ADMIN_KEY 는 저장하지 않음)
 //  2) 앱마다 <PREFIX>MAIL_TOKEN 발급(없을 때만, --rotate-tokens 로 모두 새로) · 해시는 bmr_admin.mail_tokens
 //  3) hub-mail 배포(_key.ts 는 배포본에만)
 //  4) 도메인이 인증되어 있으면 Auth SMTP 설정 (가입 확인·autoconfirm 은 건드리지 않음)
@@ -30,7 +31,10 @@ const TEST_SLUG = 'class-designer';
 
 if (!TOKEN) { console.error('SUPABASE_ACCESS_TOKEN_DEVAPPS 가 없습니다'); process.exit(1); }
 const api = (p, o = {}) => fetch(`https://api.supabase.com/v1/projects/${REF}${p}`, { ...o, headers: { Authorization: `Bearer ${TOKEN}`, ...(o.headers || {}) } });
-if ((doSecrets || doSmtp || doTest) && !RESEND) { console.error('RESEND_API_KEY 가 없습니다'); process.exit(1); }
+const GMAIL_PASS = (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, '');
+const GMAIL_USER = (process.env.GMAIL_SMTP_USER || 'bmrapps@bmrschool.org').trim();
+if (doSecrets && !GMAIL_PASS && !RESEND) { console.error('GMAIL_APP_PASSWORD 또는 RESEND_API_KEY 가 없습니다'); process.exit(1); }
+if (doSmtp && !RESEND) { console.error('RESEND_API_KEY 가 없습니다'); process.exit(1); }
 
 const keyFile = join(ROOT, '.secrets', 'hub-provision.key');
 if (!existsSync(keyFile)) { console.error('열쇠 파일(.secrets/hub-provision.key)이 없습니다'); process.exit(1); }
@@ -53,11 +57,16 @@ async function secretNames() {
 }
 
 if (doSecrets) {
-  const body = [{ name: 'BMR_RESEND_API_KEY', value: enc('BMR_RESEND_API_KEY', RESEND) }];
+  const body = [];
+  if (GMAIL_PASS) {
+    body.push({ name: 'BMR_GMAIL_SMTP_USER', value: enc('BMR_GMAIL_SMTP_USER', GMAIL_USER) });
+    body.push({ name: 'BMR_GMAIL_APP_PASSWORD', value: enc('BMR_GMAIL_APP_PASSWORD', GMAIL_PASS) });
+  }
+  if (RESEND) body.push({ name: 'BMR_RESEND_API_KEY', value: enc('BMR_RESEND_API_KEY', RESEND) });
   const r = await api('/secrets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) { console.error('BMR_RESEND_API_KEY 저장 실패', r.status, (await r.text()).slice(0, 200)); process.exit(1); }
+  if (!r.ok) { console.error('메일 비밀값 저장 실패', r.status, (await r.text()).slice(0, 200)); process.exit(1); }
   const names = await secretNames();
-  console.log('함수 비밀값(암호문) 저장: BMR_RESEND_API_KEY', names.includes('BMR_RESEND_API_KEY') ? '✓' : '✗');
+  console.log('함수 비밀값(암호문) 저장:', body.map((x) => `${x.name} ${names.includes(x.name) ? '✓' : '✗'}`).join(', '));
 }
 
 // 이번에 발급한 평문 토큰은 시험 발송에만 메모리에서 쓰고, 출력·파일로 남기지 않는다.

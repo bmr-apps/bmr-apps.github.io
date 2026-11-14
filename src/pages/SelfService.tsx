@@ -145,7 +145,7 @@ function Mail({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
   const badge = state === 'active' ? <span className="badge r-approved">활성</span>
     : state === 'mismatch' ? <span className="badge r-rejected">불일치 · 재발급 필요</span>
       : state === 'none' ? <span className="badge r-pending">미발급</span> : null;
-  const addr = m?.address ?? `${d.app.slug}@mail.bmrschool.net`;
+  const addr = m?.address ?? 'bmrapps@bmrschool.org';
   return (
     <>
       <h5>✉️ 앱 메일 {badge}</h5>
