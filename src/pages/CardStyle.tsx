@@ -29,12 +29,66 @@ async function removeLogos(slug: string, keep?: string) {
   if (rest.length) await sb.storage.from('hub-assets').remove(rest);
 }
 
+
+const HUB_ORIGIN = 'https://apps.bmrschool.net';
+function isHttpUrl(s: string) {
+  try { const u = new URL(s); return u.protocol === 'https:' || u.protocol === 'http:'; } catch { return false; }
+}
+function isDataOrHubFavicon(href: string) {
+  if (href.startsWith('data:')) return true;
+  try {
+    const u = new URL(href);
+    return u.hostname === 'psupfmarnyxontorftio.supabase.co' && /\/functions\/v1\/hub-favicon\/?$/.test(u.pathname);
+  } catch { return false; }
+}
+function looksLikeHubShell(html: string) {
+  return /<title>BMR APPS · 앱 관리<\/title>/.test(html);
+}
+function pickFaviconHref(html: string, base: string) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const links = [...doc.querySelectorAll('link[rel]')];
+  const has = (el: Element, token: string) => (el.getAttribute('rel') || '').split(/\s+/).some((r) => r.toLowerCase() === token);
+  const apple = links.find((el) => has(el, 'apple-touch-icon') && el.getAttribute('href'));
+  const icon = links.find((el) => (has(el, 'icon') || has(el, 'shortcut')) && el.getAttribute('href'));
+  const href = apple?.getAttribute('href') || icon?.getAttribute('href') || new URL('favicon.ico', base).href;
+  return new URL(href, base).href;
+}
+async function toPngFile(blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('파비콘 이미지를 읽지 못했어요.'));
+      i.src = url;
+    });
+    const max = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height) || 128;
+    let size = max;
+    if (size > 256) size = 256;
+    if (size < 128) size = 128;
+    const scale = size / max;
+    const w = Math.max(1, Math.round((img.naturalWidth || img.width || size) * scale));
+    const h = Math.max(1, Math.round((img.naturalHeight || img.height || size) * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('이미지를 변환하지 못했어요.');
+    ctx.drawImage(img, 0, 0, w, h);
+    const out = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('PNG로 바꾸지 못했어요.')), 'image/png');
+    });
+    if (out.size > MAX_BYTES) throw new Error('로고는 512KB 이하만 올릴 수 있어요.');
+    return new File([out], 'favicon.png', { type: 'image/png' });
+  } finally { URL.revokeObjectURL(url); }
+}
+
 /** 앱 정보 창: 관리자 또는 그 앱 담당 개발자가 카드 아이콘·색을 정함. 기본은 자동 지정. */
 export function CardStyleSection({ app, onSaved }: { app: App; onSaved: () => void }) {
   const [s, setS] = useState(() => init(app));
   const [file, setFile] = useState<File | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +109,52 @@ export function CardStyleSection({ app, onSaved }: { app: App; onSaved: () => vo
     const url = URL.createObjectURL(f);
     blobRef.current = url;
     setFile(f); setPreviewSrc(url); setS((x) => ({ ...x, iconMode: 'logo' }));
+  };
+
+  const importFavicon = async () => {
+    setErr(''); setMsg('');
+    setImporting(true);
+    try {
+      const sameOrigin = `${HUB_ORIGIN}/${app.slug}/`;
+      let html = '';
+      let base = sameOrigin;
+      try {
+        const r = await fetch(sameOrigin, { credentials: 'omit' });
+        if (r.ok || r.status === 404) { html = await r.text(); base = r.url || sameOrigin; }
+      } catch { /* 앱이 다른 주소면 아래에서 한 번 더 시도 */ }
+      const onHubShell = !html || looksLikeHubShell(html);
+      if (onHubShell && isHttpUrl(app.url) && new URL(app.url).origin !== HUB_ORIGIN) {
+        try {
+          const r = await fetch(app.url, { credentials: 'omit' });
+          if (!r.ok) throw new Error(`앱 페이지를 열지 못했어요 (${r.status}).`);
+          html = await r.text();
+          base = r.url || app.url;
+        } catch (e) {
+          if (e instanceof TypeError) throw new Error('앱이 다른 주소에 있어서 파비콘을 가져오지 못했어요. 브라우저가 막을 수 있어요. 파일을 직접 올려 주세요.');
+          throw e;
+        }
+      } else if (!html) {
+        throw new Error('앱 페이지를 열지 못했어요. 주소가 열려 있는지 확인해 주세요.');
+      }
+      const href = pickFaviconHref(html, base.endsWith('/') ? base : `${base}/`);
+      if (isDataOrHubFavicon(href)) {
+        setMsg('앱에 따로 정한 파비콘이 없어요. 지금은 카드 아이콘이 파비콘으로 쓰이고 있어요.');
+        return;
+      }
+      let blob: Blob;
+      try {
+        const ir = await fetch(href, { credentials: 'omit', mode: 'cors' });
+        if (!ir.ok) throw new Error('파비콘 파일을 받지 못했어요.');
+        blob = await ir.blob();
+      } catch (e) {
+        if (e instanceof TypeError) throw new Error('파비콘 이미지가 다른 사이트에 있어서 가져오지 못했어요. 파일을 직접 올려 주세요.');
+        throw e;
+      }
+      const f = await toPngFile(blob);
+      pickFile(f);
+      setMsg('파비콘을 가져왔어요. 미리보기를 확인하고 「카드 모습 저장」을 눌러 주세요.');
+    } catch (er) { setErr(errMsg(er)); }
+    finally { setImporting(false); }
   };
 
   const preview: CardStyle = {
@@ -162,6 +262,11 @@ export function CardStyleSection({ app, onSaved }: { app: App; onSaved: () => vo
           <label>로고 이미지 (PNG, JPG, WebP, 최대 512KB)
             <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => pickFile(e.target.files?.[0] ?? null)} />
           </label>
+          <div className="logo-actions">
+            <button type="button" className="ghost" disabled={busy || importing} onClick={importFavicon}>
+              {importing ? '가져오는 중…' : '앱 파비콘 가져오기'}
+            </button>
+          </div>
           {(previewSrc || safeLogoUrl(app.card_logo_url)) && <p className="muted small-note">아이콘 칸에 맞춰 줄어 보여요. SVG는 보안상 쓸 수 없습니다.</p>}
         </>}
       </fieldset>
@@ -200,8 +305,8 @@ export function CardStyleSection({ app, onSaved }: { app: App; onSaved: () => vo
       {err && <p className="error" role="alert">{err}</p>}
       {msg && <p className="ok" role="status">{msg}</p>}
       <div className="row">
-        <button disabled={busy}>{busy ? '저장 중…' : '카드 모습 저장'}</button>
-        <button type="button" className="ghost" disabled={busy} onClick={resetAuto}>자동으로 되돌리기</button>
+        <button disabled={busy || importing}>{busy ? '저장 중…' : '카드 모습 저장'}</button>
+        <button type="button" className="ghost" disabled={busy || importing} onClick={resetAuto}>자동으로 되돌리기</button>
       </div>
     </form>
   );

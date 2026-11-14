@@ -22,3 +22,6 @@ verify_jwt = false
 
 [functions.hub-mail]
 verify_jwt = false
+
+[functions.hub-favicon]
+verify_jwt = false

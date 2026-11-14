@@ -369,6 +369,11 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
 .hex-row input[type="color"] { width: 52px; height: 36px; padding: 2px; cursor: pointer; }
 .card-style .row { margin-top: 12px; }
 
+.card-style .logo-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; max-width: 100%; }
+.card-style .logo-actions button { flex: 0 1 auto; max-width: 100%; white-space: normal; }
+.card-style .row { flex-wrap: wrap; }
+@media (max-width: 520px) { .card-style .logo-actions button { width: 100%; } }
+
 /* ---------- 반응형 ---------- */
 @media (max-width: 1100px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
