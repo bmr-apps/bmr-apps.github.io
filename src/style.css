@@ -348,7 +348,14 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
 /* 카드 꾸미기 (앱 정보 창) */
 .card-style { margin: 16px 0; padding: 16px; border: var(--border); background: var(--card2); }
 .card-style h4 { margin-top: 0; }
-.card-style fieldset { border: var(--border); margin: 12px 0 0; padding: 12px; }
+.card-style fieldset { display: block; min-width: 0; max-width: 100%; border: var(--border); margin: 12px 0 0; padding: 12px; }
+.card-style .pills { display: inline-flex; flex-wrap: wrap; max-width: 100%; }
+.card-style .pills .pill { flex: none; }
+.card-style label { margin: 0 0 8px; }
+.card-style label input { width: 100%; max-width: 280px; box-sizing: border-box; }
+.card-style .hex-row { flex-wrap: wrap; align-items: flex-end; }
+.card-style .tile.preview { max-width: 100%; }
+@media (max-width: 520px) { .card-style { padding: 12px; } .card-style fieldset { padding: 10px; } .emoji-grid { grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); } }
 .card-style legend { font-weight: 850; padding: 0 6px; }
 .card-style .pills { margin: 0 0 10px; }
 .emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 6px; margin: 0 0 10px; }
