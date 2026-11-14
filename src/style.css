@@ -524,3 +524,15 @@ table.logs .nowrap { white-space: nowrap; }
 tr.log-bad td { background: var(--bad-soft); }
 tr.log-warn td { background: var(--warn-soft); }
 .muted.small, p.small { font-size: 12.5px; }
+
+/* 모바일: 좁은 화면에서 작은 표(비밀값·함수·요청 목록)를 위아래로 쌓아 화면 밖으로 넘치지 않게 (로그 표는 가로 스크롤 유지) */
+table.compact code { overflow-wrap: anywhere; word-break: break-all; }
+@media (max-width: 640px) {
+  table.compact:not(.logs) thead { display: none; }
+  table.compact:not(.logs), table.compact:not(.logs) tbody { display: block; width: 100%; }
+  table.compact:not(.logs) tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line-soft); }
+  table.compact:not(.logs) tr:last-child { border-bottom: 0; }
+  table.compact:not(.logs) td { display: block; padding: 0; border: 0; min-width: 0; text-align: left !important; white-space: normal !important; }
+  table.compact:not(.logs) td:first-child { grid-column: 1 / -1; }
+  table.compact:not(.logs) td:empty { display: none; }
+}
