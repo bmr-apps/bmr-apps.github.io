@@ -5,6 +5,8 @@
 //   secret_delete   { name }
 //   fn_delete       { fn }  추가 함수(<slug>-이름)만. <slug>-fn 은 지울 수 없음
 //   logs            { kind: 'fn'|'db', fn?, hours: 1|6|24, errors_only? }  그 앱 함수·그 앱 DB 역할(<schema>_dev, <schema>_fn) 로그만
+//   mail_status     이 앱의 메일 상태(토큰·비밀값)·한도 사용량·최근 발송 10건 (본문·토큰 값은 돌려주지 않음)
+//   mail_token_issue 메일 토큰을 새로 만들어 <PREFIX>MAIL_TOKEN 에 넣고 해시만 남긴다 (토큰·해시는 브라우저로 보내지 않음)
 // 누가: 그 앱 담당 개발자(개발자 승인 + 허브 메일 = 담당자 메일) 또는 관리자. 서버에서 확인한다.
 // 기록: 비밀값 넣기·지우기, 함수 지우기는 public.audit_log 에 이름만 남긴다 (값은 남기지 않음).
 // 관리 토큰(BMR_MGMT_TOKEN)은 hub-provision 과 같은 암호문 비밀값이고, 푸는 열쇠는 배포본(_key.ts)에만 있다.
@@ -13,6 +15,7 @@ import { PROVISION_KEY } from './_key.ts';
 import {
   SLUG_RE, EXTRA_FN_MAX, SECRET_MAX_PER_APP, LOG_HOURS, UUID_RE,
   prefixOf, schemaOf, managedSecrets, secretNameProblem, secretValueProblem, fnKind, logSql, maskSecrets,
+  mailSecretOf, mailAddressOf, MAIL_LIMITS, mailState,
 } from './rules.ts';
 
 const REF = 'psupfmarnyxontorftio';
@@ -21,7 +24,8 @@ if (new URL(SB_URL).hostname.split('.')[0] !== REF) throw new Error('hub-devtool
 const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 const HUB = 'https://apps.bmrschool.net';
 const ORIGINS = [HUB, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173'];
-const LIMIT = { perUserHour: 150, perIpHour: 300, logsPerUserHour: 30, secretWritesPerAppHour: 30 };
+const LIMIT = { perUserHour: 150, perIpHour: 300, logsPerUserHour: 30, secretWritesPerAppHour: 30, mailIssuePerAppHour: 6 };
+const MAIL_LOG_ROWS = 10;
 const db = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -31,6 +35,12 @@ function cors(req: Request): Record<string, string> {
 }
 const json = (req: Request, status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors(req), 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** 메일 토큰은 SHA-256 해시만 남긴다 (hub-mail 이 같은 방식으로 확인) */
+async function sha256hex(s: string): Promise<string> {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
 
 // ---------- 관리 토큰 (암호문 → 메모리에서만 풂) ----------
 const b64d = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -187,6 +197,84 @@ Deno.serve(async (req) => {
       if (!r.ok) { await audit(u, a.slug, 'secret:delete', 'error', `${name} · 지우기 실패 (${r.status})`); return json(req, 502, { error: `지우지 못했습니다 (${r.status}).` }); }
       await audit(u, a.slug, 'secret:delete', 'ok', name);
       return json(req, 200, { ok: true, name, deleted: true });
+    }
+
+    if (action === 'mail_status') {
+      const secretName = mailSecretOf(a.slug);
+      const secrets = await appSecrets(sb, a.slug);
+      const has_secret = secrets.some((s) => s.name === secretName);
+      const [t] = await db`select set_at from bmr_admin.mail_tokens where app_id = ${a.id}`;
+      const has_token_hash = !!t;
+      // hub-mail 과 같은 기준: 한도는 '최근 24시간'·'최근 1시간'으로 센다 (달력 날짜 아님)
+      const [c] = await db`select
+          count(*) filter (where status = 'sent' and app_id = ${a.id}) as app_24h,
+          count(*) filter (where status = 'sent' and app_id = ${a.id} and at > now() - interval '1 hour') as app_hour,
+          count(*) filter (where status = 'sent') as global_24h
+        from bmr_admin.mail_log where at > now() - interval '24 hours'`;
+      const [td] = await db`select count(*) as n from bmr_admin.mail_log
+        where status = 'sent' and app_id = ${a.id}
+          and at >= (date_trunc('day', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul')`;
+      // 본문은 애초에 남기지 않는다. 제목·건수·결과·오류만
+      const rows = await db`select at, recipient_count, subject, status, error, actor from bmr_admin.mail_log
+        where app_id = ${a.id} order by at desc limit ${MAIL_LOG_ROWS}`;
+      const txt = (v: unknown, n: number) => String(v ?? '').slice(0, n);
+      return json(req, 200, {
+        app: { id: a.id, slug: a.slug, name: a.name },
+        address: mailAddressOf(a.slug), secret_name: secretName,
+        has_secret, has_token_hash, set_at: t?.set_at ?? null, state: mailState(has_token_hash, has_secret),
+        can_issue: u.admin || a.is_owner,
+        limits: MAIL_LIMITS,
+        counts: { app_24h: Number(c?.app_24h ?? 0), app_hour: Number(c?.app_hour ?? 0), global_24h: Number(c?.global_24h ?? 0), app_today: Number(td?.n ?? 0) },
+        recent_logs: rows.map((x) => ({
+          at: x.at, recipient_count: Number(x.recipient_count ?? 0), subject: txt(x.subject, 200),
+          status: String(x.status ?? ''), error: txt(x.error, 500), actor: txt(x.actor, 200),
+        })),
+      });
+    }
+
+    if (action === 'mail_token_issue') {
+      if (!u.admin && !a.is_owner) return json(req, 403, { error: '이 앱의 담당 개발자만 메일 토큰을 발급할 수 있습니다.' });
+      const secretName = mailSecretOf(a.slug);
+      const why = secretNameProblem(a.slug, secretName, allSlugs);
+      if (why) return json(req, 400, { error: why });
+      const [{ n }] = await db`select count(*) as n from public.audit_log
+        where target = ${a.slug} and action = 'mail:token_issue' and result = 'ok' and at > now() - interval '1 hour'`;
+      if (Number(n) >= LIMIT.mailIssuePerAppHour) {
+        await audit(u, a.slug, 'mail:token_issue', 'denied', `한 시간 ${LIMIT.mailIssuePerAppHour}번 초과`);
+        return json(req, 429, { error: `메일 토큰은 한 시간에 ${LIMIT.mailIssuePerAppHour}번까지만 발급합니다. 잠시 뒤 다시 시도하세요.` });
+      }
+      // 32바이트 무작위 → 64자 16진수. hub-mail 은 해시만 보고, 평문은 함수 비밀값에만 둔다
+      let plain = 'bmrmt_' + [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join('');
+      // 1) 함수 비밀값 먼저 — 여기서 실패하면 예전 토큰이 그대로 살아 있다
+      const r = await sb('POST', '/secrets', [{ name: secretName, value: plain }]);
+      await r.body?.cancel();   // 응답 본문(값)은 읽지 않는다
+      if (!r.ok) {
+        plain = '';
+        await audit(u, a.slug, 'mail:token_issue', 'error', `${secretName} · 비밀값 저장 실패 (${r.status})`);
+        return json(req, 502, { error: `메일 토큰 비밀값을 저장하지 못했습니다 (${r.status}). 잠시 뒤 다시 시도하세요.` });
+      }
+      // 2) 해시만 남긴다 (실패하면 비밀값과 해시가 어긋나므로 몇 번 다시 시도)
+      const hash = await sha256hex(plain);
+      plain = '';
+      let dbErr = '';
+      for (let i = 0; i < 3; i++) {
+        try {
+          await db`insert into bmr_admin.mail_tokens (app_id, token_hash, set_at) values (${a.id}, ${hash}, now())
+            on conflict (app_id) do update set token_hash = excluded.token_hash, set_at = excluded.set_at`;
+          dbErr = ''; break;
+        } catch (e) { dbErr = String((e as Error)?.message ?? e).slice(0, 160); await sleep(400); }
+      }
+      if (dbErr) {
+        console.error('hub-devtools mail_tokens', dbErr);
+        await audit(u, a.slug, 'mail:token_issue', 'error', `${secretName} · 해시 저장 실패 (다시 발급 필요)`);
+        return json(req, 502, { error: '토큰은 넣었지만 해시를 남기지 못했습니다. 화면에서 한 번 더 발급해 주세요.' });
+      }
+      const [t] = await db`select set_at from bmr_admin.mail_tokens where app_id = ${a.id}`;
+      await audit(u, a.slug, 'mail:token_issue', 'ok', `${secretName} · 새로 발급 (토큰 값은 기록하지 않음)`);
+      return json(req, 200, {
+        ok: true, secret_name: secretName, address: mailAddressOf(a.slug), set_at: t?.set_at ?? null,
+        note: '토큰 값은 다시 볼 수 없습니다. 이 앱의 서버 함수는 다음 요청부터 새 값을 읽습니다. 예전 토큰은 바로 무효가 되었습니다.',
+      });
     }
 
     if (action === 'fn_delete') {

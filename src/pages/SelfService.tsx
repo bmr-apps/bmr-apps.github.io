@@ -2,7 +2,7 @@
 // 권한은 서버(hub-devtools, DB 함수)가 확인한다. 이 화면은 보여 주기만 한다.
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { Ctx } from '../App';
-import { sb, devtools, errMsg, fmtTime, DEV_REQ_KIND, DEV_REQ_STATUS, type DevInfoRes, type DevRequest, type LogRow } from '../sb';
+import { sb, devtools, errMsg, fmtTime, DEV_REQ_KIND, DEV_REQ_STATUS, type DevInfoRes, type DevRequest, type DevMailRes, type LogRow } from '../sb';
 
 const kst = (d: Date) => d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const logTime = (s: string) => { const d = new Date(/Z|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z'); return isNaN(+d) ? s : kst(d); };
@@ -26,6 +26,7 @@ export function SelfServiceSection({ ctx, appId, onChanged }: { ctx: Ctx; appId:
       <p className="muted">비밀값·서버 함수·로그를 이 앱 몫만 직접 다룹니다. 모든 변경은 감사 기록에 남습니다 (비밀값은 이름만). 자세한 내용은 <a href="/guide#selfservice">시작 가이드 · 개발자 셀프서비스</a>.</p>
       <AutoDeployRequest ctx={ctx} d={d} reload={async () => { await load(); onChanged?.(); }} />
       <Secrets ctx={ctx} d={d} reload={load} />
+      <Mail ctx={ctx} d={d} />
       <Functions ctx={ctx} d={d} reload={load} />
       <Logs ctx={ctx} d={d} />
     </div>
@@ -113,6 +114,74 @@ function Secrets({ ctx, d, reload }: { ctx: Ctx; d: DevInfoRes; reload: () => vo
       </form>
       <p className="muted small">⚠️ 공용 프로젝트라 자동 배포가 켜진 다른 앱의 함수 코드도 이론상 이 값을 읽을 수 있습니다. 학교 전체에 중요한 키는 관리자와 먼저 상의하세요.</p>
       {msg && <p className="ok" role="status">{msg}</p>}{err && <p className="error" role="alert">{err}</p>}
+    </>
+  );
+}
+
+const MAIL_STATUS: Record<string, string> = { sent: '보냄', error: '실패', denied: '거부' };
+
+/** ✉️ 앱 메일 — 토큰 발급·재발급과 한도 사용량·최근 발송 (값·해시는 서버가 돌려주지 않음) */
+function Mail({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
+  const [m, setM] = useState<DevMailRes | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
+  const load = useCallback(async () => {
+    if (!ctx.session) return;
+    try { setM(await devtools<DevMailRes>(ctx.session, 'mail_status', { app_id: d.app.id })); setErr(''); }
+    catch (e) { setErr((e as Error).message); } finally { setLoading(false); }
+  }, [ctx.session, d.app.id]);
+  useEffect(() => { void load(); }, [load]);
+  const issue = async () => {
+    if (!ctx.session) return;
+    if (m?.has_token_hash && !confirm('메일 토큰을 새로 발급할까요?\n\n재발급하면 지금 토큰은 바로 무효가 됩니다. 이 앱의 서버 함수는 다음 요청부터 새 값을 씁니다.')) return;
+    setBusy(true); setErr(''); setMsg('');
+    try {
+      await devtools(ctx.session, 'mail_token_issue', { app_id: d.app.id });
+      setMsg(`${d.secret_prefix}MAIL_TOKEN 을 발급했습니다. 값은 화면·기록·로그 어디에도 남지 않습니다.`);
+      await load();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  const state = m?.state;
+  const badge = state === 'active' ? <span className="badge r-approved">활성</span>
+    : state === 'mismatch' ? <span className="badge r-rejected">불일치 · 재발급 필요</span>
+      : state === 'none' ? <span className="badge r-pending">미발급</span> : null;
+  const addr = m?.address ?? `${d.app.slug}@mail.bmrschool.net`;
+  return (
+    <>
+      <h5>✉️ 앱 메일 {badge}</h5>
+      <p className="muted small" style={{ margin: '0 0 6px' }}>
+        이 앱 서버 함수가 <code>hub-mail</code> 로 메일을 보낼 때 쓰는 신분증입니다. 보내는 주소는 <code>{addr}</code> 로 정해져 있고 표시 이름만 앱이 고를 수 있습니다.
+      </p>
+      {loading && !m ? <p className="muted small" style={{ margin: 0 }}>메일 상태를 불러오는 중…</p> : m && (
+        <>
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="small">마지막 발급 <b>{m.set_at ? fmtTime(m.set_at) : '—'}</b></span>
+            <span className="muted small">비밀값 <code>{m.secret_name}</code> {m.has_secret ? '있음' : '없음'} · 해시 {m.has_token_hash ? '있음' : '없음'}</span>
+            {m.can_issue && <button type="button" className="small" disabled={busy} onClick={issue}>{busy ? '발급하는 중…' : m.has_token_hash ? '🔄 메일 토큰 재발급' : '✉️ 메일 토큰 발급'}</button>}
+          </div>
+          {state === 'mismatch' && <p className="muted small" style={{ margin: '6px 0 0' }}>토큰 해시와 비밀값 중 한쪽만 있어 지금은 메일이 나가지 않습니다. '재발급'을 한 번 누르면 둘이 맞춰집니다.</p>}
+          {state === 'none' && <p className="muted small" style={{ margin: '6px 0 0' }}>아직 토큰이 없습니다. 발급하면 새 앱은 바로 메일을 보낼 수 있습니다.</p>}
+          {state === 'active' && <p className="muted small" style={{ margin: '6px 0 0' }}>보낼 준비가 됐습니다. 앱 서버 함수에서 <code>{`Deno.env.get('${m.secret_name}')`}</code> 으로 토큰을 읽어 <code>hub-mail</code> 을 부릅니다.</p>}
+          <p className="small" style={{ margin: '10px 0 2px' }}>
+            오늘 <b>{m.counts.app_today}</b>통 · 최근 1시간 <b>{m.counts.app_hour}</b>/{m.limits.perAppHour}통 · 이 앱 24시간 <b>{m.counts.app_24h}</b>/{m.limits.perAppDay}통 · 학교 전체 24시간 <b>{m.counts.global_24h}</b>/{m.limits.globalDay}통
+          </p>
+          <p className="muted small" style={{ margin: '0 0 8px' }}>한도는 최근 24시간·최근 1시간으로 세고(달력 날짜와 조금 다름), 한 통에 받는 사람 {m.limits.maxTo}명까지입니다. 학교 전체 한도는 모든 앱이 나눠 씁니다.</p>
+          <p className="small" style={{ margin: '0 0 4px' }}><b>최근 보낸 메일</b> <span className="muted">· 본문은 남기지 않습니다</span></p>
+          {m.recent_logs.length === 0 ? <p className="muted small" style={{ margin: 0 }}>아직 보낸 메일이 없습니다.</p> : (
+            <div className="logs-wrap"><table className="compact"><thead><tr><th>시각 (KST)</th><th>제목</th><th>수신자</th><th>상태</th><th>오류</th></tr></thead><tbody>
+              {m.recent_logs.map((r, i) => <tr key={i} className={r.status === 'sent' ? '' : 'log-bad'}>
+                <td className="muted" style={{ whiteSpace: 'nowrap' }}>{logTime(r.at)}</td>
+                <td title={r.subject} style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.subject || '—'}</td>
+                <td>{r.recipient_count}</td>
+                <td>{MAIL_STATUS[r.status] ?? r.status}</td>
+                <td className="muted" title={r.error} style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.error || '—'}</td>
+              </tr>)}
+            </tbody></table></div>
+          )}
+        </>
+      )}
+      {msg && <p className="ok" role="status">{msg}</p>}{err && <p className="error" role="alert">{err}</p>}
+      {err && !m && <p className="muted small" style={{ margin: '4px 0 0' }}>메일 정보는 서버 함수 <code>hub-devtools</code> 가 새 버전으로 배포된 뒤에 열립니다. 계속 나오면 관리자에게 알려 주세요.</p>}
     </>
   );
 }

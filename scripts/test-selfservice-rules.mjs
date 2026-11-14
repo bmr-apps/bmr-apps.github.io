@@ -64,6 +64,17 @@ threw = false; try { R.logSql('db', ["postgres' or '1'='1"]); } catch { threw = 
 const d = R.logSql('db', ['class_designer_dev', 'class_designer_fn'], { errorsOnly: true, limit: 5000 });
 ok(d.includes("in ('class_designer_dev', 'class_designer_fn')") && d.includes("source = 'postgres_logs'") && /limit 300$/.test(d) && d.includes('ERROR'), 'DB 로그: 그 앱 역할만, 최대 300줄, 오류만');
 
+console.log('[앱 메일]');
+const MAIL_TS = R.mailSecretOf('class-designer');
+ok(MAIL_TS === 'CLASS_DESIGNER_MAIL_TOKEN', '비밀값 이름 = <접두어>MAIL_TOKEN', MAIL_TS);
+ok(R.mailSecretOf('my-app') === 'MY_APP_MAIL_TOKEN', '하이픈 앱 이름 → 밑줄 접두어', R.mailSecretOf('my-app'));
+ok(R.secretNameProblem('class-designer', MAIL_TS, ALL) === null, 'MAIL_TOKEN 은 비밀값 이름 검사를 통과 (셀프서비스 발급 가능)');
+ok(R.secretNameProblem('zz-a', R.mailSecretOf('zz-a-b'), ALL) !== null, '다른 앱의 MAIL_TOKEN 이름은 거부');
+ok(R.mailAddressOf('class-designer') === 'class-designer@mail.bmrschool.net', '보내는 주소 = <slug>@mail.bmrschool.net', R.mailAddressOf('class-designer'));
+ok(R.mailState(true, true) === 'active' && R.mailState(false, false) === 'none' && R.mailState(true, false) === 'mismatch' && R.mailState(false, true) === 'mismatch', '상태: 활성(둘 다) · 미발급(둘 다 없음) · 불일치(한쪽만)');
+const hubMail = readFileSync(new URL('../supabase/functions/hub-mail/index.ts', import.meta.url), 'utf8');
+ok(['perAppHour', 'perAppDay', 'globalDay', 'maxTo'].every((k) => hubMail.includes(`${k}: ${R.MAIL_LIMITS[k]}`)), `hub-mail 한도 = MAIL_LIMITS (${JSON.stringify(R.MAIL_LIMITS)})`);
+
 console.log('[비밀값 가리기]');
 const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4eHh4eHh4eCJ9.c2lnbmF0dXJlc2lnbmF0dXJl';
 const m = R.maskSecrets(`url postgresql://class_designer_fn.ref:Sup3rS3cret@host:5432/postgres auth Bearer ${'a'.repeat(30)} jwt ${jwt} key sbp_${'b'.repeat(30)} g AIza${'c'.repeat(30)} long ${'Z9'.repeat(30)}`);

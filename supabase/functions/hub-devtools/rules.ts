@@ -18,6 +18,22 @@ export const prefixOf = (slug: string) => schemaOf(slug).toUpperCase() + '_';
 /** 허브가 직접 관리하는 그 앱 비밀값 (개발자는 바꾸거나 지울 수 없음) */
 export const managedSecrets = (slug: string) => [`${prefixOf(slug)}DB_URL`];
 
+// ---------- 앱 메일 (hub-mail) ----------
+/** 이 앱의 메일 토큰을 담는 함수 비밀값 이름 (예: LIBRARY_MAIL_TOKEN) */
+export const mailSecretOf = (slug: string) => `${prefixOf(slug)}MAIL_TOKEN`;
+/** 이 앱이 메일을 보낼 때 쓰는 주소 (보내는 주소는 허브가 정함) */
+export const mailAddressOf = (slug: string) => `${slug}@mail.bmrschool.net`;
+/** hub-mail 의 한도와 같은 값 — 화면에 보여 줄 때 쓴다 (실제 판정은 hub-mail 이 한다) */
+export const MAIL_LIMITS = { perAppHour: 20, perAppDay: 100, globalDay: 100, maxTo: 10 } as const;
+/**
+ * 메일 상태: 활성 = 해시와 비밀값이 둘 다 있음 · 미발급 = 둘 다 없음 · 불일치 = 한쪽만 있어 토큰이 맞지 않음(재발급 필요)
+ */
+export function mailState(hasTokenHash: boolean, hasSecret: boolean): 'active' | 'none' | 'mismatch' {
+  if (hasTokenHash && hasSecret) return 'active';
+  if (!hasTokenHash && !hasSecret) return 'none';
+  return 'mismatch';
+}
+
 /** 다른 앱의 이름 공간과 겹치는지: 예) 앱 class 가 CLASS_DESIGNER_X(앱 class-designer 몫)를 넣으려 함 */
 function otherOwns(name: string, own: string, others: string[], of: (s: string) => string) {
   return others.some((o) => o !== own && of(o).length > of(own).length && name.startsWith(of(o)));

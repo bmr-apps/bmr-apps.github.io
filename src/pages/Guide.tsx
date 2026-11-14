@@ -176,6 +176,7 @@ create policy "멤버만 읽기" on library.books for select to authenticated us
           <p>앱이 알림·안내 메일을 보낼 때는 <b>서버 함수 안에서</b> 허브의 <code>hub-mail</code> 을 부릅니다. <b>보내는 주소는 허브가 정합니다</b> — <code>&lt;주소 이름&gt;@mail.bmrschool.net</code> (표시 이름은 앱이 정할 수 있음). Resend 키는 앱이 갖지 않고, 함수 비밀값 <code>&lt;접두어&gt;MAIL_TOKEN</code>(예: <code>LIBRARY_MAIL_TOKEN</code>)으로 이 앱 신분만 증명합니다. 로그인(가입 확인·비밀번호 재설정) 메일은 같은 업체를 통해 <code>noreply@mail.bmrschool.net</code> 에서 나갑니다.</p>
           <ul>
             <li>한도: <b>앱마다 하루 100통, 한 시간 20통, 한 통에 받는 사람 10명</b>. 학교 전체도 하루 100통입니다.</li>
+            <li><b>토큰은 직접 발급합니다</b>: 내 서비스 → 앱 정보 창의 <b>✉️ 앱 메일</b>에서 <b>메일 토큰 발급</b>을 한 번 누르면 <code>&lt;접두어&gt;MAIL_TOKEN</code> 이 함수 비밀값에 들어가고, 해시만 서버에 남습니다(값은 화면·기록·로그에 남지 않아 다시 볼 수 없음). 새로 만든 앱은 승인 때 자동으로 발급됩니다. 잊어버렸거나 다른 사람이 알게 되었으면 <b>재발급</b>하세요 — 예전 토큰은 바로 무효가 됩니다. 그 화면에서 한도 사용량과 최근 발송 10건(시각·제목·수신자 수·상태·오류)도 볼 수 있습니다.</li>
             <li>앱이 활성 상태가 아니면 보낼 수 없습니다. 본문은 남기지 않고, 제목·받는 사람 수·결과만 감사 기록에 남습니다.</li>
             <li>선택: <code>reply_to</code>(회신 주소), <code>from_name</code>(표시 이름, 기본은 앱 이름).</li>
           </ul>
@@ -208,6 +209,7 @@ const { ok, id, from, error } = await r.json();`}</C>
             <li><b>함수 비밀값</b>: 이름은 <code>&lt;접두어&gt;_</code>(예: <code>LIBRARY_</code>, <code>my-app</code> 이면 <code>MY_APP_</code>)로 시작해야 합니다. 값은 <b>쓰기 전용</b> — 저장하면 다시 볼 수 없고, 감사 기록에도 이름만 남습니다. <code>SUPABASE_</code>·<code>BMR_</code>·<code>HUB_</code> 로 시작하는 이름과 허브가 관리하는 <code>&lt;접두어&gt;_DB_URL</code> 은 쓸 수 없어요. 함수에서는 <code>{"Deno.env.get('LIBRARY_API_KEY')"}</code> 로 읽습니다.</li>
             <li><b>새 서버 함수</b>: 저장소에 <code>supabase/functions/&lt;주소 이름&gt;-이름/index.ts</code>(예: <code>library-export</code>)를 만들고 <code>main</code> 에 push 하면 자동 배포가 켜진 앱에서는 새 함수가 만들어집니다. 이름 끝부분은 영문 소문자·숫자(하이픈으로 이음) 20자까지, <b>앱마다 3개까지</b>. push 때는 바뀐 함수만 배포하고, Actions 에서 수동 실행하면 모두 다시 배포합니다. 안 쓰는 함수는 셀프서비스에서 지우고 저장소 폴더도 지우세요.</li>
             <li><b>로그 보기</b>: 서버 함수(콘솔 출력·요청 결과)와 내 DB 계정(<code>&lt;스키마&gt;_dev</code>, <code>&lt;스키마&gt;_fn</code>) 로그를 최근 1·6·24시간 범위로 봅니다. <b>이 앱 것만</b> 보이고, 비밀값처럼 보이는 글자는 가려집니다. 그래도 로그에 학생 개인정보·비밀값을 찍지 마세요.</li>
+            <li><b>앱 메일</b>: 위 <b>✉️ 앱 메일</b> 칸에서 토큰을 발급·재발급하고, 한도 사용량과 최근 발송 결과를 봅니다. 토큰 값은 발급할 때 한 번 만들어 바로 비밀값으로 들어가고 어디에도 보이지 않습니다.</li>
           </ul>
           <C>{`// supabase/functions/library-export/index.ts  (새 함수 예시)
 Deno.serve(async (req) => {

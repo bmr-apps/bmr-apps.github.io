@@ -191,7 +191,7 @@ async function syncOwnerRow(ownerId: number): Promise<GhState | null> {
 }
 
 // ---------- 만들기 단계 ----------
-export const STEPS = ['check', 'db', 'fn_secret', 'starter', 'expose', 'bucket', 'function', 'repo', 'pages', 'vars', 'code', 'hub', 'invite', 'dbcred', 'health'] as const;
+export const STEPS = ['check', 'db', 'fn_secret', 'starter', 'expose', 'bucket', 'function', 'repo', 'pages', 'vars', 'code', 'hub', 'mail', 'invite', 'dbcred', 'health'] as const;
 type Ctx = { r: Req; n: Names; name: string; mgmt: Mgmt; gh: GitHub; store: Store; steps: Record<string, unknown>; u: Me; t0: number };
 async function saveSteps(c: Ctx, extra: { status?: string; error?: string | null; finished?: boolean } = {}) {
   await db`update public.app_requests set provision_steps = ${db.json(c.steps as Record<string, never>)},
@@ -215,6 +215,11 @@ async function scram(pw: string) {
   return `SCRAM-SHA-256$${it}:${b64(salt)}$${b64(stored)}:${b64(await hmac(salted, 'Server Key'))}`;
 }
 const hex = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, '0')).join('');
+/** 메일 토큰은 SHA-256 해시만 남긴다 (hub-mail·hub-devtools 와 같은 방식) */
+async function sha256hex(s: string): Promise<string> {
+  const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
 
 /** 한 단계 실행. true = 끝남, false = 아직(다음 호출에서 이어서) */
 async function runStep(c: Ctx, step: string): Promise<boolean> {
@@ -337,6 +342,28 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
       });
       return true;
     }
+    case 'mail': {
+      // 새 앱이 처음부터 메일을 보낼 수 있게 <PREFIX>MAIL_TOKEN 을 바로 발급한다.
+      // 실패해도 앱 만들기는 계속한다 (허브 앱 화면에서 다시 발급할 수 있음) — 결과만 단계 기록에 남긴다.
+      try {
+        const appId = Number(c.r.app_id ?? 0);
+        if (!appId) { c.steps.mail_result = 'skipped'; c.steps.mail_note = '허브에 앱 행이 없어 건너뜀'; return true; }
+        const [have] = await db`select 1 from bmr_admin.mail_tokens where app_id = ${appId}`;
+        if (have) { c.steps.mail_result = 'skipped'; c.steps.mail_note = '이미 토큰 있음'; return true; }
+        const plain = 'bmrmt_' + hex(32);
+        await mgmt.setMailToken(plain);
+        for (let i = 0; i < 3; i++) { if ((await mgmt.secretNames()).includes(n.mailSecret)) break; await sleep(700); }
+        await db`insert into bmr_admin.mail_tokens (app_id, token_hash, set_at) values (${appId}, ${await sha256hex(plain)}, now())
+          on conflict (app_id) do update set token_hash = excluded.token_hash, set_at = excluded.set_at`;
+        c.steps.mail_result = 'ok';
+      } catch (e) {
+        const msg = (e instanceof HttpError ? e.message : String((e as Error)?.message ?? e)).slice(0, 200);
+        console.error('hub-provision mail', msg);
+        c.steps.mail_result = 'failed';
+        c.steps.mail_note = `${msg} — 허브 앱 화면의 '메일 토큰 발급'에서 다시 시도할 수 있습니다`;
+      }
+      return true;
+    }
     case 'invite': {
       const [o] = await db`select id from public.app_owners where app_id = ${c.r.app_id} and lower(coalesce(github_username, '')) = lower(${c.r.github_username}) order by id limit 1`;
       const st = o ? await syncOwnerRow(Number(o.id)) : null;
@@ -402,9 +429,16 @@ async function provision(r: Req, u: Me): Promise<{ more: boolean }> {
       if (!ok) { await saveSteps(c); return { more: true }; }
       c.steps[step] = 'done'; delete c.steps.failed_step;
       await saveSteps(c);
-      if (step !== 'check') await audit(u, `provision:${step}`, n.slug, 'ok', step === 'code' ? `commit ${c.steps.commit ?? ''}` : step === 'invite' ? `GitHub ${c.r.github_username}: ${c.steps.invite_result}${c.steps.invite_error ? ' · ' + c.steps.invite_error : ''}` : '');
+      if (step !== 'check') await audit(u, `provision:${step}`, n.slug,
+        step === 'mail' && c.steps.mail_result === 'failed' ? 'error' : 'ok',
+        step === 'code' ? `commit ${c.steps.commit ?? ''}`
+          : step === 'invite' ? `GitHub ${c.r.github_username}: ${c.steps.invite_result}${c.steps.invite_error ? ' · ' + c.steps.invite_error : ''}`
+          : step === 'mail' ? `메일 토큰 ${c.steps.mail_result ?? ''}${c.steps.mail_note ? ' · ' + c.steps.mail_note : ''}` : '');
     }
-    const warn = c.steps.invite_result === 'failed' ? `GitHub 초대 실패: ${c.steps.invite_error ?? ''} (담당 개발자에서 다시 시도)` : null;
+    const warn = [
+      c.steps.invite_result === 'failed' ? `GitHub 초대 실패: ${c.steps.invite_error ?? ''} (담당 개발자에서 다시 시도)` : null,
+      c.steps.mail_result === 'failed' ? `메일 토큰 자동 발급 실패: ${c.steps.mail_note ?? ''}` : null,
+    ].filter(Boolean).join(' / ') || null;
     await saveSteps(c, { status: 'done', error: warn, finished: true });
     await audit(u, 'provision:done', n.slug, 'ok', `${name} · ${n.url}`);
     return { more: false };

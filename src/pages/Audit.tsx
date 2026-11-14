@@ -10,6 +10,7 @@ const ACTION: Record<string, string> = {
   'provision:done': '앱 만들기 완료', remove_app: '앱 목록에서 삭제', unreserve_slug: '주소 예약 해제',
   'fn:deploy': '서버 함수 자동 배포', 'hub:deploy': '허브 함수 배포', 'fn:auto_deploy': '자동 배포 켜기·끄기', 'dbcred:reveal': 'DB 비밀번호 처음 받기', 'dbcred:rotate': 'DB 비밀번호 새로 발급',
   'secret:set': '함수 비밀값 넣기·바꾸기 (이름만)', 'secret:delete': '함수 비밀값 지우기', 'fn:delete': '추가 서버 함수 지우기',
+  'mail:token_issue': '앱 메일 토큰 발급·재발급 (값은 기록하지 않음)',
   'request:fn_auto_deploy': '자동 배포 켜기 요청', 'request:decide': '개발자 요청 승인·반려', 'request:cancel': '개발자 요청 취소',
   'user:role': '사용자 역할 변경', 'user:disable': '사용자 사용 중지', 'user:enable': '사용자 다시 사용', 'user:reset_password': '사용자 비밀번호 초기화', 'user:delete': '사용자 계정 삭제',
 };
