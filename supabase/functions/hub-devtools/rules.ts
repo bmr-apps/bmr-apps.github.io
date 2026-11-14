@@ -35,6 +35,94 @@ export function mailState(hasTokenHash: boolean, hasSecret: boolean): 'active' |
   return 'mismatch';
 }
 
+// ---------- 앱 AI (hub-ai) ----------
+// hub-ai/models.ts 와 같은 값·같은 결과여야 한다 (scripts/test-selfservice-rules.mjs 가 둘을 같은 입력으로 비교한다).
+export type AiProvider = 'gemini' | 'openai' | 'anthropic' | 'xai';
+export const AI_PROVIDERS: readonly AiProvider[] = ['gemini', 'openai', 'anthropic', 'xai'] as const;
+export const AI_PROVIDER_LABEL: Record<AiProvider, string> = { gemini: 'Gemini', openai: 'OpenAI', anthropic: 'Claude', xai: 'Grok' };
+/** 이 앱의 AI 토큰을 담는 함수 비밀값 이름 (예: LIBRARY_AI_TOKEN) */
+export const aiSecretOf = (slug: string) => `${prefixOf(slug)}AI_TOKEN`;
+/** 학교 전체 AI 기본값 — 마이그레이션 20261115100000_hub_ai 의 ai_config 기본값과 같다 */
+export const AI_DEFAULTS = {
+  defaultModel: 'gemini:gemini-2.5-flash',
+  defaultAppHourly: 60,
+  defaultAppDaily: 500,
+  defaultAppDailyTokens: 500_000,
+  globalDailyRequests: 3_000,
+  globalDailyTokens: 5_000_000,
+  allowedModelsMax: 50,
+} as const;
+export const AI_STARTER_MODELS: readonly string[] = [
+  'gemini:gemini-2.5-flash', 'gemini:gemini-2.5-pro',
+  'openai:gpt-4o-mini', 'openai:gpt-4o',
+  'anthropic:claude-3-5-haiku-latest', 'anthropic:claude-sonnet-4-5',
+  'xai:grok-3-mini', 'xai:grok-3',
+] as const;
+/** 업체가 받는 모델 이름 모양 (예: gemini-2.5-flash) */
+export const AI_MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+export const AI_MODEL_SPEC_MAX = 120;
+export type AiModelSpec = { provider: AiProvider; model: string; spec: string };
+/** 모델 이름으로 업체를 짐작한다 */
+export function aiInferProvider(model: string): AiProvider | null {
+  const m = String(model ?? '').trim().toLowerCase();
+  if (!m) return null;
+  if (m.startsWith('gemini-')) return 'gemini';
+  if (/^(gpt-|chatgpt-|o1|o3|o4)/.test(m)) return 'openai';
+  if (m.startsWith('claude-')) return 'anthropic';
+  if (m.startsWith('grok-')) return 'xai';
+  return null;
+}
+/** 'provider:model' 또는 'model' 하나를 { provider, model, spec } 로 푼다. 못 풀면 null */
+export function parseAiModelSpec(raw: unknown): AiModelSpec | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.trim();
+  if (!s || s.length > AI_MODEL_SPEC_MAX) return null;
+  const i = s.indexOf(':');
+  if (i > 0) {
+    const p = s.slice(0, i).trim().toLowerCase();
+    const model = s.slice(i + 1).trim();
+    if (!(AI_PROVIDERS as readonly string[]).includes(p)) return null;
+    if (!AI_MODEL_RE.test(model)) return null;
+    return { provider: p as AiProvider, model, spec: `${p}:${model}` };
+  }
+  if (!AI_MODEL_RE.test(s)) return null;
+  const p = aiInferProvider(s);
+  return p ? { provider: p, model: s, spec: `${p}:${s}` } : null;
+}
+/** 허용 목록(배열 또는 줄바꿈·쉼표로 이은 글)을 정리하고, 형식이 틀린 입력을 bad 에 담는다 */
+export function normalizeAiModelList(input: unknown): { list: string[]; bad: string[] } {
+  const parts: string[] = [];
+  if (typeof input === 'string') parts.push(...input.split(/[\n,]+/));
+  else if (Array.isArray(input)) for (const x of input) if (typeof x === 'string') parts.push(...x.split(/[\n,]+/));
+  const list: string[] = [];
+  const bad: string[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const t = p.trim();
+    if (!t) continue;
+    const m = parseAiModelSpec(t);
+    if (!m) { if (bad.length < 5 && !bad.includes(t.slice(0, 60))) bad.push(t.slice(0, 60)); continue; }
+    const k = m.spec.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    list.push(m.spec);
+  }
+  return { list, bad };
+}
+/** 이 앱이 쓸 수 있는 모델: 앱 목록이 있으면 그것, 없으면 학교 전체 목록 */
+export function effectiveAiModels(appAllowed: string[] | null | undefined, globalAllowed: unknown): string[] {
+  const own = Array.isArray(appAllowed) && appAllowed.length ? appAllowed : null;
+  return normalizeAiModelList(own ?? globalAllowed).list;
+}
+/** 앱 한도: 앱이 정한 값이 있으면 그것, 없으면 학교 전체 기본값 */
+export const aiLimitOf = (own: unknown, fallback: number): number => (typeof own === 'number' && Number.isFinite(own) && own >= 0 ? Math.trunc(own) : fallback);
+/** AI 토큰 상태: 활성(둘 다) · 미발급(둘 다 없음) · 불일치(한쪽만 — 재발급 필요) */
+export function aiState(hasTokenHash: boolean, hasSecret: boolean): 'active' | 'none' | 'mismatch' {
+  if (hasTokenHash && hasSecret) return 'active';
+  if (!hasTokenHash && !hasSecret) return 'none';
+  return 'mismatch';
+}
+
 /** 다른 앱의 이름 공간과 겹치는지: 예) 앱 class 가 CLASS_DESIGNER_X(앱 class-designer 몫)를 넣으려 함 */
 function otherOwns(name: string, own: string, others: string[], of: (s: string) => string) {
   return others.some((o) => o !== own && of(o).length > of(own).length && name.startsWith(of(o)));

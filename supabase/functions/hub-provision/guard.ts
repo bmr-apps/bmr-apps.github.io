@@ -1,5 +1,5 @@
 // hub-provision 의 외부 호출 허용 목록(allowlist). 여기 적힌 주소·방법 말고는 아예 보낼 수 없다.
-//  · Supabase 관리 API: 프로젝트 psupfmarnyxontorftio 하나, 그 앱의 함수 <slug>-fn 만들기·배포, 그 앱 비밀값 <SCHEMA>_DB_URL·<SCHEMA>_MAIL_TOKEN 둘,
+//  · Supabase 관리 API: 프로젝트 psupfmarnyxontorftio 하나, 그 앱의 함수 <slug>-fn 만들기·배포, 그 앱 비밀값 <SCHEMA>_DB_URL·<SCHEMA>_MAIL_TOKEN·<SCHEMA>_AI_TOKEN 셋,
 //    Data API 노출 스키마에 그 앱 스키마 '추가'만, 고정 SQL 실행. 지우기(DELETE) 경로는 없다.
 //  · GitHub API: 조직 bmr-apps 의 그 앱 저장소 하나. 저장소 지우기·설정 바꾸기·조직 멤버 관리 없음. 초대는 push 권한만.
 //  · Storage: 그 앱 버킷 하나 만들기(비공개). 지우기 없음.
@@ -13,14 +13,14 @@ export const GH_RE = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 export class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 export type Names = {
-  slug: string; schema: string; dev: string; fnRole: string; fn: string; prefix: string; dbSecret: string; mailSecret: string; vault: string; url: string; repoUrl: string;
+  slug: string; schema: string; dev: string; fnRole: string; fn: string; prefix: string; dbSecret: string; mailSecret: string; aiSecret: string; vault: string; url: string; repoUrl: string;
 };
 export function names(slug: string): Names {
   if (!SLUG_RE.test(slug) || slug.endsWith('-') || slug.includes('--')) throw new HttpError(400, '주소(slug) 형식이 올바르지 않습니다.');
   const schema = slug.replaceAll('-', '_');
   return {
     slug, schema, dev: `${schema}_dev`, fnRole: `${schema}_fn`, fn: `${slug}-fn`, prefix: `${schema.toUpperCase()}_`,
-    dbSecret: `${schema.toUpperCase()}_DB_URL`, mailSecret: `${schema.toUpperCase()}_MAIL_TOKEN`,
+    dbSecret: `${schema.toUpperCase()}_DB_URL`, mailSecret: `${schema.toUpperCase()}_MAIL_TOKEN`, aiSecret: `${schema.toUpperCase()}_AI_TOKEN`,
     vault: `bmr_dbcred:${slug}`, url: `https://${DOMAIN}/${slug}/`, repoUrl: `https://github.com/${ORG}/${slug}`,
   };
 }
@@ -79,6 +79,14 @@ export class Mgmt {
     const r = await this.call('POST', '/secrets', JSON.stringify(body));
     await r.body?.cancel();
     if (!r.ok) throw new HttpError(502, `메일 토큰 저장 실패 (${r.status})`);
+  }
+  /** 이 앱의 AI 토큰 비밀값 하나만 넣는다 (<PREFIX>AI_TOKEN, 다른 이름은 못 넣음) */
+  async setAiToken(value: string) {
+    const body = [{ name: this.n.aiSecret, value }];
+    if (body.length !== 1 || body[0].name !== this.n.aiSecret) blocked('비밀값', 'POST', '/secrets');
+    const r = await this.call('POST', '/secrets', JSON.stringify(body));
+    await r.body?.cancel();
+    if (!r.ok) throw new HttpError(502, `AI 토큰 저장 실패 (${r.status})`);
   }
   async functionSlugs(): Promise<string[]> {
     const r = await this.call('GET', '/functions');

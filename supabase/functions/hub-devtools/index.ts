@@ -7,6 +7,9 @@
 //   logs            { kind: 'fn'|'db', fn?, hours: 1|6|24, errors_only? }  그 앱 함수·그 앱 DB 역할(<schema>_dev, <schema>_fn) 로그만
 //   mail_status     이 앱의 메일 상태(토큰·비밀값)·한도 사용량·최근 발송 10건 (본문·토큰 값은 돌려주지 않음)
 //   mail_token_issue 메일 토큰을 새로 만들어 <PREFIX>MAIL_TOKEN 에 넣고 해시만 남긴다 (토큰·해시는 브라우저로 보내지 않음)
+//   ai_status       이 앱의 AI 상태(토큰·비밀값·업체 키 등록 여부)·허용 모델·한도 사용량·최근 호출 10건 (키·토큰 값은 돌려주지 않음)
+//   ai_token_issue  AI 토큰을 새로 만들어 <PREFIX>AI_TOKEN 에 넣고 해시만 남긴다
+//   ai_settings_update (관리자) 이 앱의 AI 켜기·허용 모델·한도, 학교 전체 AI 기본값
 // 누가: 그 앱 담당 개발자(개발자 승인 + 허브 메일 = 담당자 메일) 또는 관리자. 서버에서 확인한다.
 // 기록: 비밀값 넣기·지우기, 함수 지우기는 public.audit_log 에 이름만 남긴다 (값은 남기지 않음).
 // 관리 토큰(BMR_MGMT_TOKEN)은 hub-provision 과 같은 암호문 비밀값이고, 푸는 열쇠는 배포본(_key.ts)에만 있다.
@@ -16,6 +19,8 @@ import {
   SLUG_RE, EXTRA_FN_MAX, SECRET_MAX_PER_APP, LOG_HOURS, UUID_RE,
   prefixOf, schemaOf, managedSecrets, secretNameProblem, secretValueProblem, fnKind, logSql, maskSecrets,
   mailSecretOf, mailAddressOf, MAIL_LIMITS, mailState,
+  aiSecretOf, AI_DEFAULTS, AI_STARTER_MODELS, AI_PROVIDERS, AI_PROVIDER_LABEL, aiState, aiLimitOf,
+  parseAiModelSpec, normalizeAiModelList, effectiveAiModels, type AiProvider,
 } from './rules.ts';
 
 const REF = 'psupfmarnyxontorftio';
@@ -24,8 +29,11 @@ if (new URL(SB_URL).hostname.split('.')[0] !== REF) throw new Error('hub-devtool
 const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 const HUB = 'https://apps.bmrschool.net';
 const ORIGINS = [HUB, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173'];
-const LIMIT = { perUserHour: 150, perIpHour: 300, logsPerUserHour: 30, secretWritesPerAppHour: 30, mailIssuePerAppHour: 6 };
+const LIMIT = { perUserHour: 150, perIpHour: 300, logsPerUserHour: 30, secretWritesPerAppHour: 30, mailIssuePerAppHour: 6, aiIssuePerAppHour: 6 };
 const MAIL_LOG_ROWS = 10;
+const AI_LOG_ROWS = 10;
+/** 업체 키 이름 — 값은 암호문이고 이 함수는 '등록되었는지'만 본다 (값은 절대 돌려주지 않음) */
+const AI_KEY_ENV: Record<AiProvider, string> = { gemini: 'BMR_GEMINI_API_KEY', openai: 'BMR_OPENAI_API_KEY', anthropic: 'BMR_ANTHROPIC_API_KEY', xai: 'BMR_XAI_API_KEY' };
 const db = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -295,6 +303,236 @@ Deno.serve(async (req) => {
         ok: true, secret_name: secretName, address: mailAddressOf(a.slug), set_at: t?.set_at ?? null,
         note: '토큰 값은 다시 볼 수 없습니다. 이 앱의 서버 함수는 다음 요청부터 새 값을 읽습니다. 예전 토큰은 바로 무효가 되었습니다.',
       });
+    }
+
+    if (action === 'ai_status') {
+      const secretName = aiSecretOf(a.slug);
+      const secrets = await appSecrets(sb, a.slug);
+      const has_secret = secrets.some((s) => s.name === secretName);
+      // 발급 기록·호출 기록 표(마이그레이션 20261115100000_hub_ai)를 읽는다
+      const read = async () => {
+        const [cfg] = await db`select default_model, allowed_models, default_app_hourly, default_app_daily, default_app_daily_tokens,
+            global_daily_requests, global_daily_tokens, updated_at from bmr_admin.ai_config where id = 1`;
+        const [tk] = await db`select enabled, allowed_models, hourly_limit, daily_limit, daily_token_limit, set_at
+          from bmr_admin.ai_tokens where app_id = ${a.id}`;
+        // hub-ai 와 같은 기준: 요청은 '거부'를 빼고 세고, 한도는 최근 24시간·최근 1시간
+        const [c] = await db`select
+            count(*) filter (where app_id = ${a.id} and status <> 'denied') as app_24h,
+            count(*) filter (where app_id = ${a.id} and status <> 'denied' and at > now() - interval '1 hour') as app_hour,
+            coalesce(sum(total_tokens) filter (where app_id = ${a.id} and status = 'ok'), 0) as app_tokens,
+            count(*) filter (where status <> 'denied') as global_24h,
+            coalesce(sum(total_tokens) filter (where status = 'ok'), 0) as global_tokens
+          from bmr_admin.ai_log where at > now() - interval '24 hours'`;
+        const [td] = await db`select count(*) as n from bmr_admin.ai_log
+          where status <> 'denied' and app_id = ${a.id}
+            and at >= (date_trunc('day', now() at time zone 'Asia/Seoul') at time zone 'Asia/Seoul')`;
+        const rows = await db`select at, provider, model, input_tokens, output_tokens, total_tokens, status, error, actor
+          from bmr_admin.ai_log where app_id = ${a.id} order by at desc limit ${AI_LOG_ROWS}`;
+        return { cfg, tk, c, td, rows };
+      };
+      let d: Awaited<ReturnType<typeof read>>;
+      try { d = await read(); }
+      catch (e) {
+        console.error('hub-devtools ai_status', String((e as Error)?.message ?? e).slice(0, 200));
+        return json(req, 503, { error: 'AI 발급·호출 기록 표를 읽지 못했습니다. AI DB 준비(마이그레이션)가 안 됐을 수 있습니다. 관리자에게 알려 주세요.' });
+      }
+      const txt = (v: unknown, n2: number) => String(v ?? '').slice(0, n2);
+      const appAllowed = Array.isArray(d.tk?.allowed_models) ? (d.tk.allowed_models as string[]).map(String) : null;
+      const globalAllowed = effectiveAiModels(null, d.cfg?.allowed_models);
+      const cfg = {
+        default_model: parseAiModelSpec(d.cfg?.default_model)?.spec ?? AI_DEFAULTS.defaultModel,
+        allowed_models: globalAllowed,
+        default_app_hourly: aiLimitOf(Number(d.cfg?.default_app_hourly), AI_DEFAULTS.defaultAppHourly),
+        default_app_daily: aiLimitOf(Number(d.cfg?.default_app_daily), AI_DEFAULTS.defaultAppDaily),
+        default_app_daily_tokens: aiLimitOf(Number(d.cfg?.default_app_daily_tokens), AI_DEFAULTS.defaultAppDailyTokens),
+        global_daily_requests: aiLimitOf(Number(d.cfg?.global_daily_requests), AI_DEFAULTS.globalDailyRequests),
+        global_daily_tokens: aiLimitOf(Number(d.cfg?.global_daily_tokens), AI_DEFAULTS.globalDailyTokens),
+        updated_at: d.cfg?.updated_at ?? null,
+      };
+      const eff = {
+        allowed_models: effectiveAiModels(appAllowed, globalAllowed),
+        hourly: aiLimitOf(d.tk?.hourly_limit == null ? null : Number(d.tk.hourly_limit), cfg.default_app_hourly),
+        daily: aiLimitOf(d.tk?.daily_limit == null ? null : Number(d.tk.daily_limit), cfg.default_app_daily),
+        daily_tokens: aiLimitOf(d.tk?.daily_token_limit == null ? null : Number(d.tk.daily_token_limit), cfg.default_app_daily_tokens),
+      };
+      const providers = {} as Record<AiProvider, boolean>;
+      for (const p of AI_PROVIDERS) providers[p] = (Deno.env.get(AI_KEY_ENV[p]) ?? '').length > 0;
+      return json(req, 200, {
+        app: { id: a.id, slug: a.slug, name: a.name },
+        secret_name: secretName,
+        has_secret, has_token_hash: !!d.tk, set_at: d.tk?.set_at ?? null,
+        state: aiState(!!d.tk, has_secret),
+        enabled: d.tk ? d.tk.enabled !== false : true,
+        can_issue: u.admin || a.is_owner, can_edit: u.admin,
+        config_ready: !!d.cfg,
+        providers, provider_labels: AI_PROVIDER_LABEL, starter_models: AI_STARTER_MODELS,
+        config: cfg,
+        app_settings: {
+          allowed_models: appAllowed,
+          hourly_limit: d.tk?.hourly_limit == null ? null : Number(d.tk.hourly_limit),
+          daily_limit: d.tk?.daily_limit == null ? null : Number(d.tk.daily_limit),
+          daily_token_limit: d.tk?.daily_token_limit == null ? null : Number(d.tk.daily_token_limit),
+        },
+        effective: eff,
+        limits: { allowed_models_max: AI_DEFAULTS.allowedModelsMax },
+        counts: {
+          app_hour: Number(d.c?.app_hour ?? 0), app_24h: Number(d.c?.app_24h ?? 0), app_tokens_24h: Number(d.c?.app_tokens ?? 0),
+          global_24h: Number(d.c?.global_24h ?? 0), global_tokens_24h: Number(d.c?.global_tokens ?? 0), app_today: Number(d.td?.n ?? 0),
+        },
+        recent_logs: d.rows.map((x) => ({
+          at: x.at, provider: txt(x.provider, 20), model: txt(x.model, 120),
+          input_tokens: Number(x.input_tokens ?? 0), output_tokens: Number(x.output_tokens ?? 0), total_tokens: Number(x.total_tokens ?? 0),
+          status: String(x.status ?? ''), error: txt(x.error, 500), actor: txt(x.actor, 200),
+        })),
+      });
+    }
+
+    if (action === 'ai_token_issue') {
+      if (!u.admin && !a.is_owner) return json(req, 403, { error: '이 앱의 담당 개발자만 AI 토큰을 발급할 수 있습니다.' });
+      const secretName = aiSecretOf(a.slug);
+      const why = secretNameProblem(a.slug, secretName, allSlugs);
+      if (why) return json(req, 400, { error: why });
+      const [{ n: iss }] = await db`select count(*) as n from public.audit_log
+        where target = ${a.slug} and action = 'ai:token_issue' and result = 'ok' and at > now() - interval '1 hour'`;
+      if (Number(iss) >= LIMIT.aiIssuePerAppHour) {
+        await audit(u, a.slug, 'ai:token_issue', 'denied', `한 시간 ${LIMIT.aiIssuePerAppHour}번 초과`);
+        return json(req, 429, { error: `AI 토큰은 한 시간에 ${LIMIT.aiIssuePerAppHour}번까지만 발급합니다. 잠시 뒤 다시 시도하세요.` });
+      }
+      // 32바이트 무작위 → 64자 16진수. hub-ai 는 해시만 보고, 평문은 함수 비밀값에만 둔다
+      let plain = 'bmrai_' + [...crypto.getRandomValues(new Uint8Array(32))].map((bb) => bb.toString(16).padStart(2, '0')).join('');
+      // 1) 함수 비밀값 먼저 — 여기서 실패하면 예전 토큰이 그대로 살아 있다
+      const r = await sb('POST', '/secrets', [{ name: secretName, value: plain }]);
+      await r.body?.cancel();   // 응답 본문(값)은 읽지 않는다
+      if (!r.ok) {
+        plain = '';
+        await audit(u, a.slug, 'ai:token_issue', 'error', `${secretName} · 비밀값 저장 실패 (${r.status})`);
+        return json(req, 502, { error: `AI 토큰 비밀값을 저장하지 못했습니다 (${r.status}). 잠시 뒤 다시 시도하세요.` });
+      }
+      // 2) 해시만 남긴다 (실패하면 비밀값과 해시가 어긋나므로 몇 번 다시 시도)
+      const hash = await sha256hex(plain);
+      plain = '';
+      let dbErr = '';
+      for (let i = 0; i < 3; i++) {
+        try {
+          await db`insert into bmr_admin.ai_tokens (app_id, token_hash, set_at) values (${a.id}, ${hash}, now())
+            on conflict (app_id) do update set token_hash = excluded.token_hash, set_at = excluded.set_at`;
+          dbErr = ''; break;
+        } catch (e) { dbErr = String((e as Error)?.message ?? e).slice(0, 160); await sleep(400); }
+      }
+      if (dbErr) {
+        console.error('hub-devtools ai_tokens', dbErr);
+        await audit(u, a.slug, 'ai:token_issue', 'error', `${secretName} · 해시 저장 실패 (다시 발급 필요)`);
+        const missing = /does not exist|ai_tokens/i.test(dbErr);
+        return json(req, 502, {
+          error: missing
+            ? 'AI 기록 표(마이그레이션)가 없어 토큰을 등록하지 못했습니다. 관리자에게 알려 주세요. 지금은 AI를 부를 수 없습니다.'
+            : '토큰은 넣었지만 해시를 남기지 못했습니다. 화면에서 한 번 더 발급해 주세요.',
+        });
+      }
+      const [t] = await db`select set_at from bmr_admin.ai_tokens where app_id = ${a.id}`;
+      await audit(u, a.slug, 'ai:token_issue', 'ok', `${secretName} · 새로 발급 (토큰 값은 기록하지 않음)`);
+      return json(req, 200, {
+        ok: true, secret_name: secretName, set_at: t?.set_at ?? null,
+        note: '토큰 값은 다시 볼 수 없습니다. 이 앱의 서버 함수는 다음 요청부터 새 값을 읽습니다. 예전 토큰은 바로 무효가 되었습니다.',
+      });
+    }
+
+    if (action === 'ai_settings_update') {
+      if (!u.admin) return json(req, 403, { error: '관리자만 AI 설정을 바꿀 수 있습니다.' });
+      const [cur] = await db`select enabled, allowed_models, hourly_limit, daily_limit, daily_token_limit
+        from bmr_admin.ai_tokens where app_id = ${a.id}`;
+      if (!cur) return json(req, 409, { error: '먼저 이 앱의 AI 토큰을 발급하세요. (토큰을 발급해야 앱별 설정을 저장할 수 있습니다)' });
+      const changes: string[] = [];
+      // ---- 이 앱 설정 ----
+      let enabled = cur.enabled !== false;
+      let appAllowed: string[] | null = Array.isArray(cur.allowed_models) ? (cur.allowed_models as string[]).map(String) : null;
+      let hourly: number | null = cur.hourly_limit == null ? null : Number(cur.hourly_limit);
+      let daily: number | null = cur.daily_limit == null ? null : Number(cur.daily_limit);
+      let dailyTokens: number | null = cur.daily_token_limit == null ? null : Number(cur.daily_token_limit);
+      if (b.enabled !== undefined) {
+        enabled = b.enabled === true;
+        changes.push(`사용 ${enabled ? '켜기' : '멈춤'}`);
+      }
+      if (b.allowed_models !== undefined) {
+        if (b.allowed_models === null || b.allowed_models === '') { appAllowed = null; changes.push('허용 모델 → 학교 전체 따름'); }
+        else {
+          const { list, bad } = normalizeAiModelList(b.allowed_models);
+          if (bad.length) return json(req, 400, { error: `모델 이름을 알아보지 못했습니다: ${bad.join(', ')} (예: gemini:gemini-2.5-flash)` });
+          if (!list.length) return json(req, 400, { error: '허용 모델을 하나 이상 적어 주세요. 학교 전체 목록을 쓰려면 비우지 말고 \'학교 전체 따름\'을 고르세요.' });
+          if (list.length > AI_DEFAULTS.allowedModelsMax) return json(req, 400, { error: `허용 모델은 ${AI_DEFAULTS.allowedModelsMax}개까지입니다.` });
+          appAllowed = list;
+          changes.push(`허용 모델 ${list.length}개`);
+        }
+      }
+      for (const [k, max, label] of [['hourly_limit', 100000, '1시간 요청'], ['daily_limit', 100000, '24시간 요청'], ['daily_token_limit', 100000000, '24시간 토큰']] as const) {
+        const v = b[k];
+        if (v === undefined) continue;
+        let next: number | null = null;
+        if (v !== null && v !== '') {
+          const num = Number(v);
+          if (!Number.isInteger(num) || num < 0 || num > max) return json(req, 400, { error: `${label} 한도는 0 ~ ${max.toLocaleString('en-US')} 사이 정수입니다.` });
+          next = num;
+        }
+        if (k === 'hourly_limit') hourly = next;
+        else if (k === 'daily_limit') daily = next;
+        else dailyTokens = next;
+        changes.push(`${label} → ${next === null ? '기본값 따름' : next.toLocaleString('en-US')}`);
+      }
+      await db`update bmr_admin.ai_tokens set enabled = ${enabled}, allowed_models = ${appAllowed}::text[],
+          hourly_limit = ${hourly}, daily_limit = ${daily}, daily_token_limit = ${dailyTokens}
+        where app_id = ${a.id}`;
+      // ---- 학교 전체 설정 (config 가 오면) ----
+      const gc = b.config && typeof b.config === 'object' ? b.config as Record<string, unknown> : null;
+      if (gc) {
+        const [c0] = await db`select default_model, allowed_models, default_app_hourly, default_app_daily, default_app_daily_tokens,
+            global_daily_requests, global_daily_tokens from bmr_admin.ai_config where id = 1`;
+        if (!c0) return json(req, 503, { error: 'AI 설정 표(마이그레이션)가 없습니다. 관리자에게 알려 주세요.' });
+        let dModel = parseAiModelSpec(c0.default_model)?.spec ?? AI_DEFAULTS.defaultModel;
+        let gAllowed = effectiveAiModels(null, c0.allowed_models);
+        let gHourly = aiLimitOf(Number(c0.default_app_hourly), AI_DEFAULTS.defaultAppHourly);
+        let gDaily = aiLimitOf(Number(c0.default_app_daily), AI_DEFAULTS.defaultAppDaily);
+        let gTokens = aiLimitOf(Number(c0.default_app_daily_tokens), AI_DEFAULTS.defaultAppDailyTokens);
+        let gReq = aiLimitOf(Number(c0.global_daily_requests), AI_DEFAULTS.globalDailyRequests);
+        let gTok = aiLimitOf(Number(c0.global_daily_tokens), AI_DEFAULTS.globalDailyTokens);
+        if (gc.default_model !== undefined) {
+          const m = parseAiModelSpec(gc.default_model);
+          if (!m) return json(req, 400, { error: `기본 모델을 알아보지 못했습니다: ${String(gc.default_model).slice(0, 60)}` });
+          dModel = m.spec;
+          changes.push(`기본 모델 → ${m.spec}`);
+        }
+        if (gc.allowed_models !== undefined) {
+          const { list, bad } = normalizeAiModelList(gc.allowed_models);
+          if (bad.length) return json(req, 400, { error: `모델 이름을 알아보지 못했습니다: ${bad.join(', ')}` });
+          if (!list.length) return json(req, 400, { error: '학교 전체 허용 모델을 하나 이상 적어 주세요.' });
+          if (list.length > AI_DEFAULTS.allowedModelsMax) return json(req, 400, { error: `허용 모델은 ${AI_DEFAULTS.allowedModelsMax}개까지입니다.` });
+          gAllowed = list;
+          changes.push(`학교 전체 허용 모델 ${list.length}개`);
+        }
+        for (const [k, max, label] of [
+          ['default_app_hourly', 100000, '앱 기본 1시간 요청'], ['default_app_daily', 100000, '앱 기본 24시간 요청'], ['default_app_daily_tokens', 100000000, '앱 기본 24시간 토큰'],
+          ['global_daily_requests', 1000000, '학교 전체 24시간 요청'], ['global_daily_tokens', 1000000000, '학교 전체 24시간 토큰'],
+        ] as const) {
+          const v = gc[k];
+          if (v === undefined) continue;
+          const num = Number(v);
+          if (!Number.isInteger(num) || num < 0 || num > max) return json(req, 400, { error: `${label} 한도는 0 ~ ${max.toLocaleString('en-US')} 사이 정수입니다.` });
+          if (k === 'default_app_hourly') gHourly = num;
+          else if (k === 'default_app_daily') gDaily = num;
+          else if (k === 'default_app_daily_tokens') gTokens = num;
+          else if (k === 'global_daily_requests') gReq = num;
+          else gTok = num;
+          changes.push(`${label} → ${num.toLocaleString('en-US')}`);
+        }
+        if (!gAllowed.some((x) => (parseAiModelSpec(x)?.spec ?? '').toLowerCase() === dModel.toLowerCase())) {
+          return json(req, 400, { error: `기본 모델(${dModel})이 학교 전체 허용 모델 목록에 없습니다. 둘 중 하나를 고쳐 주세요.` });
+        }
+        await db`update bmr_admin.ai_config set default_model = ${dModel}, allowed_models = ${JSON.stringify(gAllowed)}::jsonb,
+            default_app_hourly = ${gHourly}, default_app_daily = ${gDaily}, default_app_daily_tokens = ${gTokens},
+            global_daily_requests = ${gReq}, global_daily_tokens = ${gTok}, updated_at = now()
+          where id = 1`;
+      }
+      await audit(u, a.slug, 'ai:settings', 'ok', changes.length ? changes.join(' · ') : '바뀐 값 없음');
+      return json(req, 200, { ok: true, changed: changes.length });
     }
 
     if (action === 'fn_delete') {

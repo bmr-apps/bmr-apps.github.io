@@ -136,6 +136,30 @@ export type DevMailRes = {
 export const DEV_REQ_KIND: Record<DevRequest['kind'], string> = { fn_auto_deploy: '서버 함수 자동 배포 켜기' };
 export const DEV_REQ_STATUS: Record<DevRequest['status'], string> = { pending: '대기 중', approved: '승인', rejected: '반려', canceled: '취소' };
 
+/** 앱 AI 상태 (hub-devtools ai_status) — 업체 키·토큰 값은 서버가 돌려주지 않는다 */
+export type DevAiProvider = 'gemini' | 'openai' | 'anthropic' | 'xai';
+export type DevAiLog = { at: string; provider: string; model: string; input_tokens: number; output_tokens: number; total_tokens: number; status: 'ok' | 'denied' | 'error' | string; error: string; actor: string };
+export type DevAiRes = {
+  app: { id: number; slug: string; name: string };
+  secret_name: string;
+  has_secret: boolean; has_token_hash: boolean; set_at: string | null;
+  state: 'active' | 'none' | 'mismatch';
+  enabled: boolean; can_issue: boolean; can_edit: boolean; config_ready: boolean;
+  providers: Record<DevAiProvider, boolean>;
+  provider_labels: Record<DevAiProvider, string>;
+  starter_models: string[];
+  config: {
+    default_model: string; allowed_models: string[];
+    default_app_hourly: number; default_app_daily: number; default_app_daily_tokens: number;
+    global_daily_requests: number; global_daily_tokens: number; updated_at: string | null;
+  };
+  app_settings: { allowed_models: string[] | null; hourly_limit: number | null; daily_limit: number | null; daily_token_limit: number | null };
+  effective: { allowed_models: string[]; hourly: number; daily: number; daily_tokens: number };
+  limits: { allowed_models_max: number };
+  counts: { app_hour: number; app_24h: number; app_tokens_24h: number; global_24h: number; global_tokens_24h: number; app_today: number };
+  recent_logs: DevAiLog[];
+};
+
 // ---------- 사용자 관리 (Edge Function hub-users, 관리자 전용) ----------
 export type HubUser = {
   id: string; email: string; name: string; role: Role; created_at: string;
@@ -156,7 +180,7 @@ export async function usersApi<T = unknown>(session: Session, action: string, bo
 export const STEP_LABEL: [string, string][] = [
   ['check', '겹치는 자원 확인'], ['db', 'DB 스키마·계정'], ['fn_secret', '함수 DB 연결 정보'], ['starter', '시작 표 documents'], ['expose', 'Data API 노출'],
   ['bucket', '파일 버킷'], ['function', '서버 함수 배포'], ['repo', 'GitHub 저장소'], ['pages', 'GitHub Pages'], ['vars', '배포 변수'],
-  ['code', '안내 페이지 올리기'], ['hub', '허브 등록·담당자'], ['mail', '메일 토큰 발급'], ['invite', 'GitHub 초대'], ['dbcred', 'DB 비밀번호 준비'], ['health', '서버 함수 연결 확인'],
+  ['code', '안내 페이지 올리기'], ['hub', '허브 등록·담당자'], ['mail', '메일 토큰 발급'], ['ai', 'AI 토큰 발급'], ['invite', 'GitHub 초대'], ['dbcred', 'DB 비밀번호 준비'], ['health', '서버 함수 연결 확인'],
 ];
 export const GH_LABEL: Record<GhStatus, string> = { invited: '초대됨', active: '권한 있음', failed: '실패', no_repo: '저장소 없음' };
 export async function provisionApi<T = Record<string, unknown>>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {

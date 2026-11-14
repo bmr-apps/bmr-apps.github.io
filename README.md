@@ -238,6 +238,7 @@ await supabase.auth.signOut({ scope: 'local' });   // 이 앱에서만 (그냥 s
 | ⚙️ **새 서버 함수** | 저장소에 `supabase/functions/library-이름/index.ts` 를 만들고 `main` 에 push 하면 자동 배포가 켜진 앱에서는 새 함수가 만들어집니다. 끝부분은 영문 소문자·숫자(하이픈으로 이음) 20자까지, **앱마다 3개까지**. push 때는 바뀐 함수만, Actions 에서 수동 실행하면 모두 다시 배포합니다. 안 쓰는 함수는 셀프서비스에서 지우고 저장소 폴더도 지우세요(남아 있으면 다음 push 때 다시 만들어집니다). |
 | 📜 **로그 보기** | 서버 함수(콘솔 출력·요청 결과)와 내 DB 계정(`library_dev`, `library_fn`) 로그를 최근 **1·6·24시간** 범위로 봅니다. **이 앱 것만** 보이고 비밀값처럼 보이는 글자는 가려집니다. 그래도 로그에 학생 개인정보·비밀값을 찍지 마세요. |
 | ✉️ **앱 메일** | 메일 토큰 발급·재발급(1클릭), 한도 사용량(오늘·최근 1시간·최근 24시간·학교 전체 통 수·받는 사람 수), 최근 발송 10건(시각·제목·수신자 수·상태·오류). 토큰 값은 발급할 때 한 번 만들어 바로 함수 비밀값으로 들어가고 화면·기록·로그에 남지 않습니다. |
+| 🤖 **앱 AI** | AI 토큰 발급·재발급(1클릭), 등록된 업체 키 표시(Gemini·OpenAI·Claude·Grok ✓/—), 쓸 수 있는 모델, 한도 사용량(최근 1시간·24시간 요청·토큰·학교 전체), 최근 호출 10건(시각·모델·토큰·상태·오류). 값은 보이지 않습니다. **관리자**는 이 앱의 사용 켜고 끄기·허용 모델·한도와 학교 전체 기본값을 이 자리에서 바꿉니다. |
 
 ### 3-13. 메일 보내기
 
@@ -249,7 +250,39 @@ await supabase.auth.signOut({ scope: 'local' });   // 이 앱에서만 (그냥 s
 - 선택: `reply_to`(회신 주소), `from_name`(표시 이름, 기본은 앱 이름).
 - 시작 틀의 `supabase/functions/library-fn/mail.ts` 에 `sendMail()` 도우미가 들어 있습니다. 토큰을 브라우저·저장소·로그에 넣지 마세요.
 
-### 3-14. 공용 주소에서 꼭 지킬 규칙
+### 3-14. AI 부르기 (hub-ai)
+
+앱이 AI(요약·생성·분류·챗봇)를 쓸 때는 **서버 함수 안에서** 허브의 `hub-ai` 를 부릅니다. 업체 키(Google·OpenAI·Anthropic·xAI)는 **허브만** 갖고, 앱은 함수 비밀값 `<접두어>AI_TOKEN`(예: `LIBRARY_AI_TOKEN`)으로 이 앱 신분만 증명합니다. 한 곳에서 키를 관리하니 앱마다 키를 발급·보관할 필요가 없습니다.
+
+```ts
+// supabase/functions/library-fn/index.ts  (서버 함수 안에서만)
+const token = Deno.env.get('LIBRARY_AI_TOKEN');
+const r = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/hub-ai`, {
+  method: 'POST',
+  headers: { Authorization: `Bearer ${token}`, apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '', 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    // model: 'gemini:gemini-2.5-flash',   // 생략하면 학교 기본 모델. 'gpt-4o-mini' 처럼 이름만 써도 업체를 알아서 고름
+    system: '너는 별무리학교 도서실 도우미야. 짧게 답해.',
+    prompt: '이 책을 한 줄로 소개해 줘: 《모모》',
+    // messages: [{ role: 'user', content: '안녕' }, { role: 'assistant', content: '안녕하세요!' }],
+    max_tokens: 500,          // 1 ~ 32000 (기본 1024)
+    temperature: 0.7,         // 0 ~ 2
+    // response_mime_type: 'application/json',   // JSON 으로만 받고 싶을 때
+  }),
+});
+const { ok, provider, model, text, usage, error } = await r.json();
+// usage = { input_tokens, output_tokens, total_tokens }
+```
+
+- **모델 고르기**: `업체:모델`(`gemini:gemini-2.5-flash`, `openai:gpt-4o`, `anthropic:claude-sonnet-4-5`, `xai:grok-3`) 또는 모델 이름만(`gpt-4o-mini`, `claude-3-5-haiku-latest`, `grok-3-mini`). 이름만 쓰면 `gemini-*`→Gemini, `gpt-*`/`o1`·`o3`·`o4`→OpenAI, `claude-*`→Claude, `grok-*`→Grok 으로 알아서 고릅니다.
+- **쓸 수 있는 모델은 정해져 있습니다.** 학교 전체(또는 이 앱에 따로 정한) **허용 모델 목록** 밖의 모델은 403 으로 거부됩니다. 목록은 앱 정보 창의 **🤖 앱 AI** 에서 보고, 관리자는 그 자리에서 바꿀 수 있습니다.
+- **한도**: 기본적으로 앱마다 **한 시간 60번·24시간 500번·24시간 50만 토큰**, 학교 전체 **24시간 3,000번·500만 토큰**. 앱별로 다르게 정할 수 있고(관리자), 한도는 최근 24시간·최근 1시간으로 셉니다. 막힌(거부) 요청은 한도를 먹지 않습니다.
+- **토큰은 직접 발급합니다.** **🤖 앱 AI** 에서 **AI 토큰 발급**을 누르면 `<접두어>AI_TOKEN` 이 함수 비밀값에 들어가고 해시만 서버에 남습니다. **새 앱은 승인 때 자동으로 발급**됩니다. 잊었거나 다른 사람이 알게 되었으면 **재발급**하세요 — 예전 토큰은 바로 무효가 됩니다.
+- **남기지 않는 것**: 프롬프트와 응답 본문은 저장하지 않습니다. 모델·토큰 수·결과·오류만 기록합니다(감사 기록에도 모델과 토큰 수만). 학생 개인정보를 프롬프트에 넣을 때는 목적·보관을 먼저 정하세요.
+- 앱이 **일시 중지·종료** 상태이거나 관리자가 AI 사용을 멈추면 부를 수 없습니다. 관리자는 앱별로 **사용 켜기/멈추기**와 허용 모델·한도를 바꿀 수 있습니다.
+- 오류는 한국어로 돌려줍니다: 토큰 없음/틀림 401 · 권한·허용 모델·사용 중지 403 · 한도 429 · 업체 거절·응답 없음 502 · 키 미등록·설정 없음 503.
+
+### 3-15. 공용 주소에서 꼭 지킬 규칙
 
 모든 앱이 `apps.bmrschool.net/<주소 이름>/` 처럼 **한 주소**를 함께 씁니다. 브라우저 입장에서는 한 사이트라서, 조심하지 않으면 서로의 저장값·로그인·화면을 망가뜨릴 수 있어요.
 
@@ -344,6 +377,7 @@ npm run dev                    # http://localhost:5173
 | `node scripts/deploy-fn.mjs <함수이름>` | 허브 함수 하나 배포 (배포 기록은 감사 기록 `hub:deploy`) |
 | `node scripts/setup-provision.mjs` | 열쇠 만들기 + 관리 토큰 암호문 저장 + 핵심 5개 함수 배포 |
 | `node scripts/setup-mail.mjs` | 메일 비밀값·앱별 토큰 준비 + `hub-mail` 배포 + Auth SMTP + `--test` 시험 발송 |
+| `node scripts/setup-ai.mjs` | 업체 AI 키(`GEMINI_API_KEY` 등) 암호문 저장 + AI 마이그레이션 확인 + `hub-ai` 배포 + `--test` 로 키·배포 확인 |
 | `node scripts/setup_cron_secret.mjs` | 매시 점검용 비밀값을 Vault 와 함수 비밀값에 넣기 |
 | `node scripts/auth_config.mjs` | Auth 설정(가입 허용·돌아올 주소·비밀번호 8자·확인 메일 없이 로그인) |
 | `node scripts/build-provision-templates.mjs` | 새 앱 시작 틀 템플릿(`templates.ts`) 다시 만들기 |
@@ -353,11 +387,12 @@ npm run dev                    # http://localhost:5173
 
 | 이름 | 쓰는 곳 | 설명 |
 |---|---|---|
-| `SUPABASE_ACCESS_TOKEN_DEVAPPS` | `sql.mjs`·`migrate.mjs`·`deploy-fn.mjs`·`setup-provision.mjs`·`setup-mail.mjs` | Supabase Management API 토큰. `HUB_TOKEN_ENV` 로 변수 이름을 바꿀 수 있습니다. |
+| `SUPABASE_ACCESS_TOKEN_DEVAPPS` | `sql.mjs`·`migrate.mjs`·`deploy-fn.mjs`·`setup-provision.mjs`·`setup-mail.mjs`·`setup-ai.mjs` | Supabase Management API 토큰. `HUB_TOKEN_ENV` 로 변수 이름을 바꿀 수 있습니다. |
 | `GITHUB_BMR_APPS_TOKEN` | `setup-provision.mjs` | `bmr-apps` 조직 저장소를 만들고 초대하는 GitHub 토큰 |
 | `GMAIL_APP_PASSWORD` | `setup-provision.mjs`·`setup-mail.mjs` | 학교 Gmail(`bmrapps@bmrschool.org`) 앱 비밀번호. 암호문 `BMR_GMAIL_APP_PASSWORD` 로 저장 |
 | `GMAIL_SMTP_USER` | `setup-provision.mjs`·`setup-mail.mjs` | 선택. 없으면 `bmrapps@bmrschool.org` |
 | `RESEND_API_KEY` | `setup-mail.mjs` | 로그인 메일용 Auth SMTP 키 (`RESEND_ADMIN_KEY` 는 저장하지 않습니다) |
+| `GEMINI_API_KEY` · `OPENAI_API_KEY` · `ANTHROPIC_API_KEY` · `XAI_API_KEY` | `setup-ai.mjs` | 업체 AI 키. 준 것만 `BMR_GEMINI_API_KEY` 등 **암호문**으로 저장합니다 (넣지 않은 업체는 그냥 꺼진 상태). |
 | `HUB_REF` | `sql.mjs`·`deploy-fn.mjs` | 대상 프로젝트 ref (기본값은 코드에 있는 허브 프로젝트) |
 | `HUB_DEPLOY_BY` | `deploy-record.mjs` | 배포 기록의 `actor_email` (기본 `admin-script`) |
 | `HUB_ADMIN_PASSWORD` | 캡처 스크립트 | 캡처용 관리자 로그인 (선택) |
@@ -371,20 +406,21 @@ SUPABASE_ACCESS_TOKEN_DEVAPPS=... node scripts/migrate.mjs   # 또는 npm run mi
 - `supabase/migrations/` 의 `*.sql` 을 **파일 이름 순서**로 적용하고, 적용한 것은 `supabase_migrations.schema_migrations` 에 기록합니다(이미 한 파일은 건너뜀). Supabase CLI `db push` 와 같은 기록표를 씁니다.
 - 마이그레이션은 **한 파일씩 트랜잭션**으로 들어갑니다. 한 파일이 실패하면 그 파일만 되돌아가고 멈춥니다.
 - 새 마이그레이션은 `날짜시각_이름.sql` 로 추가하세요 (`20261114090000_dev_selfservice.sql` 처럼). **이미 적용된 파일은 고치지 마세요** — 다른 환경에 반영되지 않습니다.
-- 주요 마이그레이션: 기본 스키마·보안(RLS)·시드·cron → DB 접속 정보 → 사용자 관리 → 앱 만들기/지우기 → 개발 정보 → 공용 주소 점검 → 자동 배포 → 셀프서비스 → 메일 → 카드 꾸미기.
+- 주요 마이그레이션: 기본 스키마·보안(RLS)·시드·cron → DB 접속 정보 → 사용자 관리 → 앱 만들기/지우기 → 개발 정보 → 공용 주소 점검 → 자동 배포 → 셀프서비스 → 메일 → 카드 꾸미기 → AI 게이트웨이.
 
 ### 4-6. Edge Functions
 
 | 함수 | 하는 일 | 부르는 쪽 / 확인 방법 |
 |---|---|---|
-| `hub-provision` | 신청 승인 시 개발 환경 만들기(DB·버킷·함수·저장소·Pages·허브 등록 + 메일 토큰 발급·담당자 GitHub 권한 맞추기) | 허브(관리자 로그인 토큰). 관리자 역할 확인 + 허용 목록(`guard.ts`) 밖의 외부 호출 금지 + 한 번에 하나 + 시간당 횟수 제한 |
+| `hub-provision` | 신청 승인 시 개발 환경 만들기(DB·버킷·함수·저장소·Pages·허브 등록 + 메일·AI 토큰 발급·담당자 GitHub 권한 맞추기) | 허브(관리자 로그인 토큰). 관리자 역할 확인 + 허용 목록(`guard.ts`) 밖의 외부 호출 금지 + 한 번에 하나 + 시간당 횟수 제한 |
 | `hub-deprovision` | 앱 삭제 — **먼저 전부 백업**한 뒤 저장소·함수·비밀값·버킷·DB·Vault·허브 행 삭제 | 허브(관리자) |
 | `hub-dbcred` | DB 접속 정보 1회 발급·재발급, 담당자 가입 초대 메일 | 허브(담당자·관리자) |
-| `hub-devtools` | 개발자 셀프서비스 — 비밀값 넣기/지우기, 추가 함수 지우기, 로그 보기, 자동 배포 요청, **메일 토큰 발급·상태·한도·최근 발송** | 허브(담당자·관리자). 비밀값 값·메일 토큰 값은 DB·로그에 남기지 않음 (해시만) |
+| `hub-devtools` | 개발자 셀프서비스 — 비밀값 넣기/지우기, 추가 함수 지우기, 로그 보기, 자동 배포 요청, **메일 토큰 발급·상태·한도·최근 발송**, **AI 토큰 발급·상태·허용 모델·한도·최근 호출**(설정 변경은 관리자) | 허브(담당자·관리자). 비밀값 값·메일·AI 토큰 값은 DB·로그에 남기지 않음 (해시만) |
 | `hub-fn-deploy` | 앱 저장소 `main` push 때 그 앱 함수 자동 배포 | 앱 저장소 GitHub Actions — **GitHub OIDC 토큰**을 직접 검증(서명·저장소·워크플로 이름) |
 | `hub-checks` | 앱 저장소가 보낸 '공용 주소 점검' 결과 받기 | 앱 저장소 GitHub Actions — OIDC 검증 |
 | `hub-health` | 운영 중 앱 주소를 열어 보는 점검 | pg_cron(매시) 의 Vault 비밀값, 또는 관리자의 '지금 점검' |
 | `hub-mail` | 앱 대신 학교 메일 발송 | 앱 서버 함수 — `<접두어>MAIL_TOKEN` 으로 앱 신분만 확인 |
+| `hub-ai` | 앱 대신 여러 AI 업체(Gemini·OpenAI·Claude·Grok) 호출 — 모델 허용 목록·앱별/전체 한도·호출 기록 | 앱 서버 함수 — `<접두어>AI_TOKEN` 으로 앱 신분만 확인. 업체 키는 암호문으로 hub-ai 만 풀고, 프롬프트·응답은 저장하지 않음 |
 | `hub-users` | 사용자 역할 변경·비밀번호 초기화·사용 중지·삭제 | 허브(관리자) |
 | `hub-favicon` | 카드 꾸미기 결과를 앱 파비콘으로 (`?slug=`), 인증 없음 | 누구나 |
 
@@ -393,7 +429,7 @@ SUPABASE_ACCESS_TOKEN_DEVAPPS=... node scripts/migrate.mjs   # 또는 npm run mi
 ### 4-7. 함수 배포
 
 ```bash
-# 처음 준비(열쇠·암호문 비밀값 저장 + provision/deprovision/fn-deploy/devtools/mail 배포)
+# 처음 준비(열쇠·암호문 비밀값 저장 + provision/deprovision/fn-deploy/devtools/mail/ai 배포)
 node scripts/setup-provision.mjs
 
 # 하나만 다시 배포
@@ -421,7 +457,7 @@ node scripts/deploy-fn.mjs hub-checks
 
 | 스크립트 | 확인하는 것 | 성격 |
 |---|---|---|
-| `node scripts/test-selfservice-rules.mjs` | 셀프서비스 규칙만 — 비밀값 이름 접두어·다른 앱 이름 공간·추가 함수 이름·로그 SQL·비밀값 가리기·메일 토큰 이름/주소/상태/한도 | **네트워크 없음** (안전) |
+| `node scripts/test-selfservice-rules.mjs` | 셀프서비스 규칙만 — 비밀값 이름 접두어·다른 앱 이름 공간·추가 함수 이름·로그 SQL·비밀값 가리기·메일 토큰 이름/주소/상태/한도·AI 토큰 이름/상태/모델 해석/허용 목록/한도 | **네트워크 없음** (안전) |
 | `node scripts/test-fn-deploy.mjs` | 자동 배포 함수가 토큰 없음·엉터리·서명 없는·위조 서명 토큰을 모두 거부하는지 | 아무것도 배포하지 않음 |
 | `node scripts/test-hub-provision.mjs` | 시험 앱 `zztest-auto` 를 실제로 만들고 단계·결과 확인 | **실제 생성** · 정리 `--cleanup` |
 | `node scripts/test-hub-deprovision.mjs` | `zztest-del` 을 만들고 데이터·파일을 넣은 뒤 백업→삭제 확인 (기존 앱은 건드리지 않고 비교만) | **실제 생성·삭제** · 정리 `--cleanup` |
@@ -448,15 +484,15 @@ node scripts/deploy-fn.mjs hub-checks
 
 **절대 저장소·채팅·메일·화면 캡처에 올리지 않는 것**
 
-- `BMR_MGMT_TOKEN` (Supabase Management 토큰), `BMR_GH_TOKEN` (GitHub 조직 토큰), `BMR_GMAIL_SMTP_USER`·`BMR_GMAIL_APP_PASSWORD` (앱 메일 발송), `BMR_RESEND_API_KEY` (로그인 메일 Auth SMTP)
-- `SUPABASE_ACCESS_TOKEN_DEVAPPS`, `GITHUB_BMR_APPS_TOKEN`, `GMAIL_APP_PASSWORD`, `RESEND_API_KEY` 같은 환경변수 값
+- `BMR_MGMT_TOKEN` (Supabase Management 토큰), `BMR_GH_TOKEN` (GitHub 조직 토큰), `BMR_GMAIL_SMTP_USER`·`BMR_GMAIL_APP_PASSWORD` (앱 메일 발송), `BMR_RESEND_API_KEY` (로그인 메일 Auth SMTP), `BMR_GEMINI_API_KEY`·`BMR_OPENAI_API_KEY`·`BMR_ANTHROPIC_API_KEY`·`BMR_XAI_API_KEY` (AI 업체 키)
+- `SUPABASE_ACCESS_TOKEN_DEVAPPS`, `GITHUB_BMR_APPS_TOKEN`, `GMAIL_APP_PASSWORD`, `RESEND_API_KEY`, `GEMINI_API_KEY`·`OPENAI_API_KEY`·`ANTHROPIC_API_KEY`·`XAI_API_KEY` 같은 환경변수 값
 - 앱의 **DB 비밀번호**, `service_role` 키, 외부 API 키
 - `.secrets/hub-provision.key` (열쇠 파일 — `.secrets/` 는 git 제외)
 - `supabase/functions/*/_key.ts` — **저장소에 없습니다.** `_key.ts.example`(빈 값)만 있고, 실제 열쇠는 배포 스크립트가 **배포본에만** 넣습니다. 검사 워크플로도 예시를 복사해 타입만 봅니다.
 
 **이렇게 되어 있습니다**
 
-- 관리 토큰·GitHub 토큰·메일 키는 **AES-GCM 암호문**으로 함수 비밀값에 있고, 푸는 열쇠는 `hub-provision`·`hub-deprovision`·`hub-fn-deploy`·`hub-devtools`·`hub-mail` 배포본의 `_key.ts` 에만 있습니다. 같은 프로젝트의 다른 함수가 환경변수를 읽어도 이 토큰들은 쓸 수 없습니다.
+- 관리 토큰·GitHub 토큰·메일 키·**AI 업체 키**는 **AES-GCM 암호문**으로 함수 비밀값에 있고, 푸는 열쇠는 `hub-provision`·`hub-deprovision`·`hub-fn-deploy`·`hub-devtools`·`hub-mail` 배포본의 `_key.ts` 와 `hub-ai` 배포본 `index.ts` 안에만 있습니다(저장소에는 빈 자리만). 같은 프로젝트의 다른 함수가 환경변수를 읽어도 이 토큰들은 쓸 수 없습니다.
 - **DB 비밀번호**는 화면에 한 번만 보이고 서버 사본은 그 순간 지워집니다. 발급·재발급 기록은 남기되 값은 남기지 않습니다.
 - **함수 비밀값**은 쓰기 전용입니다(값을 다시 보여 주지 않고, 감사 기록엔 이름만).
 - 브라우저에는 **공개(anon/publishable) 키만** 둡니다. `VITE_` 로 시작하는 값은 모두 공개됩니다.

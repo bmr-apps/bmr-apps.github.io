@@ -201,6 +201,37 @@ const r = await fetch(\`\${Deno.env.get('SUPABASE_URL')}/functions/v1/hub-mail\`
 const { ok, id, from, error } = await r.json();`}</C>
           <p className="muted">시작 틀의 <code>mail.ts</code> 에 <code>sendMail()</code> 도우미가 들어 있습니다. 토큰을 브라우저·저장소·로그에 넣지 마세요. 함수 비밀값은 프로젝트 공용이라 다른 앱 함수도 이론상 내 메일 토큰을 읽을 수 있습니다. 그래도 발송 비밀번호 자체는 허브만 씁니다.</p>
         </div>
+        <div id="ai" className="g-google">
+          <h3>AI 부르기</h3>
+          <p>요약·생성·분류·챗봇 같은 기능은 <b>서버 함수 안에서</b> 허브의 <code>hub-ai</code> 를 부릅니다. 업체 키(Google·OpenAI·Anthropic·xAI)는 <b>허브만</b> 가지고, 앱은 함수 비밀값 <code>&lt;접두어&gt;AI_TOKEN</code>(예: <code>LIBRARY_AI_TOKEN</code>)으로 이 앱 신분만 증명합니다. 앱마다 키를 발급받아 보관할 필요가 없어요.</p>
+          <ul>
+            <li><b>고를 수 있는 모델</b>: <code>gemini:gemini-2.5-flash</code>, <code>openai:gpt-4o</code>, <code>anthropic:claude-sonnet-4-5</code>, <code>xai:grok-3</code> 처럼 <code>업체:모델</code> 로 씁니다. <code>gpt-4o-mini</code>·<code>claude-3-5-haiku-latest</code> 처럼 모델 이름만 써도 업체를 알아서 고릅니다. <b>학교 전체(또는 이 앱) 허용 목록</b> 밖의 모델은 거부됩니다.</li>
+            <li><b>한도</b>: 기본적으로 앱마다 <b>한 시간 60번·하루 500번·하루 50만 토큰</b>, 학교 전체 <b>하루 3,000번·500만 토큰</b>. 막힌 요청은 한도를 먹지 않습니다. 앱별로 다르게 정할 수 있어요(관리자).</li>
+            <li><b>토큰은 직접 발급합니다</b>: 앱 정보 창의 <b>🤖 앱 AI</b> 에서 <b>AI 토큰 발급</b>을 한 번 누르면 <code>&lt;접두어&gt;AI_TOKEN</code> 이 함수 비밀값에 들어가고 해시만 서버에 남습니다. 새 앱은 승인 때 자동 발급됩니다. 잊었거나 다른 사람이 알게 되었으면 <b>재발급</b>하세요. 그 화면에서 등록된 업체 키·쓸 수 있는 모델·한도 사용량·최근 호출 10건도 볼 수 있습니다.</li>
+            <li><b>남기지 않는 것</b>: 프롬프트와 응답 본문은 저장하지 않습니다. 모델·토큰 수·결과만 기록합니다. 학생 개인정보를 프롬프트에 넣을 때는 꼭 필요한 만큼만.</li>
+            <li>앱이 <b>일시 중지·종료</b> 상태이거나 관리자가 AI 사용을 멈추면 부를 수 없습니다. 요청이 잘못되면 <b>한국어 오류</b>(401 토큰 · 403 권한·모델 · 429 한도 · 502 업체 · 503 키 미등록)로 돌려줍니다.</li>
+          </ul>
+          <C>{`// supabase/functions/library-fn/index.ts  (서버 함수 안에서만)
+const token = Deno.env.get('LIBRARY_AI_TOKEN');
+const r = await fetch(\`\${Deno.env.get('SUPABASE_URL')}/functions/v1/hub-ai\`, {
+  method: 'POST',
+  headers: {
+    Authorization: \`Bearer \${token}\`,
+    apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    // model: 'gemini:gemini-2.5-flash',   // 생략하면 학교 기본 모델
+    system: '너는 별무리학교 도서실 도우미야. 짧게 답해.',
+    prompt: '이 책을 한 줄로 소개해 줘: 《모모》',
+    max_tokens: 500,
+    temperature: 0.7,
+  }),
+});
+const { ok, provider, model, text, usage, error } = await r.json();
+// usage = { input_tokens, output_tokens, total_tokens }`}</C>
+          <p className="muted">여러 번 주고받으려면 <code>messages: [{`{ role: 'user', content: '…' }`}]</code> 를 쓰세요 (role 은 user·assistant, system 은 <code>system</code> 칸). 토큰을 브라우저·저장소·로그에 넣지 마세요.</p>
+        </div>
         <div id="selfservice" className="g-google">
           <h3>🧰 개발자 셀프서비스 (관리자에게 부탁하지 않고 직접)</h3>
           <p>내 서비스 → 앱 정보 창 아래 <b>개발자 셀프서비스</b>에서 담당 개발자가 직접 합니다. 서버가 '이 앱 담당 개발자(또는 관리자)인지'와 '이 앱 몫인지'를 확인하고, 모든 변경은 감사 기록에 남습니다.</p>
@@ -210,6 +241,7 @@ const { ok, id, from, error } = await r.json();`}</C>
             <li><b>새 서버 함수</b>: 저장소에 <code>supabase/functions/&lt;주소 이름&gt;-이름/index.ts</code>(예: <code>library-export</code>)를 만들고 <code>main</code> 에 push 하면 자동 배포가 켜진 앱에서는 새 함수가 만들어집니다. 이름 끝부분은 영문 소문자·숫자(하이픈으로 이음) 20자까지, <b>앱마다 3개까지</b>. push 때는 바뀐 함수만 배포하고, Actions 에서 수동 실행하면 모두 다시 배포합니다. 안 쓰는 함수는 셀프서비스에서 지우고 저장소 폴더도 지우세요.</li>
             <li><b>로그 보기</b>: 서버 함수(콘솔 출력·요청 결과)와 내 DB 계정(<code>&lt;스키마&gt;_dev</code>, <code>&lt;스키마&gt;_fn</code>) 로그를 최근 1·6·24시간 범위로 봅니다. <b>이 앱 것만</b> 보이고, 비밀값처럼 보이는 글자는 가려집니다. 그래도 로그에 학생 개인정보·비밀값을 찍지 마세요.</li>
             <li><b>앱 메일</b>: 위 <b>✉️ 앱 메일</b> 칸에서 토큰을 발급·재발급하고, 한도 사용량과 최근 발송 결과를 봅니다. 토큰 값은 발급할 때 한 번 만들어 바로 비밀값으로 들어가고 어디에도 보이지 않습니다.</li>
+            <li><b>앱 AI</b>: 위 <b>🤖 앱 AI</b> 칸에서 AI 토큰을 발급·재발급하고, 등록된 업체 키·쓸 수 있는 모델·한도 사용량·최근 호출을 봅니다. 관리자는 여기서 이 앱의 AI 사용 켜고 끄기·허용 모델·한도와 학교 전체 기본값을 바꿉니다.</li>
           </ul>
           <C>{`// supabase/functions/library-export/index.ts  (새 함수 예시)
 Deno.serve(async (req) => {
@@ -243,7 +275,7 @@ Deno.serve(async (req) => {
             <li><b>서비스 워커(PWA)는 범위를 내 주소로.</b> <code>{"register('/library/sw.js', { scope: '/library/' })"}</code> — 범위가 넓으면 다른 앱의 요청까지 가로챕니다.</li>
             <li><b>외부 스크립트 조심.</b> 외부 주소에서 불러온 스크립트는 같은 주소의 <b>모든 앱</b> 저장값·로그인 정보를 읽을 수 있어요. npm 으로 설치해 함께 빌드하고, 꼭 필요하면 관리자와 상의하세요.</li>
             <li><b>로그인·로그아웃은 앱마다.</b> 로그인 저장 칸이 앱마다 따로라 허브와 내 앱은 각각 로그인합니다. 로그아웃은 <code>{"signOut({ scope: 'local' })"}</code> 로 — 그냥 <code>signOut()</code> 은 모든 앱·기기의 로그인을 끊어요.</li>
-            <li><b>무료 한도는 모두가 나눠 씁니다.</b> DB 500MB · 파일 1GB · 서버 함수 호출 월 50만 번 · 메일 하루 1,500통·받는 사람 8,000명(학교 전체). 큰 파일·대량 데이터·잦은 자동 호출은 미리 상의해 주세요.</li>
+            <li><b>무료 한도는 모두가 나눠 씁니다.</b> DB 500MB · 파일 1GB · 서버 함수 호출 월 50만 번 · 메일 하루 1,500통·받는 사람 8,000명 · AI 하루 3,000번·500만 토큰(모두 학교 전체). 큰 파일·대량 데이터·잦은 자동 호출은 미리 상의해 주세요.</li>
           </ol>
           <C>{`import { local } from './store.js';   // 새 앱 시작 코드에 들어 있음
 local.set('theme', 'dark');            // 실제 이름 'library:theme'

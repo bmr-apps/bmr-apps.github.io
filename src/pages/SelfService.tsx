@@ -2,7 +2,7 @@
 // 권한은 서버(hub-devtools, DB 함수)가 확인한다. 이 화면은 보여 주기만 한다.
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import type { Ctx } from '../App';
-import { sb, devtools, errMsg, fmtTime, DEV_REQ_KIND, DEV_REQ_STATUS, type DevInfoRes, type DevRequest, type DevMailRes, type LogRow } from '../sb';
+import { sb, devtools, errMsg, fmtTime, DEV_REQ_KIND, DEV_REQ_STATUS, type DevInfoRes, type DevRequest, type DevMailRes, type DevAiRes, type LogRow } from '../sb';
 
 const kst = (d: Date) => d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const logTime = (s: string) => { const d = new Date(/Z|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z'); return isNaN(+d) ? s : kst(d); };
@@ -27,6 +27,7 @@ export function SelfServiceSection({ ctx, appId, onChanged }: { ctx: Ctx; appId:
       <AutoDeployRequest ctx={ctx} d={d} reload={async () => { await load(); onChanged?.(); }} />
       <Secrets ctx={ctx} d={d} reload={load} />
       <Mail ctx={ctx} d={d} />
+      <Ai ctx={ctx} d={d} />
       <Functions ctx={ctx} d={d} reload={load} />
       <Logs ctx={ctx} d={d} />
     </div>
@@ -182,6 +183,168 @@ function Mail({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
       )}
       {msg && <p className="ok" role="status">{msg}</p>}{err && <p className="error" role="alert">{err}</p>}
       {err && !m && <p className="muted small" style={{ margin: '4px 0 0' }}>메일 정보는 서버 함수 <code>hub-devtools</code> 가 새 버전으로 배포된 뒤에 열립니다. 계속 나오면 관리자에게 알려 주세요.</p>}
+    </>
+  );
+}
+
+const AI_STATUS: Record<string, string> = { ok: '정상', denied: '거부', error: '실패' };
+const numOrNull = (s: string): number | null => (String(s ?? '').trim() === '' ? null : Number(String(s).trim()));
+const numText = (n: number | null | undefined) => (n == null ? '' : String(n));
+const nf = (n: number) => n.toLocaleString('ko-KR');
+
+/** 🤖 앱 AI — 공용 게이트웨이(hub-ai) 신분증·허용 모델·한도 사용량·최근 호출 (업체 키·토큰 값은 돌려받지 않음) */
+function Ai({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
+  const [a, setA] = useState<DevAiRes | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(''); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
+  // 관리자 편집 칸 (불러올 때마다 지금 값으로 채운다)
+  const [enabled, setEnabled] = useState(true);
+  const [models, setModels] = useState('');
+  const [hourly, setHourly] = useState(''); const [daily, setDaily] = useState(''); const [tokLimit, setTokLimit] = useState('');
+  const [gModel, setGModel] = useState(''); const [gModels, setGModels] = useState('');
+  const [gHourly, setGHourly] = useState(''); const [gDaily, setGDaily] = useState(''); const [gTok, setGTok] = useState('');
+  const [gReq, setGReq] = useState(''); const [gReqTok, setGReqTok] = useState('');
+
+  const fill = (r: DevAiRes) => {
+    setEnabled(r.enabled);
+    setModels((r.app_settings.allowed_models ?? []).join('\n'));
+    setHourly(numText(r.app_settings.hourly_limit)); setDaily(numText(r.app_settings.daily_limit)); setTokLimit(numText(r.app_settings.daily_token_limit));
+    setGModel(r.config.default_model); setGModels(r.config.allowed_models.join('\n'));
+    setGHourly(String(r.config.default_app_hourly)); setGDaily(String(r.config.default_app_daily)); setGTok(String(r.config.default_app_daily_tokens));
+    setGReq(String(r.config.global_daily_requests)); setGReqTok(String(r.config.global_daily_tokens));
+  };
+  const load = useCallback(async () => {
+    if (!ctx.session) return;
+    try { const r = await devtools<DevAiRes>(ctx.session, 'ai_status', { app_id: d.app.id }); setA(r); fill(r); setErr(''); }
+    catch (e) { setErr((e as Error).message); } finally { setLoading(false); }
+  }, [ctx.session, d.app.id]);
+  useEffect(() => { void load(); }, [load]);
+
+  const issue = async () => {
+    if (!ctx.session) return;
+    if (a?.has_token_hash && !confirm('AI 토큰을 새로 발급할까요?\n\n재발급하면 지금 토큰은 바로 무효가 됩니다. 이 앱의 서버 함수는 다음 요청부터 새 값을 씁니다.')) return;
+    setBusy('issue'); setErr(''); setMsg('');
+    try {
+      await devtools(ctx.session, 'ai_token_issue', { app_id: d.app.id });
+      setMsg(`${d.secret_prefix}AI_TOKEN 을 발급했습니다. 값은 화면·기록·로그 어디에도 남지 않습니다.`);
+      await load();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(''); }
+  };
+
+  const saveApp = async (over: { enabled?: boolean } = {}) => {
+    if (!ctx.session) return;
+    const nextEnabled = over.enabled ?? enabled;
+    if (over.enabled === false && !confirm('이 앱의 AI 사용을 멈출까요? 앱 서버 함수의 AI 호출이 바로 거부됩니다.')) return;
+    setBusy('app'); setErr(''); setMsg('');
+    try {
+      await devtools(ctx.session, 'ai_settings_update', {
+        app_id: d.app.id, enabled: nextEnabled,
+        allowed_models: models.trim() ? models : null,
+        hourly_limit: numOrNull(hourly), daily_limit: numOrNull(daily), daily_token_limit: numOrNull(tokLimit),
+      });
+      setMsg('이 앱의 AI 설정을 저장했습니다.'); await load();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(''); }
+  };
+
+  const saveGlobal = async () => {
+    if (!ctx.session) return;
+    const cfg: Record<string, unknown> = { default_model: gModel.trim() };
+    if (gModels.trim()) cfg.allowed_models = gModels;
+    for (const [k, v] of [['default_app_hourly', gHourly], ['default_app_daily', gDaily], ['default_app_daily_tokens', gTok], ['global_daily_requests', gReq], ['global_daily_tokens', gReqTok]] as const) {
+      if (String(v).trim() !== '') cfg[k] = Number(String(v).trim());
+    }
+    if (!confirm('학교 전체 AI 기본값을 바꿀까요?\n\n이 앱을 포함해 앱별 설정을 하지 않은 모든 앱의 모델·한도가 바뀝니다.')) return;
+    setBusy('global'); setErr(''); setMsg('');
+    try { await devtools(ctx.session, 'ai_settings_update', { app_id: d.app.id, config: cfg }); setMsg('학교 전체 AI 기본값을 저장했습니다.'); await load(); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(''); }
+  };
+
+  const state = a?.state;
+  const badge = state === 'active' ? <span className={a?.enabled === false ? 'badge r-rejected' : 'badge r-approved'}>{a?.enabled === false ? '일시정지' : '활성'}</span>
+    : state === 'mismatch' ? <span className="badge r-rejected">불일치 · 재발급 필요</span>
+      : state === 'none' ? <span className="badge r-pending">미발급</span> : null;
+  return (
+    <>
+      <h5>🤖 앱 AI {badge}</h5>
+      <p className="muted small" style={{ margin: '0 0 6px' }}>
+        이 앱 서버 함수가 <code>hub-ai</code> 로 Gemini·OpenAI·Claude·Grok 을 부를 때 쓰는 신분증입니다. 업체 키는 앱이 갖지 않고, 이 앱 신분(<code>{d.secret_prefix}AI_TOKEN</code>)만 증명합니다. 프롬프트·응답은 저장하지 않고 모델·토큰 수·결과만 남깁니다.
+      </p>
+      {loading && !a ? <p className="muted small" style={{ margin: 0 }}>AI 상태를 불러오는 중…</p> : a && (
+        <>
+          <div className="row" style={{ gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span className="small">마지막 발급 <b>{a.set_at ? fmtTime(a.set_at) : '—'}</b></span>
+            <span className="muted small">비밀값 <code>{a.secret_name}</code> {a.has_secret ? '있음' : '없음'} · 해시 {a.has_token_hash ? '있음' : '없음'}</span>
+            {a.can_issue && <button type="button" className="small" disabled={busy === 'issue'} onClick={issue}>{busy === 'issue' ? '발급하는 중…' : a.has_token_hash ? '🔄 AI 토큰 재발급' : '🤖 AI 토큰 발급'}</button>}
+          </div>
+          {state === 'mismatch' && <p className="muted small" style={{ margin: '6px 0 0' }}>토큰 해시와 비밀값 중 한쪽만 있어 지금은 AI를 부를 수 없습니다. '재발급'을 한 번 누르면 둘이 맞춰집니다.</p>}
+          {state === 'none' && <p className="muted small" style={{ margin: '6px 0 0' }}>아직 토큰이 없습니다. 발급하면 이 앱 서버 함수가 바로 <code>hub-ai</code> 를 부를 수 있습니다. (새 앱은 승인 때 자동 발급)</p>}
+          {state === 'active' && a.enabled === false && <p className="muted small" style={{ margin: '6px 0 0' }}>관리자가 이 앱의 AI 사용을 멈춰 두었습니다. 켜면 바로 다시 부를 수 있습니다.</p>}
+          <p className="small" style={{ margin: '8px 0 2px' }}>
+            업체 키: {(['gemini', 'openai', 'anthropic', 'xai'] as const).map((p) => (
+              <span key={p} className={`badge ${a.providers[p] ? 'r-approved' : 'r-rejected'}`} style={{ marginRight: 6 }} title={a.providers[p] ? '관리자가 키를 등록했습니다' : '아직 키가 없습니다'}>{(a.provider_labels?.[p] ?? p)} {a.providers[p] ? '✓' : '—'}</span>
+            ))}
+            <span className="muted">관리자가 등록한 키만 쓸 수 있습니다 (값은 보이지 않음)</span>
+          </p>
+          <p className="small" style={{ margin: '8px 0 2px' }}>
+            오늘 <b>{nf(a.counts.app_today)}</b>번 · 최근 1시간 <b>{nf(a.counts.app_hour)}</b>/{nf(a.effective.hourly)} · 이 앱 24시간 <b>{nf(a.counts.app_24h)}</b>/{nf(a.effective.daily)} · 24시간 토큰 <b>{nf(a.counts.app_tokens_24h)}</b>/{nf(a.effective.daily_tokens)} · 학교 전체 24시간 <b>{nf(a.counts.global_24h)}</b>/{nf(a.config.global_daily_requests)} · 전체 토큰 <b>{nf(a.counts.global_tokens_24h)}</b>/{nf(a.config.global_daily_tokens)}
+          </p>
+          <p className="muted small" style={{ margin: '0 0 8px' }}>한도는 최근 24시간·최근 1시간으로 셉니다(달력 날짜와 조금 다름). 막힌(거부) 요청은 한도를 먹지 않습니다. 기본 모델은 <code>{a.config.default_model}</code> 입니다.</p>
+          <p className="small" style={{ margin: '0 0 4px' }}><b>쓸 수 있는 모델</b> <span className="muted">· {a.app_settings.allowed_models ? '이 앱 전용 목록' : '학교 전체 목록'}</span></p>
+          <p style={{ margin: '0 0 8px' }}>{a.effective.allowed_models.length === 0 ? <span className="muted small">허용된 모델이 없습니다 (관리자에게 문의).</span>
+            : a.effective.allowed_models.map((m) => <span key={m} className="badge" style={{ marginRight: 6, marginBottom: 4 }}>{m}</span>)}</p>
+
+          {a.can_edit && (
+            <div className="card" style={{ padding: 12, marginTop: 4 }}>
+              <b>관리자 설정</b> <span className="muted small">· 이 앱과 학교 전체 기본값</span>
+              <div className="row" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 8 }}>
+                <label className="inline" style={{ margin: 0 }}><input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} /> 이 앱의 AI 사용</label>
+                <span className="muted small">끄면 이 앱의 AI 호출이 바로 거부됩니다.</span>
+              </div>
+              <label style={{ display: 'block', marginTop: 8 }}>이 앱 허용 모델 <span className="muted small">· 한 줄에 하나 또는 쉼표로, <code>업체:모델</code> (예: <code>gemini:gemini-2.5-flash</code>). 비우면 학교 전체 목록을 그대로 씁니다.</span>
+                <textarea value={models} rows={4} spellCheck={false} onChange={(e) => setModels(e.target.value)} placeholder={'gemini:gemini-2.5-flash\nopenai:gpt-4o-mini'} style={{ width: '100%', marginTop: 4 }} /></label>
+              <div className="cols" style={{ marginTop: 4 }}>
+                <label>1시간 요청 (빈칸 = 기본값)<input inputMode="numeric" value={hourly} onChange={(e) => setHourly(e.target.value)} placeholder={String(a.config.default_app_hourly)} /></label>
+                <label>24시간 요청<input inputMode="numeric" value={daily} onChange={(e) => setDaily(e.target.value)} placeholder={String(a.config.default_app_daily)} /></label>
+                <label>24시간 토큰<input inputMode="numeric" value={tokLimit} onChange={(e) => setTokLimit(e.target.value)} placeholder={String(a.config.default_app_daily_tokens)} /></label>
+              </div>
+              <div className="row" style={{ marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" className="small" disabled={!!busy} onClick={() => saveApp()}>{busy === 'app' ? '저장 중…' : '이 앱 설정 저장'}</button>
+                <button type="button" className="ghost small" disabled={!!busy} onClick={() => saveApp({ enabled: !enabled })}>{enabled ? '사용 멈추기' : '사용 켜기'}</button>
+              </div>
+              <details style={{ marginTop: 10 }}>
+                <summary><b>학교 전체 AI 기본값</b> <span className="muted small">· 모든 앱에 적용 (관리자)</span></summary>
+                <label style={{ display: 'block', marginTop: 8 }}>기본 모델<input value={gModel} spellCheck={false} onChange={(e) => setGModel(e.target.value)} placeholder="gemini:gemini-2.5-flash" /></label>
+                <label style={{ display: 'block', marginTop: 6 }}>학교 전체 허용 모델<textarea value={gModels} rows={5} spellCheck={false} onChange={(e) => setGModels(e.target.value)} style={{ width: '100%', marginTop: 4 }} /></label>
+                <div className="cols" style={{ marginTop: 4 }}>
+                  <label>앱 기본 1시간 요청<input inputMode="numeric" value={gHourly} onChange={(e) => setGHourly(e.target.value)} /></label>
+                  <label>앱 기본 24시간 요청<input inputMode="numeric" value={gDaily} onChange={(e) => setGDaily(e.target.value)} /></label>
+                  <label>앱 기본 24시간 토큰<input inputMode="numeric" value={gTok} onChange={(e) => setGTok(e.target.value)} /></label>
+                  <label>전체 24시간 요청<input inputMode="numeric" value={gReq} onChange={(e) => setGReq(e.target.value)} /></label>
+                  <label>전체 24시간 토큰<input inputMode="numeric" value={gReqTok} onChange={(e) => setGReqTok(e.target.value)} /></label>
+                </div>
+                <p className="muted small" style={{ margin: '6px 0' }}>학교 전체 한도는 모든 앱이 나눠 씁니다. 기본 모델은 학교 전체 허용 목록 안에 있어야 합니다.</p>
+                <button type="button" className="small" disabled={!!busy} onClick={saveGlobal}>{busy === 'global' ? '저장 중…' : '학교 전체 기본값 저장'}</button>
+              </details>
+              <p className="muted small" style={{ margin: '8px 0 0' }}>바꾸는 즉시 적용됩니다 (hub-ai 가 30초 안에 새 설정을 읽습니다). 모든 변경은 감사 기록에 남습니다.</p>
+            </div>
+          )}
+
+          <p className="small" style={{ margin: '10px 0 4px' }}><b>최근 AI 호출</b> <span className="muted">· 프롬프트·응답은 남기지 않습니다</span></p>
+          {a.recent_logs.length === 0 ? <p className="muted small" style={{ margin: 0 }}>아직 AI를 부른 기록이 없습니다.</p> : (
+            <div className="logs-wrap"><table className="compact"><thead><tr><th>시각 (KST)</th><th>모델</th><th>토큰</th><th>상태</th><th>오류</th></tr></thead><tbody>
+              {a.recent_logs.map((r, i) => <tr key={i} className={r.status === 'ok' ? '' : 'log-bad'}>
+                <td className="muted" style={{ whiteSpace: 'nowrap' }}>{logTime(r.at)}</td>
+                <td><code>{r.provider ? `${r.provider}:${r.model}` : '—'}</code></td>
+                <td>{r.total_tokens ? nf(r.total_tokens) : '—'}</td>
+                <td>{AI_STATUS[r.status] ?? r.status}</td>
+                <td className="muted" title={r.error} style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.error || '—'}</td>
+              </tr>)}
+            </tbody></table></div>
+          )}
+        </>
+      )}
+      {msg && <p className="ok" role="status">{msg}</p>}{err && <p className="error" role="alert">{err}</p>}
+      {err && !a && <p className="muted small" style={{ margin: '4px 0 0' }}>AI 정보는 서버 함수 <code>hub-devtools</code>·<code>hub-ai</code> 가 새 버전으로 배포되고 AI 마이그레이션이 적용된 뒤에 열립니다. 계속 나오면 관리자에게 알려 주세요.</p>}
     </>
   );
 }
