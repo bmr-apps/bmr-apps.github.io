@@ -28,7 +28,7 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
         <div className="g-hero-copy">
           <span className="eyebrow">시작 가이드</span>
           <h1>BMR APPS 로 개발 시작하기</h1>
-          <p>BMR APPS 는 <b>별무리 개발자들이 만들어 운영하는 서비스</b>를 한곳에 모으는 곳입니다. 앱을 신청해 승인되면 저장소·주소·데이터베이스·파일 저장소·서버 함수가 자동으로 준비되고, 선생님은 화면과 데이터만 만들면 됩니다.</p>
+          <p>BMR APPS 는 <b>별무리 개발자들이 함께 만들고 나누는 공간</b>입니다. 앱을 신청해 승인되면 저장소·주소·데이터베이스·파일 저장소·서버 함수가 자동으로 준비되고, 선생님은 화면과 데이터만 만들면 됩니다.</p>
           <div className="hero-cta">
             {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하고 시작하기</Link> : <Link to={role === 'staff' || role === 'admin' ? '/hub/requests' : '/hub/apps'} className="btn alt">{role === 'staff' || role === 'admin' ? '앱 신청하러 가기' : '관리 허브로'}</Link>}
             <Link to="/guide/quick" className="btn">⚡ 빠른 시작</Link>

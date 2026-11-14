@@ -247,7 +247,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
         <main>{children}</main>
         <footer className="foot">
           <div className="foot-in">
-            <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 만들어 운영하는 서비스 모음<small>별무리학교 · apps.bmrschool.net</small></p></div>
+            <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 함께 만들고 나누는 공간<small>별무리학교 · apps.bmrschool.net</small></p></div>
             <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.session ? <Link to="/hub/apps">관리 허브</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
             {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/account">내 계정</Link><Link to="/hub/status">운영 상태</Link></nav>}
           </div>
