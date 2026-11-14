@@ -24,7 +24,7 @@ function usePath() {
 
 /** 사이드바 배지·대시보드 요약에 쓰는 숫자 (읽기 전용 조회) */
 export type Counts = {
-  apps: { id: number; slug: string; name: string; url: string; status: Status }[];
+  apps: { id: number; slug: string; name: string; url: string; status: Status; card_icon?: string | null }[];
   healthOk: number; healthChecking: number; healthBad: number; healthNone: number;
   reqPending: number; memPending: number | null;
 };
@@ -38,7 +38,7 @@ function useCounts(enabled: boolean, isAdmin: boolean, path: string) {
     let live = true;
     (async () => {
       const [a, h, r, dr, m] = await Promise.all([
-        sb.from('apps').select('id, slug, name, url, status').order('sort').order('name'),
+        sb.from('apps').select('id, slug, name, url, status, card_icon').order('sort').order('name'),
         sb.from('app_health_latest').select('app_id, ok, state'),
         sb.from('app_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         isAdmin ? sb.from('dev_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending') : Promise.resolve(null),
@@ -177,7 +177,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const [pubApps, setPubApps] = useState<Counts['apps']>([]);
   useEffect(() => {
     if (inHub || !configured) return;
-    sb.from('apps').select('id, slug, name, url, status').eq('status', 'active').order('sort').then(({ data }) => setPubApps((data ?? []) as Counts['apps']));
+    sb.from('apps').select('id, slug, name, url, status, card_icon').eq('status', 'active').order('sort').then(({ data }) => setPubApps((data ?? []) as Counts['apps']));
   }, [inHub]);
 
   const cmds = useMemo<Cmd[]>(() => {
@@ -193,7 +193,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       list.push({ id: 'quick', group: '메뉴', icon: '⚡', title: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', run: () => go('/guide/quick') });
     }
     const apps = (inHub ? c?.apps : pubApps)?.filter((a) => a.status !== 'retired') ?? [];
-    apps.forEach((a) => list.push({ id: 'app' + a.id, group: '서비스 열기', icon: appIcon(a.slug), title: a.name, sub: a.url.replace(/^https?:\/\//, ''), run: () => { open(a.url, '_blank', 'noopener'); } }));
+    apps.forEach((a) => list.push({ id: 'app' + a.id, group: '서비스 열기', icon: a.card_icon || appIcon(a.slug), title: a.name, sub: a.url.replace(/^https?:\/\//, ''), run: () => { open(a.url, '_blank', 'noopener'); } }));
     list.push({ id: 'theme', group: '동작', icon: theme === 'dark' ? '☀️' : '🌙', title: theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로', sub: '테마 바꾸기', run: toggleTheme });
     if (ctx.session && ctx.isStaff) {
       list.push({ id: 'new', group: '동작', icon: '✨', title: '새 앱 신청하기', sub: '앱 신청 화면으로', run: () => go('/hub/requests') });

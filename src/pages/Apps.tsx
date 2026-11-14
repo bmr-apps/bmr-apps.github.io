@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { go, Link, type Ctx } from '../App';
 import { sb, errMsg, fmtTime, provisionApi, healthState, GH_LABEL, STATUS_LABEL, type App, type GhStatus, type Health, type Owner, type Status } from '../sb';
-import { Modal, Pills, Stat, appIcon, appTone } from '../ui';
+import { Modal, Pills, Stat, AppGlyph, cardTone, cardToneStyle } from '../ui';
+import { CardStyleSection } from './CardStyle';
 import { DeleteAppModal } from './DeleteApp';
 import { DbCredSection } from './DbCred';
 import { ChecksSection } from './Checks';
@@ -10,10 +11,10 @@ import { SelfServiceSection } from './SelfService';
 
 /** 첫 화면: 누구나 보는 운영 중 앱 바로가기 */
 export function Landing({ ctx }: { ctx: Ctx }) {
-  const [apps, setApps] = useState<Pick<App, 'id' | 'slug' | 'name' | 'description' | 'url'>[] | null>(null);
+  const [apps, setApps] = useState<Pick<App, 'id' | 'slug' | 'name' | 'description' | 'url' | 'card_icon' | 'card_logo_url' | 'card_color'>[] | null>(null);
   const [err, setErr] = useState('');
   useEffect(() => {
-    sb.from('apps').select('id, slug, name, description, url').eq('status', 'active').order('sort').order('name')
+    sb.from('apps').select('id, slug, name, description, url, card_icon, card_logo_url, card_color').eq('status', 'active').order('sort').order('name')
       .then(({ data, error }) => { if (error) setErr(errMsg(error)); setApps(data ?? []); });
   }, [ctx.session]);
   return (
@@ -39,8 +40,8 @@ export function Landing({ ctx }: { ctx: Ctx }) {
       {err && <p className="error" role="alert">{err}</p>}
       {apps === null ? <p className="muted">불러오는 중…</p> : apps.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
         <div className="tiles">{apps.map((a) => (
-          <a key={a.id} className={`tile tone-${appTone(a.slug)}`} href={a.url} target="_blank" rel="noopener noreferrer">
-            <span className="tile-ico">{appIcon(a.slug)}</span>
+          <a key={a.id} className={`tile tone-${cardTone(a.slug, a.card_color)}`} style={cardToneStyle(a.card_color)} href={a.url} target="_blank" rel="noopener noreferrer">
+            <AppGlyph app={a} />
             <b className="tile-title">{a.name}</b>
             <span className="tile-desc">{a.description}</span>
             <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')}</span></span>
@@ -101,8 +102,8 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
         {err && <p className="error" role="alert">{err}</p>}
         {active.length === 0 ? <div className="card empty">🌙 아직 운영 중인 앱이 없습니다.</div> : (
           <div className="tiles">{active.map((a) => (
-            <a key={a.id} className={`tile tone-${appTone(a.slug)}`} href={a.url} target="_blank" rel="noopener noreferrer">
-              <span className="tile-ico">{appIcon(a.slug)}</span>
+            <a key={a.id} className={`tile tone-${cardTone(a.slug, a.card_color)}`} style={cardToneStyle(a.card_color)} href={a.url} target="_blank" rel="noopener noreferrer">
+              <AppGlyph app={a} />
               <b className="tile-title">{a.name}</b>
               <span className="tile-desc">{a.description}</span>
               <span className="tile-foot"><span className="sdot s-active" />운영 중<span className="tile-url">{a.url.replace(/^https?:\/\//, '')}</span></span>
@@ -132,8 +133,8 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
         <div className="tiles">{shown.map((a) => {
           const own = owners.filter((o) => o.app_id === a.id);
           return (
-            <button key={a.id} className={`tile tone-${appTone(a.slug)}`} onClick={() => setOpen(a.id)}>
-              <span className="tile-ico">{appIcon(a.slug)}</span>
+            <button key={a.id} className={`tile tone-${cardTone(a.slug, a.card_color)}`} style={cardToneStyle(a.card_color)} onClick={() => setOpen(a.id)}>
+              <AppGlyph app={a} />
               <b className="tile-title">{a.name}</b>
               <span className="tile-desc">{a.description || '설명이 없습니다.'}</span>
               <span className="tile-foot">
@@ -149,7 +150,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
       {cur && !edit && (
         <Modal onClose={() => setOpen(null)} wide>
           <div className="modal-head">
-            <span className={`tile-ico tone-${appTone(cur.slug)}`}>{appIcon(cur.slug)}</span>
+            <AppGlyph app={cur} />
             <div><h2>{cur.name}</h2><span className={`badge s-${cur.status}`}>{STATUS_LABEL[cur.status]}</span> <HealthDot h={health[cur.id]} label /></div>
           </div>
           {cur.description && <p>{cur.description}</p>}
@@ -159,6 +160,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
             {cur.supabase_ref && <><dt>Supabase</dt><dd><code>{cur.supabase_ref}</code></dd></>}
             {cur.note && <><dt>메모</dt><dd>{cur.note}</dd></>}
           </dl>
+          {(ctx.isAdmin || mineIds.has(cur.id)) && <CardStyleSection app={cur} onSaved={load} />}
           {ctx.isAdmin && <FnAutoDeploy app={cur} reload={load} />}
           <Owners app={cur} owners={owners.filter((o) => o.app_id === cur.id)} ctx={ctx} reload={load} />
           <DevInfoSection ctx={ctx} appId={cur.id} />

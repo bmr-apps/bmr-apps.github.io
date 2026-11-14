@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Ctx } from '../App';
 import { sb, errMsg, fmtTime, runHealth, healthState, STATUS_LABEL, type App, type Health } from '../sb';
-import { Pills, Stat, appIcon } from '../ui';
+import { Pills, Stat, AppGlyph } from '../ui';
 import { ChecksSummary } from './Checks';
 
 export function StatusPage({ ctx }: { ctx: Ctx }) {
@@ -45,7 +45,7 @@ export function StatusPage({ ctx }: { ctx: Ctx }) {
         const h = latest[a.id]; const hist = recent.filter((x) => x.app_id === a.id).slice(0, 24).reverse(); const k = kind(a);
         return (
           <div key={a.id} className={`card item row-item b-${k === 'ok' ? 'green' : k === 'down' ? 'red' : k === 'checking' ? 'amber' : 'gray'}`}>
-            <span className="tile-ico sm">{appIcon(a.slug)}</span>
+            <AppGlyph app={a} className="sm" />
             <div className="grow">
               <h3><a href={a.url} target="_blank" rel="noopener noreferrer">{a.name}</a> <span className={`badge s-${a.status}`}>{STATUS_LABEL[a.status]}</span></h3>
               <small className="muted">{a.url.replace(/^https?:\/\//, '')} · 마지막 점검 {fmtTime(h?.checked_at ?? null) || '-'}</small>

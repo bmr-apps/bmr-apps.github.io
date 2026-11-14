@@ -20,7 +20,13 @@ export const sb = createClient(SUPABASE_URL || 'http://invalid.local', ANON || '
 
 export type App = { id: number; slug: string; name: string; description: string; url: string; repo_url: string | null; supabase_ref: string | null; status: Status; note: string; sort: number; created_at: string; updated_at: string;
   /** 켜면 앱 저장소 main push 때 <slug>-fn 자동 배포 (관리자만 바꿈, 바꿀 때마다 감사 기록) */
-  fn_auto_deploy: boolean };
+  fn_auto_deploy: boolean;
+  /** 카드 이모지. 비우면 주소 이름으로 자동 지정. 로고가 있으면 로고가 우선 */
+  card_icon: string | null;
+  /** 카드 로고 공개 주소. 비우면 이모지 또는 자동 아이콘 */
+  card_logo_url: string | null;
+  /** 카드 색(팔레트 이름 또는 #RRGGBB). 비우면 주소 이름으로 자동 지정 */
+  card_color: string | null };
 export type Status = 'preparing' | 'active' | 'paused' | 'retired';
 export type GhStatus = 'invited' | 'active' | 'failed' | 'no_repo';
 export type Owner = { id: number; app_id: number; name: string; email: string | null; github_username: string | null; role: string; gh_status: GhStatus | null; gh_status_at: string | null; gh_error: string | null };

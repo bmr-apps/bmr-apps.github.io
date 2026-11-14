@@ -196,6 +196,15 @@ section > .section-head:first-child { margin-top: 4px; }
 .tile-cta { position: absolute; right: -2px; bottom: -2px; padding: 8px 14px; font-size: 13px; font-weight: 900; letter-spacing: .06em; background: var(--bg); color: var(--text); border: var(--border); }
 .tone-violet { --tone-soft: var(--purple-light); --tone-strong: var(--purple); } .tone-blue { --tone-soft: var(--cyan-light); --tone-strong: var(--cyan); } .tone-teal { --tone-soft: var(--green-light); --tone-strong: var(--green); }
 .tone-pink { --tone-soft: var(--coral-light); --tone-strong: var(--coral); } .tone-amber { --tone-soft: var(--yellow-light); --tone-strong: var(--yellow); } .tone-green { --tone-soft: var(--green-light); --tone-strong: var(--green); }
+.tone-navy { --tone-soft: #e8eef4; --tone-strong: var(--navy); }
+.tone-custom { --tone-soft: color-mix(in srgb, var(--card-color, var(--cyan)) 28%, var(--card)); --tone-strong: var(--card-color, var(--cyan)); }
+[data-theme="dark"] .tone-navy { --tone-soft: #0e2436; --tone-strong: #5a9ad4; }
+[data-theme="dark"] .tone-custom { --tone-soft: color-mix(in srgb, var(--card-color, var(--cyan)) 36%, var(--card)); }
+.tile-ico img { width: 100%; height: 100%; object-fit: contain; padding: 4px; display: block; }
+.tile-ico.sm img { padding: 2px; }
+.tile.preview { min-height: 0; max-width: 280px; padding: 18px 18px 16px; margin: 10px 0 14px; pointer-events: none; cursor: default; }
+.tile.preview:hover { box-shadow: none; transform: none; }
+.tile.preview .tile-desc { -webkit-line-clamp: 2; }
 .sdot { width: 10px; height: 10px; display: inline-block; background: #b5b5b5; border: 1.5px solid #000; }
 .sdot.s-active { background: var(--green); } .sdot.s-preparing { background: var(--cyan); } .sdot.s-paused { background: var(--yellow); } .sdot.s-retired { background: #b5b5b5; }
 .hpill { font-size: 11.5px; font-weight: 850; padding: 1px 7px; margin-left: 4px; border: 1.5px solid currentColor; }
@@ -335,6 +344,23 @@ input[readonly] { background: var(--bg-alt); cursor: not-allowed; }
 .backup ul { margin: 8px 0; padding-left: 18px; max-height: 260px; overflow: auto; }
 button.link { background: none; border: none; padding: 0 2px; color: var(--text); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; cursor: pointer; font: inherit; font-weight: 700; }
 button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
+
+/* 카드 꾸미기 (앱 정보 창) */
+.card-style { margin: 16px 0; padding: 16px; border: var(--border); background: var(--card2); }
+.card-style h4 { margin-top: 0; }
+.card-style fieldset { border: var(--border); margin: 12px 0 0; padding: 12px; }
+.card-style legend { font-weight: 850; padding: 0 6px; }
+.card-style .pills { margin: 0 0 10px; }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 6px; margin: 0 0 10px; }
+.emoji-grid button { all: unset; box-sizing: border-box; display: grid; place-items: center; height: 40px; font-size: 22px; cursor: pointer; border: var(--bw) solid var(--line-soft); background: var(--card); color: var(--text); }
+.emoji-grid button:hover { background: var(--green-light); border-color: var(--line); color: var(--text); }
+.emoji-grid button.on { background: var(--yellow); border-color: #000; color: #000; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { width: 32px; height: 32px; padding: 0; border: var(--border); cursor: pointer; background: var(--tone-strong, var(--cyan)); }
+.swatch.on { outline: 3px solid var(--focus); outline-offset: 2px; }
+.hex-row { align-items: end; gap: 12px; margin-top: 8px; }
+.hex-row input[type="color"] { width: 52px; height: 36px; padding: 2px; cursor: pointer; }
+.card-style .row { margin-top: 12px; }
 
 /* ---------- 반응형 ---------- */
 @media (max-width: 1100px) {

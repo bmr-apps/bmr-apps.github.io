@@ -1,5 +1,5 @@
 // 공통 화면 조각: 테마, 시계, 명령 팔레트, 아이콘, 모달
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as RKE, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as RKE, type ReactNode } from 'react';
 
 /* ---------- 테마 (localStorage 저장, 없으면 시스템 설정 따름) ---------- */
 export type Theme = 'light' | 'dark';
@@ -46,6 +46,68 @@ export function appIcon(slug: string) {
 }
 const TONES = ['violet', 'blue', 'teal', 'pink', 'amber', 'green'];
 export function appTone(slug: string) { let h = 7; for (const c of slug) h = (h * 17 + c.charCodeAt(0)) >>> 0; return TONES[h % TONES.length]; }
+
+/** 카드에 고를 수 있는 색 (기존 자동 지정 6색 + 남색). 자동 배정 배열 TONES 는 바꾸지 않음 */
+export const CARD_TONES = ['violet', 'blue', 'teal', 'pink', 'amber', 'green', 'navy'] as const;
+export type CardTone = (typeof CARD_TONES)[number];
+export const CARD_TONE_LABEL: Record<CardTone, string> = {
+  violet: '보라', blue: '하늘', teal: '민트', pink: '산호', amber: '노랑', green: '초록', navy: '남색',
+};
+
+/** 학교·앱에 쓰기 좋은 이모지 고르기 목록 */
+export const EMOJI_PICKER = [
+  '📚', '📖', '✏️', '📝', '📒', '🎒', '🏫', '🎓', '🧑‍🏫', '🧑‍🎓',
+  '🗓️', '📋', '📌', '📊', '🧪', '🔬', '🔭', '🧮', '💻', '📱',
+  '🍱', '🚌', '🔔', '📢', '💡', '🌱', '🧩', '🛠️', '🚀', '🌟',
+  '🎨', '🎭', '🎵', '⚽', '🏅', '🧭', '🗂️', '🌐', '🎯', '🤝',
+] as const;
+
+export type CardStyle = {
+  slug: string; name?: string;
+  card_icon?: string | null; card_logo_url?: string | null; card_color?: string | null;
+};
+
+export function isHexColor(s: string) { return /^#[0-9A-Fa-f]{6}$/.test(s); }
+export function isEmojiIcon(s: string) {
+  const t = s.trim();
+  return t.length >= 1 && t.length <= 32 && !/[<>&'"`@A-Za-z0-9\\\x00-\x1f\/]/.test(t);
+}
+export function cardTone(slug: string, color?: string | null) {
+  if (color && (CARD_TONES as readonly string[]).includes(color)) return color;
+  if (color && isHexColor(color)) return 'custom';
+  return appTone(slug);
+}
+export function cardToneStyle(color?: string | null): CSSProperties | undefined {
+  if (!color || !isHexColor(color)) return undefined;
+  return { ['--card-color' as string]: color, ['--tone-strong' as string]: color, ['--tone-soft' as string]: `color-mix(in srgb, ${color} 28%, var(--card))` };
+}
+
+/** 우리 저장소 공개 로고 주소만 허용 (미리보기용 blob: 은 따로) */
+export function safeLogoUrl(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return null;
+    const origin = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+    const hostOk = u.hostname === 'psupfmarnyxontorftio.supabase.co' || (origin && u.origin === origin);
+    if (!hostOk) return null;
+    if (!/^\/storage\/v1\/object\/public\/hub-assets\/logos\/[a-z0-9][a-z0-9-]{1,38}\/[A-Za-z0-9._-]+$/.test(u.pathname)) return null;
+    if (u.search || u.hash) return null;
+    return `${u.origin}${u.pathname}`;
+  } catch { return null; }
+}
+
+/** 카드·목록에 쓰는 아이콘: 로고 > 고른 이모지 > 자동 */
+export function AppGlyph({ app, className = '', alt, previewSrc }: { app: CardStyle; className?: string; alt?: string; previewSrc?: string | null }) {
+  const logo = (previewSrc && previewSrc.startsWith('blob:')) ? previewSrc : safeLogoUrl(app.card_logo_url);
+  const tone = cardTone(app.slug, app.card_color);
+  const label = alt ?? (logo ? `${app.name ?? app.slug} 로고` : '');
+  return (
+    <span className={`tile-ico ${className} tone-${tone}`.replace(/\s+/g, ' ').trim()} style={cardToneStyle(app.card_color)}>
+      {logo ? <img src={logo} alt={label} /> : <span aria-hidden="true">{app.card_icon && isEmojiIcon(app.card_icon) ? app.card_icon : appIcon(app.slug)}</span>}
+    </span>
+  );
+}
 
 /* ---------- 모달 ---------- */
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';

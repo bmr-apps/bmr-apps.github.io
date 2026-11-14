@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, type Ctx } from '../App';
 import { sb, fmtTime, type App } from '../sb';
-import { appIcon } from '../ui';
+import { AppGlyph } from '../ui';
 
 /** 공용 주소 점검 (경고만) — 앱 저장소의 GitHub Actions 가 GitHub OIDC 로 hub-checks 함수에 보낸 최신 결과 */
 export type CheckWarning = { rule: string; file: string; line: number; message: string; fix: string; blocking: boolean };
@@ -56,7 +56,7 @@ export function ChecksSummary({ apps }: { apps: App[] }) {
         <thead><tr><th>앱</th><th>경고</th><th>새 경고</th><th>규칙별</th><th>커밋 · 받은 시각</th></tr></thead>
         <tbody>{list.map((a) => { const r = byId.get(a.id); return (
           <tr key={a.id}>
-            <td><span className="emo">{appIcon(a.slug)}</span> {a.name}</td>
+            <td><AppGlyph app={a} className="sm" /> {a.name}</td>
             <td>{r ? (r.total ? <span className="badge c-warn">{r.total}</span> : <span className="badge c-ok">0</span>) : <span className="muted">결과 없음</span>}</td>
             <td>{r ? (r.new_count ? <span className="badge c-new">{r.new_count}</span> : '0') : '-'}</td>
             <td>{r && Object.keys(r.by_rule).length ? Object.entries(r.by_rule).map(([k, v]) => <span key={k} className="badge">{RULE_LABEL[k] ?? k} {v}</span>) : '-'}</td>
