@@ -554,11 +554,13 @@ ok(nUi.includes('setAppBadge') && nUi.includes('document.title = n > 0 ? badgeTe
 ok(nUi.includes('userVisibleOnly: true') && nUi.includes('applicationServerKey'), '푸시 구독: 공개키로 구독 (userVisibleOnly)');
 ok(nUi.includes("upsert(") && nUi.includes("onConflict: 'user_id,endpoint'"), '구독은 RLS 로 내 줄만 upsert');
 ok(nUi.includes('isIOS() && !isStandalone()'), '아이폰은 홈 화면 추가 전에는 켤 수 없다고 안내');
+ok(nUi.includes('export async function disablePush(): Promise<void>') && !/disablePush[\s\S]{0,400}savePrefs\(session, \{ push_enabled: false \}\)/.test(nUi), '이 기기 알림 끄기는 그 기기 구독만 지운다 (다른 기기는 그대로)');
 ok(nUi.includes('Notification.requestPermission') && nUi.includes('perm !== \'granted\''), '권한을 거절하면 이유를 알려 준다');
 const pUi = readFileSync(new URL('../src/pages/Notify.tsx', import.meta.url), 'utf8');
 ok(pUi.includes('export function NotificationBell') && pUi.includes('export function NotifySettings') && pUi.includes('export function NotifyQuickToggle'), '화면: 🔔 종·알림 설정·쪽지 화면 빠른 켜기');
 ok(pUi.includes('markAll') && pUi.includes('update({ read_at'), '알림 읽음/모두 읽음');
 ok(pUi.includes('시험 알림') && pUi.includes('홈 화면에 추가'), '안내: 시험 발송·아이폰 홈 화면 추가');
+ok(pUi.includes('setSubscribed(Boolean(await currentSubscription()))') && pUi.includes('on={subscribed}'), '화면의 켜짐/꺼짐은 이 브라우저의 구독 상태 (기기마다 따로)');
 ok(appS2.includes('<NotificationBell session={ctx.session} />') && appS2.includes('useBadge(ctx.session, chat.messages)'), '허브 머리에 🔔 + 배지(쪽지+알림)');
 const accUi = readFileSync(new URL('../src/pages/Account.tsx', import.meta.url), 'utf8');
 ok(accUi.includes('<NotifySettings session={ctx.session} />'), '내 계정에 알림 설정');

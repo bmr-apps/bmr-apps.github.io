@@ -127,14 +127,13 @@ export async function enablePush(session: Session): Promise<void> {
   await savePrefs(session, { push_enabled: true });
 }
 
-/** 알림 끄기: DB 줄 지우기 → 브라우저 구독 해지. 구독 주소는 지우기 전에만 읽는다 */
-export async function disablePush(session: Session): Promise<void> {
+/** 이 기기 알림 끄기: DB 줄 지우기 → 브라우저 구독 해지 (다른 기기의 알림은 그대로 둔다) */
+export async function disablePush(): Promise<void> {
   const sub = await currentSubscription();
   if (sub) {
     await sb.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
     try { await sub.unsubscribe(); } catch { /* 이미 없어졌을 수 있다 */ }
   }
-  await savePrefs(session, { push_enabled: false });
 }
 
 /** 로그인·알림 켜짐 상태에서 구독이 살아 있으면 DB 와 다시 맞춘다 (서버 표가 비었을 때 회복) */

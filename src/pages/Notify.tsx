@@ -3,8 +3,8 @@ import type { Session } from '@supabase/supabase-js';
 import { go } from '../App';
 import { sb } from '../sb';
 import {
-  disablePush, enablePush, isIOS, isStandalone, notificationPermission, notifyState, pushSupported,
-  savePrefs, sendTestPush, syncSubscription, type NotifyState,
+  currentSubscription, disablePush, enablePush, isIOS, isStandalone, notificationPermission, notifyState,
+  pushSupported, savePrefs, sendTestPush, syncSubscription, type NotifyState,
 } from '../notify';
 
 export type NotiItem = { id: number; kind: string; title: string; body: string; url: string; created_at: string; read_at: string | null };
@@ -150,12 +150,14 @@ export function NotifySettings({ session }: { session: Session }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
   const [perm, setPerm] = useState(notificationPermission());
+  const [subscribed, setSubscribed] = useState(false);   // 이 브라우저가 지금 구독되어 있나 (기기마다 따로)
   const supported = pushSupported();
 
   const load = useCallback(async () => {
     try {
       const s = await notifyState(session);
       setSt(s);
+      setSubscribed(Boolean(await currentSubscription()));
       syncSubscription(session);   // 구독이 살아 있는데 서버 표가 비었으면 다시 넣는다
     } catch (e) { setErr((e as Error).message); }
   }, [session]);
@@ -170,8 +172,8 @@ export function NotifySettings({ session }: { session: Session }) {
 
   const onPush = () => run('push', async () => {
     if (!st) return;
-    if (st.prefs.push_enabled && perm === 'granted') { await disablePush(session); setMsg('이 브라우저의 푸시 알림을 껐습니다. 다른 기기는 그대로입니다.'); }
-    else { await enablePush(session); setMsg('이 브라우저에 알림을 켰습니다. 아래 “시험 알림”으로 확인해 보세요.'); }
+    if (subscribed) { await disablePush(); setMsg('이 브라우저의 알림을 껐습니다. 다른 기기의 알림은 그대로입니다.'); }
+    else { await enablePush(session); setSubscribed(true); setMsg('이 브라우저에 알림을 켰습니다. 아래 “시험 알림”으로 확인해 보세요.'); }
   });
   const flip = (k: keyof NotifyState['prefs']) => run(k, async () => {
     if (!st) return;
@@ -199,9 +201,9 @@ export function NotifySettings({ session }: { session: Session }) {
       {st && p && (
         <>
           <div className="toggles">
-            <Toggle on={p.push_enabled && perm === 'granted'} busy={busy === 'push'} onClick={() => { void onPush(); }}
-              label={`이 브라우저 알림 (${perm === 'granted' ? '허용됨' : perm === 'denied' ? '차단됨' : '아직 허용 안 함'})`}
-              hint={perm === 'denied' ? '브라우저가 이 사이트 알림을 차단했습니다. 주소창 옆 자물쇠 → 알림 → 허용으로 바꿔 주세요.' : '켜면 이 기기에서 알림이 옵니다. 끄면 이 기기만 조용해집니다.'} />
+            <Toggle on={subscribed} busy={busy === 'push'} onClick={() => { void onPush(); }}
+              label={`이 브라우저 알림 (${subscribed ? '켜짐' : perm === 'granted' ? '허용됨 · 아직 안 켬' : perm === 'denied' ? '차단됨' : '아직 허용 안 함'})`}
+              hint={perm === 'denied' ? '브라우저가 이 사이트 알림을 차단했습니다. 주소창 옆 자물쇠 → 알림 → 허용으로 바꿔 주세요.' : '켜면 이 기기에서 알림이 옵니다. 끄면 이 기기만 조용해집니다 (다른 기기는 그대로).'} />
             <Toggle on={p.notify_chat} busy={busy === 'notify_chat'} onClick={() => { void flip('notify_chat'); }}
               label="새 쪽지 알림" hint="가입 회원끼리 주고받는 1:1 쪽지를 알립니다." />
             <Toggle on={p.notify_admin} busy={busy === 'notify_admin'} onClick={() => { void flip('notify_admin'); }}
@@ -210,7 +212,7 @@ export function NotifySettings({ session }: { session: Session }) {
               label="메일로도 받기 (푸시가 닿지 않을 때)" hint="푸시가 한 대도 닿지 않았을 때만 학교 메일로 보냅니다. 같은 대화는 10분에 한 통까지입니다." />
           </div>
           <div className="row wrap" style={{ marginTop: 12 }}>
-            <button type="button" className="ghost small" disabled={!p.push_enabled || busy === 'test'} onClick={() => { void test(); }}>{busy === 'test' ? '보내는 중…' : '🔔 시험 알림 보내기'}</button>
+            <button type="button" className="ghost small" disabled={!subscribed || busy === 'test'} onClick={() => { void test(); }}>{busy === 'test' ? '보내는 중…' : '🔔 시험 알림 보내기'}</button>
             <span className="muted small">알림이 오지 않으면 ① 브라우저 알림 권한 ② 아이폰은 홈 화면 추가 ③ 방해 금지 모드를 확인하세요.</span>
           </div>
           <h4>알림이 켜진 기기</h4>
