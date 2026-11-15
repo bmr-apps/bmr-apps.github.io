@@ -417,7 +417,8 @@ ok(cMig.includes('grant execute on function public.chat_start(uuid), public.chat
   && cMig.includes('from public, anon'), '함수는 로그인한 사람에게만 (anon 은 실행 불가)');
 ok(cMig.includes("p.role <> 'disabled'") && cMig.includes("split_part(coalesce(p.email, ''), '@', 1)") && !cMig.includes('p.email as'), '상대 목록: 사용 중지 회원 제외, 메일 전체는 돌려주지 않음');
 ok(cMig.includes('supabase_realtime') && cMig.includes('chat_messages_after_insert'), '실시간 발행 + 메시지 트리거(대화 시각·읽음 갱신)');
-ok(cMig.includes('greatest(public.chat_reads.last_read_id, excluded.last_read_id)'), '읽음 번호는 뒤로 가지 않는다 (greatest)');
+ok(cMig.includes('greatest(r.last_read_id, excluded.last_read_id)') && (cMig.match(/greatest\(r\.last_read_id/g) ?? []).length === 2, '읽음 번호는 뒤로 가지 않는다 (greatest, 트리거·함수 둘 다)');
+ok(cMig.includes("notify pgrst, 'reload schema'"), '마이그레이션 뒤 PostgREST 스키마를 새로 읽게 한다');
 const sbS = readFileSync(new URL('../src/sb.ts', import.meta.url), 'utf8');
 ok(['chatThreads', 'chatPeople', 'chatStart', 'chatSend', 'chatMarkRead', 'chatMessages', 'askAssistant'].every((f) => sbS.includes(`export async function ${f}`)), '화면 호출 함수: 쪽지 일곱 가지·도우미');
 ok(sbS.includes('functions/v1/hub-assistant') && sbS.includes('session ? { Authorization'), '도우미 호출: 로그인했으면 토큰을 붙여 역할을 서버가 가른다');

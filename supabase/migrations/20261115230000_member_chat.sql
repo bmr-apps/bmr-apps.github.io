@@ -101,10 +101,10 @@ create or replace function private.chat_after_message() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
   update public.chat_threads set last_message_at = new.created_at where id = new.thread_id;
-  insert into public.chat_reads (thread_id, user_id, last_read_id, read_at)
+  insert into public.chat_reads as r (thread_id, user_id, last_read_id, read_at)
   values (new.thread_id, new.sender, new.id, now())
   on conflict (thread_id, user_id) do update
-    set last_read_id = greatest(public.chat_reads.last_read_id, excluded.last_read_id),
+    set last_read_id = greatest(r.last_read_id, excluded.last_read_id),
         read_at = now();
   return null;
 end $$;
@@ -196,10 +196,10 @@ begin
   if me is null then raise exception '로그인이 필요합니다.' using errcode = '42501'; end if;
   if not private.chat_member(p_thread) then raise exception '이 대화를 볼 수 없습니다.' using errcode = '42501'; end if;
   v_last := coalesce(p_last_id, (select max(m.id) from public.chat_messages m where m.thread_id = p_thread), 0);
-  insert into public.chat_reads (thread_id, user_id, last_read_id, read_at)
+  insert into public.chat_reads as r (thread_id, user_id, last_read_id, read_at)
   values (p_thread, me, greatest(coalesce(v_last, 0), 0), now())
   on conflict (thread_id, user_id) do update
-    set last_read_id = greatest(public.chat_reads.last_read_id, excluded.last_read_id),
+    set last_read_id = greatest(r.last_read_id, excluded.last_read_id),
         read_at = now();
 end $$;
 
@@ -221,3 +221,6 @@ begin
     alter publication supabase_realtime add table public.chat_threads;
   end if;
 end $$;
+
+-- 새 표·함수를 PostgREST(Supabase API)가 바로 알아보게 한다 (앱은 chat_inbox·chat_people·chat_start·chat_mark_read 를 부른다)
+notify pgrst, 'reload schema';
