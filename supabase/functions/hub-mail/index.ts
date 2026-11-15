@@ -2,6 +2,9 @@
 // 호출: POST { to, subject, html?, text?, reply_to?, from_name?, slug? }
 //   Authorization: Bearer <앱 MAIL_TOKEN>
 //     또는 허브 로그인 토큰(관리자, 또는 그 앱 담당 개발자 — 이때 slug 필요)
+//     또는 헤더 x-bmr-notify-grant: <값>  → 허브 알림 메일 (hub-notify 가 bmr_admin.notify_grants 에 넣은 한 줄만)
+//        · 값은 64자 hex, 2분 안에 한 번만. 받는 사람·제목·본문은 함수가 아니라 그 표에서 온다.
+//        · 알림 메일은 'BMR APPS 알림' 이름으로만 나가고, 한 사람 한 시간 6통·학교 전체 하루 200통까지다.
 // 보내는 주소는 허브가 정한다: "<표시 이름>" <bmrapps@bmrschool.org>  (호출자가 from 을 고를 수 없음)
 // Gmail 비밀번호(BMR_GMAIL_APP_PASSWORD 등)는 암호문이며 푸는 열쇠는 이 함수 배포본(_key.ts)에만 있다.
 import postgres from 'npm:postgres@3.4.5';
@@ -16,6 +19,8 @@ const FROM_EMAIL = 'bmrapps@bmrschool.org';
 const SMTP_HOST = 'smtp.gmail.com';
 const SMTP_PORT = 465;
 const LIMIT = { perAppHour: 100, perAppDay: 500, globalDay: 1500, globalRecipientsDay: 8000, maxTo: 50, maxSubject: 200, maxBody: 100_000, maxName: 80 };
+/** 알림 메일(쪽지 알림) 한도 — 사람에게 가는 알림이 학교 메일 한도를 다 먹지 않게 따로 센다 */
+const NOTIFY = { perRecipientHour: 6, perDay: 200, grantTtlSec: 120, fromName: 'BMR APPS 알림' } as const;
 const db = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
 if (new URL(SB_URL).hostname.split('.')[0] !== REF) throw new Error('hub-mail: 다른 프로젝트에서는 실행하지 않습니다');
 
@@ -338,6 +343,57 @@ const route = (req: Request) => {
   return (i < 0 ? '/' : p.slice(i + '/hub-mail'.length)).replace(/\/+$/, '') || '/';
 };
 
+// ---------- 허브 알림 메일 (hub-notify → 일회용 표 한 줄) ----------
+// 받는 사람·제목·본문은 bmr_admin.notify_grants 에서만 온다 (요청 본문을 읽지 않는다 — 위조할 것이 없다).
+async function sendNotify(req: Request, nonce: string): Promise<Response> {
+  if (!/^[0-9a-f]{64}$/.test(nonce)) throw new HttpError(401, '알림 메일 요청 값이 올바르지 않습니다.');
+  const rows = await db`update bmr_admin.notify_grants set used_at = now()
+    where nonce = ${nonce} and used_at is null and created_at > now() - make_interval(secs => ${NOTIFY.grantTtlSec})
+    returning to_email, subject, body`;
+  const g = rows[0];
+  if (!g) throw new HttpError(401, '알림 메일 요청이 만료되었거나 이미 쓰였습니다.');
+  const to = emails(g.to_email, 'to');
+  if (!to.length) throw new HttpError(400, '받는 사람이 없습니다.');
+  const subject = String(g.subject ?? '').slice(0, LIMIT.maxSubject) || 'BMR APPS 알림';
+  const text = String(g.body ?? '').slice(0, LIMIT.maxBody);
+  if (!text.trim()) throw new HttpError(400, '알림 내용이 비어 있습니다.');
+
+  const [c] = await db`select
+      (select count(*)::int from bmr_admin.notify_grants
+        where to_email = ${to[0]} and used_at is not null and used_at > now() - interval '1 hour') as to_hour,
+      (select count(*)::int from bmr_admin.mail_log
+        where slug = 'hub-notify' and status = 'sent' and at > now() - interval '24 hours') as day_all`;
+  if (Number(c?.to_hour ?? 0) > NOTIFY.perRecipientHour) return notifyStop(req, to[0], subject, `이 사람에게 한 시간에 ${NOTIFY.perRecipientHour}통까지만 알림 메일을 보냅니다.`);
+  if (Number(c?.day_all ?? 0) >= NOTIFY.perDay) return notifyStop(req, to[0], subject, `하루 알림 메일 한도(${NOTIFY.perDay}통)에 닿았습니다.`);
+
+  const creds = await getSmtpCreds();
+  let id = '';
+  try {
+    id = await smtpSend({
+      user: creds.user, pass: creds.pass, fromEmail: FROM_EMAIL,
+      fromHeader: `${encodeHeader(NOTIFY.fromName)} <${FROM_EMAIL}>`,
+      to, subject, text, html: '', replyTo: [],
+    });
+  } catch (e) {
+    const err = e instanceof SmtpError ? e : classifyConnectError(e);
+    const msg = sanitizeSmtp(err.message);
+    console.error('hub-mail notify smtp', err.kind, err.smtpCode ?? '', msg);
+    await mailLog(null, 1, subject, 'error', msg, '', 'hub-notify');
+    throw new HttpError(502, '알림 메일을 보내지 못했습니다. 잠시 뒤 다시 시도하세요.');
+  }
+  await mailLog(null, 1, subject, 'sent', '', id, 'hub-notify');
+  await audit(null, 'mail:notify', 'hub-notify', 'ok', `받는 사람 1 · ${subject}${id ? ' · ' + id : ''}`);
+  return json(req, 200, { ok: true, id });
+}
+
+/** 알림 메일 한도에 닿았을 때 — 기록만 남기고 200 으로 알린다 (hub-notify 는 알림을 기다리지 않는다) */
+async function notifyStop(req: Request, to: string, subject: string, why: string): Promise<Response> {
+  await mailLog(null, 1, subject, 'denied', why, '', 'hub-notify');
+  await audit(null, 'mail:notify', 'hub-notify', 'denied', `한도 · ${why}`);
+  void to;
+  return json(req, 200, { ok: false, skipped: why });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
   const o = req.headers.get('Origin');
@@ -351,6 +407,10 @@ Deno.serve(async (req) => {
   let subject = '';
   let toCount = 0;
   try {
+    // 허브 알림 메일은 일회용 표 값만 보고 보낸다 (앱 토큰·로그인 토큰 없이)
+    const notifyGrant = req.headers.get('x-bmr-notify-grant') ?? '';
+    if (notifyGrant) return await sendNotify(req, notifyGrant);
+
     const rawTok = /^Bearer\s+(.+)$/i.exec(req.headers.get('Authorization') ?? '')?.[1] ?? '';
     if (!rawTok) throw new HttpError(401, '메일 토큰 또는 로그인이 필요합니다.');
 

@@ -447,4 +447,122 @@ const pngSize = (p) => { const b = readFileSync(new URL(`../public/${p}`, import
 ok(['favicon-32x32.png', 'favicon-192x192.png', 'apple-touch-icon.png'].every((f) => existsSync(new URL(`../public/${f}`, import.meta.url))), '파비콘 PNG 대체본 세 개가 있다');
 ok(pngSize('favicon-32x32.png') === '32x32' && pngSize('apple-touch-icon.png') === '180x180' && pngSize('favicon-192x192.png') === '192x192', 'PNG 크기: 32 · 180 · 192', `${pngSize('favicon-32x32.png')} ${pngSize('apple-touch-icon.png')} ${pngSize('favicon-192x192.png')}`);
 
+console.log('[알림 (웹 푸시·메일·배지)]');
+const N = await import('../supabase/functions/hub-notify/rules.ts');
+// 기본값·정리
+ok(JSON.stringify(N.DEFAULT_PREFS) === JSON.stringify({ push_enabled: true, email_enabled: false, notify_chat: true, notify_admin: true }), '기본값: 푸시 켬 · 메일 끔 · 쪽지 켬 · 관리 알림 켬 (메일은 직접 켜야 온다)');
+ok(JSON.stringify(N.normalizePrefs(null)) === JSON.stringify(N.DEFAULT_PREFS) && JSON.stringify(N.normalizePrefs('x')) === JSON.stringify(N.DEFAULT_PREFS), '설정 줄이 없거나 이상하면 기본값');
+ok(N.normalizePrefs({ push_enabled: false, email_enabled: 'yes', extra: true }).push_enabled === false
+  && N.normalizePrefs({ email_enabled: 'yes' }).email_enabled === false, '참·거짓이 아닌 값은 버리고 기본값 (문자열 "yes" 를 켬으로 읽지 않음)');
+ok(N.normalizePrefs({ ...N.DEFAULT_PREFS, next: 1 }).notify_chat === true, '모르는 칸은 무시');
+ok(N.prefsProblem({ push_enabled: true }) === null && N.prefsProblem({}) !== null && N.prefsProblem(null) !== null, '빈 설정·빈 몸통은 거부');
+ok(N.prefsProblem({ nope: true }) !== null && N.prefsProblem({ push_enabled: 'on' }) !== null && N.prefsProblem([1]) !== null, '모르는 칸·문자열·배열은 거부');
+ok(N.prefsProblem({ push_enabled: false, email_enabled: true }) === null, '여러 칸을 한 번에 바꾸는 것은 허용');
+// 누구에게 무엇을 보내나
+const P = (o) => ({ ...N.DEFAULT_PREFS, ...o });
+ok(N.canPush(P({}), 'chat') && N.canPush(P({}), 'admin'), '기본값이면 쪽지·관리 알림 모두 푸시');
+ok(!N.canPush(P({ notify_chat: false }), 'chat') && N.canPush(P({ notify_chat: false }), 'admin'), '쪽지 알림을 끄면 쪽지만 안 온다');
+ok(!N.canPush(P({ push_enabled: false }), 'chat') && !N.canPush(P({ push_enabled: false }), 'admin'), '푸시를 끄면 둘 다 안 온다');
+ok(!N.canPush(P({ notify_admin: false }), 'admin') && N.canPush(P({ notify_admin: false }), 'chat'), '관리 알림을 끄면 신청 소식만 안 온다');
+ok(!N.canEmail(P({}), 'chat') && N.canEmail(P({ email_enabled: true }), 'chat'), '메일은 email_enabled 를 켜야만');
+ok(!N.canEmail(P({ email_enabled: true, notify_chat: false }), 'chat'), '쪽지 알림을 껐으면 메일도 안 온다');
+ok(N.canEmail(P({ email_enabled: true, push_enabled: false }), 'chat'), '푸시를 껐어도 메일을 켜 두면 메일로 받는다 (기기 푸시·메일은 따로 켜고 끈다)');
+// 미리보기
+ok(N.previewText('a\nb\n\nc') === 'a b c', '줄바꿈은 한 칸으로');
+ok(N.previewText('   ') === '' && N.previewText(null) === '', '빈 본문');
+ok(N.previewText('x'.repeat(200)).length === N.LIMITS.previewLen && N.previewText('x'.repeat(200)).endsWith('…'), `미리보기 ${N.LIMITS.previewLen}자에서 자름`);
+ok([...N.previewText('가'.repeat(200))].length === N.LIMITS.previewLen, '한글도 글자 수로 센다');
+const cp = N.chatPayload({ sender: '은길', body: '안녕하세요\n두 번째 줄', thread: 12 });
+ok(cp.title === '💬 은길' && cp.body === '안녕하세요 두 번째 줄' && cp.url === '/hub/chat' && cp.tag === 'chat-12', '쪽지 알림: 보낸 사람 + 짧은 미리보기 + /hub/chat + 대화별 tag', JSON.stringify(cp));
+ok(N.chatPayload({ sender: '', body: '', thread: 0 }).body === '새 쪽지가 도착했어요.', '빈 쪽지도 제목·본문이 비지 않는다');
+const mb = N.mailBody({ sender: '은길', preview: '안녕', hubUrl: 'https://apps.bmrschool.net/' });
+ok(mb.includes('https://apps.bmrschool.net/hub/chat') && mb.includes('알림 끄기') && !mb.includes('//hub/chat'), '메일 본문: 링크 + 끄는 방법 (주소 끝 슬래시 정리)');
+ok(N.mailSubject({ sender: '은길' }).includes('은길') && N.mailSubject({ sender: '은길' }).startsWith('[BMR APPS]'), '메일 제목에 보낸 사람·서비스 이름');
+// 쿨다운·배지
+const now = new Date('2026-11-15T12:00:00Z');
+ok(N.emailAllowed(null, now) && N.emailAllowed(undefined, now), '보낸 적 없으면 보낸다');
+ok(!N.emailAllowed(new Date(now.getTime() - 9 * 60000), now) && N.emailAllowed(new Date(now.getTime() - 11 * 60000), now), `같은 대화 10분 쿨다운 (${N.LIMITS.emailCooldownMin}분)`);
+ok(N.emailAllowed('이상한 값', now), '읽을 수 없는 시각은 막지 않는다 (알림이 조용히 사라지지 않게)');
+ok(N.badgeTotal({ chats: 2, notifications: 3 }) === 5 && N.badgeTotal({}) === 0 && N.badgeTotal({ chats: -4, notifications: 1 }) === 1, '배지 = 안 읽은 쪽지 + 알림');
+ok(N.badgeTotal({ chats: 5000, notifications: 5000 }) === 999 && N.badgeTotal({ chats: 1.9 }) === 1, '배지는 999 까지·소수 버림');
+ok(N.badgeText(0) === 'BMR APPS' && N.badgeText(3) === '(3) BMR APPS' && N.badgeText(150) === '(99+) BMR APPS', '탭 제목: (N) BMR APPS · 99+');
+// 기기·구독
+ok(N.deviceLabel('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) AppleWebKit/605 Version/17 Safari/604') === '아이폰 사파리', '아이폰 사파리');
+ok(N.deviceLabel('Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120').startsWith('안드로이드'), '안드로이드');
+ok(N.deviceLabel('Mozilla/5.0 (Windows NT 10.0) Chrome/120') === '윈도우 PC' && N.deviceLabel('Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0)').startsWith('맥'), '데스크톱');
+ok(N.deviceLabel('') === '브라우저' && N.deviceLabel(undefined) === '브라우저', '알 수 없으면 브라우저');
+ok(N.endpointHost('https://web.push.apple.com/QGVsbG8') === 'Apple 푸시' && N.endpointHost('https://fcm.googleapis.com/fcm/send/x') === 'Google 푸시', '구독 서비스 이름 (주소 전체는 화면에 보이지 않게)');
+ok(N.endpointHost('쓰레기') === '브라우저', '주소가 아니면 브라우저');
+ok(N.subProblem('https://fcm.googleapis.com/fcm/send/abc123456', 'B'.repeat(87), 'A'.repeat(22)) === null, '정상 구독은 통과');
+ok(N.subProblem('http://x/y', 'B'.repeat(87), 'A'.repeat(22)) !== null && N.subProblem('https://a', 'B'.repeat(87), 'A'.repeat(22)) !== null, 'http·짧은 주소는 거부');
+ok(N.subProblem('https://fcm.googleapis.com/fcm/send/abc123456', 'short', 'A'.repeat(22)) !== null && N.subProblem('https://fcm.googleapis.com/fcm/send/abc123456', 'B'.repeat(87), 'x') !== null, '열쇠 길이가 다르면 거부');
+// 함수 지키는 선
+const nS = readFileSync(new URL('../supabase/functions/hub-notify/index.ts', import.meta.url), 'utf8');
+ok(!nS.includes("from './_key.ts'") && hubFns.some((f) => f.name === 'hub-notify' && !f.keyed), '배포: hub-notify 는 열쇠 없이 배포된다 (CI 목록 그대로, 열쇠 자리 채우기 불필요)');
+ok(!wf.includes('hub-notify'), 'CI 검사 워크플로는 손대지 않아도 된다 (deno check */index.ts 에 자동으로 들어간다)');
+ok(nS.includes("if (u.id !== lo && u.id !== hi) throw new HttpError(403, '이 대화의 참여자가 아닙니다.')"), '쪽지 알림: 대화 참여자만 (아니면 403)');
+ok(nS.includes('select id, sender, body from public.chat_messages where thread_id = ${threadId} order by id desc limit 1')
+  && nS.includes("if (!m || String(m.sender) !== u.id) return json(req, 200, { ok: true, skipped: 'not_my_message' });"), '알림 내용은 DB 의 마지막 쪽지로, 그것도 내가 보낸 것일 때만');
+ok(nS.includes("skipped: 'already_read'") && nS.includes('Number(rd.last_read_id) >= Number(m.id)'), '상대가 이미 읽은 쪽지는 알리지 않는다');
+ok(nS.includes("if (!prefs.notify_chat) return json(req, 200, { ok: true, skipped: 'peer_off' });"), '상대가 꺼 두었으면 보내지 않는다');
+ok(nS.includes("else if (push.sent > 0) email = 'skipped:push_sent';"), '메일은 푸시가 한 대도 닿지 않았을 때만');
+ok(nS.includes("'chat:email'") && nS.includes('emailAllowed(await lastMailAt(peerId, String(threadId)), new Date())'), '메일 쿨다운·시간 한도를 서버가 센다');
+ok(nS.includes('LIMITS.emailPerRecipientHour') && nS.includes('LIMITS.emailPerDay') && nS.includes('LIMITS.pushPerUserHour') && nS.includes('LIMITS.testPerHour'), '한도는 rules.ts 의 LIMITS 하나에서 온다');
+ok(nS.includes('bmr_admin.notify_attempts') && nS.includes('bmr_admin.notify_grants') && nS.includes('bmr_admin.push_config'), '횟수·일회용 표·VAPID 열쇠 표를 쓴다');
+ok(nS.includes("'x-bmr-notify-grant': nonce"), '메일은 hub-mail 에 일회용 표(헤더)로만 부탁한다');
+ok(nS.includes("else if (await usedIn(who, 'event:email', 3600)") && nS.includes("lastMailAt(who, ref, 'event:email')"), '신청 결과도 푸시가 안 닿았을 때만 메일로 (같은 신청 10분 한 통)');
+ok(nS.includes('const payload = chatPayload({ sender') && N.LIMITS.previewLen === 80, '알림에 실리는 쪽지는 짧은 미리보기로 만든다 (chatPayload, 80자)');
+ok((nS.match(/getVapid|vipid\(\)/g) ?? []).length >= 2 && nS.includes("namedCurve: 'P-256'") && nS.includes('bmr_admin.push_config'), 'VAPID 열쇠는 Web Crypto 로 만들어 서버 표에만 (공개키만 내보냄)');
+ok(nS.includes("if (u.role !== 'admin') throw new HttpError(403, '관리자만 신청 결과를 알릴 수 있습니다.')"), '신청 결과 알림은 관리자만');
+ok(nS.includes("if (String(r.status) === 'pending') return json(req, 200, { ok: true, skipped: 'not_decided' });"), '결정된 신청만 알린다 (화면이 보낸 글을 믿지 않고 DB 를 다시 읽는다)');
+ok(nS.includes("where endpoint in ${db(expired)}") && nS.includes('code === 404 || code === 410'), '만료된 구독(404·410)은 지운다');
+ok(nS.includes('function dedupe(') && nS.includes('seen.has(endpoint)'), '같은 기기(주소)에는 한 번만 보낸다');
+// 메일 함수 쪽 문
+const mailS = readFileSync(new URL('../supabase/functions/hub-mail/index.ts', import.meta.url), 'utf8');
+ok(mailS.includes("const notifyGrant = req.headers.get('x-bmr-notify-grant') ?? ''") && mailS.includes('if (notifyGrant) return await sendNotify(req, notifyGrant);'), 'hub-mail: 알림 메일은 일회용 표 값이 있을 때만');
+ok(mailS.includes("where nonce = ${nonce} and used_at is null and created_at > now() - make_interval(secs => ${NOTIFY.grantTtlSec})")
+  && mailS.includes('returning to_email, subject, body'), 'hub-mail: 표를 한 번만 쓰이게 표시하고 받는 사람·제목·본문을 그 표에서만 읽는다');
+ok(mailS.includes('grantTtlSec: 120') && mailS.includes('perRecipientHour: 6') && mailS.includes('perDay: 200'), '알림 메일 한도: 2분·한 사람 6통/시간·하루 200통');
+ok(mailS.includes('const to = emails(g.to_email') && mailS.includes('mailLog(null, 1, subject') && mailS.includes("html: '', replyTo: []"), '알림 메일: 받는 사람은 표에 적힌 한 사람, 기록에는 건수만');
+ok(mailS.includes("slug = 'hub-notify' and status = 'sent'"), '알림 메일도 학교 전체 하루 한도에 함께 센다');
+// DB
+const nMig = readFileSync(new URL('../supabase/migrations/20261115250000_hub_notify.sql', import.meta.url), 'utf8');
+ok(['public.notification_prefs', 'public.push_subscriptions', 'public.notification_log', 'bmr_admin.push_config', 'bmr_admin.notify_grants', 'bmr_admin.notify_attempts'].every((t) => nMig.includes(t)), '마이그레이션: 설정·구독·알림함·열쇠·일회용 표·횟수 표');
+ok(['notification_prefs', 'push_subscriptions', 'notification_log'].every((t) => nMig.includes(`alter table public.${t} enable row level security`)), '세 표 모두 RLS 켬');
+ok(['notif_prefs_select', 'notif_prefs_insert', 'notif_prefs_update', 'push_subs_select', 'push_subs_insert', 'push_subs_update', 'push_subs_delete', 'notify_log_select', 'notify_log_update'].every((p) => nMig.includes(`policy ${p}`)), '정책: 설정·구독·알림함 모두 본인 줄만');
+ok((nMig.match(/user_id = \(select auth\.uid\(\)\)/g) ?? []).length >= 8, '모든 정책이 본인(user_id = auth.uid())만');
+ok(nMig.includes('grant update (read_at) on public.notification_log to authenticated') && !nMig.includes('grant insert on public.notification_log'), '알림함: 읽음 표시만 (브라우저가 알림을 지어낼 수 없다)');
+ok(nMig.includes('revoke all on bmr_admin.push_config from public, anon, authenticated') && nMig.includes('private_jwk jsonb'), 'VAPID 비밀키는 브라우저 권한 없음');
+ok(nMig.includes('revoke all on bmr_admin.notify_grants') && nMig.includes("nonce ~ '^[0-9a-f]{64}$'") && nMig.includes('used_at'), '일회용 메일 표도 브라우저 권한 없음 (64자 hex·한 번)');
+ok(nMig.includes('private.push_sub_keep10') && nMig.includes('limit 10'), '기기는 한 사람당 10개 (오래된 것부터 정리)');
+ok(['notify_app_request', 'notify_dev_request', 'notify_member_role'].every((f) => nMig.includes(`private.${f}()`)), '신청 승인·반려·역할 변경은 DB 트리거가 알림함에 넣는다');
+ok(nMig.includes("raise warning 'notify_app_request: %', sqlerrm"), '알림을 만들지 못해도 신청 처리는 막지 않는다');
+ok(nMig.includes('supabase_realtime') && nMig.includes("notify pgrst, 'reload schema'"), '실시간 발행 + PostgREST 스키마 새로 읽기');
+ok(nMig.includes('bmr_admin.notify_attempts') && nMig.includes('(user_id, action, ref, at desc)'), '쿨다운을 셀 수 있는 인덱스 (사람·동작·대화별)');
+// 화면·서비스 워커·설치
+const sw = readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8');
+ok(sw.includes("addEventListener('push'") && sw.includes('showNotification') && sw.includes("addEventListener('notificationclick'"), '서비스 워커: 푸시 표시 + 클릭으로 화면 열기');
+ok(sw.includes('setAppBadge') && sw.includes('data: { url }'), '서비스 워커: 홈 화면 배지 + 알림마다 갈 주소');
+ok(!/caches\.open|cache\.put/.test(sw), '서비스 워커는 캐시를 쓰지 않는다 (쪽지·권한이 섞이지 않게)');
+const mf = JSON.parse(readFileSync(new URL('../public/manifest.webmanifest', import.meta.url), 'utf8'));
+ok(mf.display === 'standalone' && mf.scope === '/hub/' && mf.start_url.startsWith('/hub/') && mf.icons.length >= 2 && mf.icons.some((i) => i.sizes === '192x192'), 'manifest: 설치형 + /hub/ 범위(다른 앱을 가리지 않음) + 192 아이콘 (아이폰 푸시 조건)');
+ok(html.includes('rel="manifest" href="/manifest.webmanifest"') && html.includes('apple-mobile-web-app-capable'), 'index.html: manifest·아이폰 앱 선언');
+const nUi = readFileSync(new URL('../src/notify.ts', import.meta.url), 'utf8');
+ok(nUi.includes('hub-notify/rules') && nUi.includes("'/sw.js'") && nUi.includes("SW_SCOPE = '/hub/'"), '화면: 서버와 같은 규칙 파일, 서비스 워커 범위 /hub/ (다른 앱의 서비스 워커와 겹치지 않게)');
+ok(nUi.includes('setAppBadge') && nUi.includes('document.title = badgeText'), '화면: 탭 제목·홈 화면 배지');
+ok(nUi.includes('userVisibleOnly: true') && nUi.includes('applicationServerKey'), '푸시 구독: 공개키로 구독 (userVisibleOnly)');
+ok(nUi.includes("upsert(") && nUi.includes("onConflict: 'user_id,endpoint'"), '구독은 RLS 로 내 줄만 upsert');
+ok(nUi.includes('isIOS() && !isStandalone()'), '아이폰은 홈 화면 추가 전에는 켤 수 없다고 안내');
+ok(nUi.includes('Notification.requestPermission') && nUi.includes('perm !== \'granted\''), '권한을 거절하면 이유를 알려 준다');
+const pUi = readFileSync(new URL('../src/pages/Notify.tsx', import.meta.url), 'utf8');
+ok(pUi.includes('export function NotificationBell') && pUi.includes('export function NotifySettings') && pUi.includes('export function NotifyQuickToggle'), '화면: 🔔 종·알림 설정·쪽지 화면 빠른 켜기');
+ok(pUi.includes('markAll') && pUi.includes('update({ read_at'), '알림 읽음/모두 읽음');
+ok(pUi.includes('시험 알림') && pUi.includes('홈 화면에 추가'), '안내: 시험 발송·아이폰 홈 화면 추가');
+ok(appS2.includes('<NotificationBell session={ctx.session} />') && appS2.includes('useBadge(ctx.session, chat.messages)'), '허브 머리에 🔔 + 배지(쪽지+알림)');
+const accUi = readFileSync(new URL('../src/pages/Account.tsx', import.meta.url), 'utf8');
+ok(accUi.includes('<NotifySettings session={ctx.session} />'), '내 계정에 알림 설정');
+ok(chatUi.includes('notifyChat(ctx.session, openId)') && chatUi.includes('<NotifyQuickToggle'), '쪽지: 보낸 뒤 상대에게 알림 + 화면에서 바로 켜고 끄기');
+const reqUi = readFileSync(new URL('../src/pages/Requests.tsx', import.meta.url), 'utf8');
+ok(reqUi.includes("notifyEvent(ctx.session, 'app_request', r.id)"), '신청 승인·반려 뒤 신청자에게 알림');
+
 console.log(`\n결과: ${pass} 통과, ${fail} 실패`); process.exit(fail ? 1 : 0);

@@ -12,6 +12,8 @@ import { AccountPage } from './pages/Account';
 import { MonitorPage } from './pages/Monitor';
 import { GroupsPage } from './pages/Groups';
 import { ChatPage, useChatUnread } from './pages/Chat';
+import { NotificationBell } from './pages/Notify';
+import { useBadge } from './notify';
 import { Assistant, openAssistant } from './Assistant';
 import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 import { ownedAppIds, scopeToOwned, type OwnerRef } from './scope';
@@ -183,7 +185,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const [theme, toggleTheme] = useTheme();
   const [pal, setPal] = useState(false);
   const [menu, setMenu] = useState(false);
-  const unread = useChatUnread(ctx.session);
+  const chat = useChatUnread(ctx.session);
+  const unread = chat.threads;
+  const badge = useBadge(ctx.session, chat.messages);
   const c = ctx.counts;
   // 허브 틀(사이드바)은 개발자 승인을 받은 사람에게만 — 일반 사용자는 메인·가이드·내 계정만 본다
   const inHub = !!ctx.session && ctx.isStaff && path !== '/' && path !== '/hub/login';
@@ -192,6 +196,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       { to: '/guide', icon: '🧭', label: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', show: true },
       { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
       { to: '/hub/chat', icon: '💬', label: '회원 쪽지', sub: '가입 회원끼리 1:1 대화', show: true, badge: unread, tone: 'amber' },
+      { to: '/hub/account', icon: '🔔', label: '알림 설정', sub: '쪽지·신청 알림 켜기', show: true, badge: badge.notifications, tone: 'red' },
     ]],
     ['운영', [
       { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·개발자 요청 승인', show: true, badge: c?.reqPending, tone: 'amber' },
@@ -282,6 +287,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           {inHub ? <div className="greet"><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></div> : <div className="grow" />}
           <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
           {ctx.session && <Link to="/hub/chat" className="icon-btn chat-btn" title="회원 쪽지" aria-label={`회원 쪽지${unread ? ` · 안 읽은 대화 ${unread}` : ''}`}>💬{unread > 0 && <span className="icon-count">{unread}</span>}</Link>}
+          {ctx.session && <NotificationBell session={ctx.session} />}
           <Clock />
           <button className="icon-btn" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
           {ctx.session ? <>

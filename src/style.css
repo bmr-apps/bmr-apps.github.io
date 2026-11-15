@@ -620,3 +620,33 @@ table.compact code { overflow-wrap: anywhere; word-break: break-all; }
   .assist { right: 8px; left: 8px; width: auto; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); max-height: min(72dvh, 560px); }
   .assist-fab { right: 12px; padding: 10px 14px; }
 }
+
+/* ---------- 알림 (🔔 종 · 알림 설정) ---------- */
+.bell-wrap { position: relative; flex: none; }
+.bell-btn { position: relative; }
+.bell-panel { position: absolute; top: calc(100% + 10px); right: 0; width: min(380px, calc(100vw - 24px)); max-height: min(72dvh, 540px); display: flex; flex-direction: column; background: var(--card); border: var(--border); box-shadow: var(--shadow-hard); z-index: 40; }
+.bell-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: var(--border); }
+.bell-head b { font-size: 14px; font-weight: 900; }
+.bell-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; }
+.bell-list li + li { border-top: 1px solid var(--line-soft); }
+.bell-item { display: flex; gap: 10px; align-items: flex-start; width: 100%; padding: 10px 12px; background: var(--card); border: 0; color: var(--text); text-align: left; font-weight: 650; white-space: normal; }
+.bell-item:hover:not(:disabled) { background: var(--green-light); color: var(--text); }
+.bell-item.unread { background: var(--cyan-light); }
+.bell-item b { display: block; font-size: 13.5px; font-weight: 850; }
+.bell-item small { font-size: 12px; line-height: 1.45; color: var(--muted); }
+.bell-empty { padding: 18px 14px; }
+.bell-empty p { margin: 0 0 4px; }
+.bell-foot { border-top: var(--border); padding: 8px 12px; display: flex; justify-content: flex-end; }
+.toggles { display: flex; flex-direction: column; margin-top: 12px; border: var(--border); background: var(--card); }
+.toggle-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; }
+.toggle-row + .toggle-row { border-top: 1px solid var(--line-soft); }
+.toggle-row b { font-size: 14px; }
+.toggle-row small { font-size: 12px; line-height: 1.45; }
+.toggle { min-width: 64px; padding: 6px 10px; font-size: 12.5px; background: var(--bg); color: var(--text); border: var(--bw) solid var(--line); }
+.toggle.on { background: var(--green); color: #000; }
+.device-list { list-style: none; margin: 8px 0; padding: 0; border: var(--border); background: var(--card); }
+.device-list li { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.device-list li + li { border-top: 1px solid var(--line-soft); }
+@media (max-width: 760px) {
+  .bell-panel { position: fixed; top: 64px; right: 8px; left: 8px; width: auto; max-height: min(70dvh, 520px); }
+}

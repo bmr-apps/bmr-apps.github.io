@@ -37,3 +37,7 @@ verify_jwt = false
 # 손님은 로그인 없이, 회원은 허브 JWT 를 함수 안에서 확인한다
 [functions.hub-assistant]
 verify_jwt = false
+
+# 알림(웹 푸시·메일) — 로그인한 회원만. 토큰은 함수 안에서 확인한다
+[functions.hub-notify]
+verify_jwt = false

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { Ctx } from '../App';
 import { sb, errMsg, fmtTime, provisionApi, STEP_LABEL, type Request } from '../sb';
+import { notifyEvent } from '../notify';
 import { Pills } from '../ui';
 import { DevRequestsPanel } from './SelfService';
 
@@ -87,13 +88,15 @@ function RequestCard({ r, ctx, reload }: { r: Request; ctx: Ctx; reload: () => v
       let res = await provisionApi<{ more: boolean; request: Request }>(ctx.session, first, first === 'approve' ? { request_id: r.id, note, app_name: name } : { request_id: r.id });
       setLive(res.request);
       for (let i = 0; res.more && i < 12; i++) { res = await provisionApi(ctx.session, 'run', { request_id: r.id }); setLive(res.request); }
+      // 승인이 끝나면 신청자에게 알린다 (알림함 줄은 DB 트리거가 이미 넣었다 — 여기서는 푸시만)
+      if (first === 'approve') notifyEvent(ctx.session, 'app_request', r.id);
     } catch (e) { setErr((e as Error).message); }
     setBusy(false); reload();
   };
   const reject = async () => {
     setErr(''); setBusy(true);
     const { error } = await sb.rpc('reject_request', { p_request_id: r.id, p_note: note });
-    setBusy(false); if (error) setErr(errMsg(error)); else reload();
+    setBusy(false); if (error) setErr(errMsg(error)); else { notifyEvent(ctx.session, 'app_request', r.id); reload(); }
   };
   const cancel = async () => { if (!confirm('신청을 취소할까요?')) return; const { error } = await sb.from('app_requests').delete().eq('id', r.id); if (error) setErr(errMsg(error)); else reload(); };
   const ps = cur.provision_status;

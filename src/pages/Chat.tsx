@@ -5,16 +5,25 @@ import {
   ROLE_LABEL, chatMarkRead, chatMessages, chatPeople, chatSend, chatStart, chatThreads, fmtTime, sb,
   type ChatMessage, type ChatPerson, type ChatThread,
 } from '../sb';
+import { notifyChat } from '../notify';
+import { NotifyQuickToggle } from './Notify';
 import { Modal } from '../ui';
 
-/** 머리글·사이드바 배지에 쓰는 '안 읽은 대화' 수. 준비 전(마이그레이션 X)이거나 로그아웃이면 조용히 0 */
+/** 머리글·사이드바 배지에 쓰는 '안 읽은 대화' 수와 '안 읽은 쪽지' 수. 준비 전(마이그레이션 X)이거나 로그아웃이면 조용히 0 */
 export function useChatUnread(session: Session | null) {
-  const [n, setN] = useState(0);
+  const [n, setN] = useState({ threads: 0, messages: 0 });
   useEffect(() => {
-    if (!session) { setN(0); return; }
+    if (!session) { setN({ threads: 0, messages: 0 }); return; }
     let live = true;
     const load = async () => {
-      try { const t = await chatThreads(); if (live) setN(t.filter((x) => Number(x.unread) > 0).length); } catch { /* 준비 전이면 그냥 0 */ }
+      try {
+        const t = await chatThreads();
+        if (!live) return;
+        setN({
+          threads: t.filter((x) => Number(x.unread) > 0).length,
+          messages: t.reduce((s, x) => s + Math.max(0, Number(x.unread) || 0), 0),
+        });
+      } catch { /* 준비 전이면 그냥 0 */ }
     };
     load();
     const i = setInterval(load, 60000);
@@ -147,6 +156,7 @@ export function ChatPage({ ctx }: { ctx: Ctx }) {
       setBody('');
       await Promise.all([loadMsgs(openId), loadThreads()]);
       dispatchEvent(new Event('bmr-chat-updated'));
+      notifyChat(ctx.session, openId);   // 상대에게 알림 (실패해도 쪽지는 이미 갔다)
     } catch (e) { setMsgErr((e as Error).message); }
     finally { setSending(false); }
   };
@@ -166,7 +176,10 @@ export function ChatPage({ ctx }: { ctx: Ctx }) {
     <section className="chat-page">
       <div className="section-head">
         <h2>💬 회원 쪽지</h2>
-        <button type="button" onClick={() => setPick(true)}>✏️ 새 대화</button>
+        <div className="row wrap">
+          {ctx.session && <NotifyQuickToggle session={ctx.session} />}
+          <button type="button" onClick={() => setPick(true)}>✏️ 새 대화</button>
+        </div>
       </div>
       <p className="muted chat-note">BMR APPS 에 가입한 회원끼리 1:1로 이야기합니다. 대화는 두 사람만 볼 수 있고, 관리자도 내용을 볼 수 없습니다.</p>
       {err && <div className="card warn">{err}</div>}
