@@ -34,9 +34,10 @@ function Usage({ app }: { app: OpsApp }) {
   );
 }
 
-/** 404 면 서버 함수가 아직 새 버전이 아닐 때가 많다 — 그때는 배포 명령을 알려 준다 */
+/** 404 면 서버 함수가 아직 새 버전이 아닐 때가 많다 — 그때는 배포 명령을 알려 준다.
+ *  '관리자만 운영 현황' 은 개발자에게 열어 주기 전 버전(hub-devtools)의 거절 문구다. */
 const withDeployHint = (msg: string, fn: string) =>
-  /\(HTTP 404\)|찾을 수 없/.test(msg)
+  /\(HTTP 404\)|찾을 수 없|관리자만 운영 현황/.test(msg)
     ? `${fn} 가 아직 새 버전이 아닙니다. 관리자 작업 상자에서 node scripts/deploy-hub.mjs --only ${fn} 를 한 번 실행해 주세요.`
     : msg;
 
