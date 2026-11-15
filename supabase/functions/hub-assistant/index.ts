@@ -83,11 +83,13 @@ const brief = (r: Record<string, unknown>): AppBrief => ({
 /** 이 역할이 프롬프트에 넣어도 되는 자료만 모은다 (넣지 않는 것이 곧 권한 경계) */
 async function contextOf(role: Role, me: Me | null): Promise<AssistantContext> {
   const internal = canSeeInternalApps(role);
-  const apps = (role === 'guest' || role === 'user')
+  // 일반 목록: 운영 중인 앱만 (공개 목록과 같음). 개발자의 준비·중지 앱은 아래 담당 앱(myApps)으로만 넣는다.
+  // 관리자만 준비·중지 앱을 전체 목록에서 본다 (이전 권한 경계와 같게).
+  const apps = role === 'admin'
     ? (await db`select slug, name, description, url, status from public.apps
-        where status = 'active' order by sort, name limit ${LIMIT.appLines}`)
+        where status in ('active', 'preparing', 'paused') order by sort, name limit ${LIMIT.appLines}`)
     : (await db`select slug, name, description, url, status from public.apps
-        where status in ('active', 'preparing', 'paused') order by sort, name limit ${LIMIT.appLines}`);
+        where status = 'active' order by sort, name limit ${LIMIT.appLines}`);
 
   const myApps: Record<string, unknown>[] = internal && me?.email ? await (async () => {
     try {

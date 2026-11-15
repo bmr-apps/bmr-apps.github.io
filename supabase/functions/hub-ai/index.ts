@@ -347,7 +347,9 @@ Deno.serve(async (req) => {
   let picked: { provider: Provider; model: string; spec: string } | null = null;
   try {
     const rawTok = /^Bearer\s+(.+)$/i.exec(req.headers.get('Authorization') ?? '')?.[1] ?? '';
-    if (!rawTok) throw new HttpError(401, 'AI 토큰 또는 로그인이 필요합니다.');
+    const assistGrant = req.headers.get(ASSIST_HEADER) ?? '';
+    // 도우미(hub-assistant)는 Bearer 없이 일회용 표만 보낸다. 표 형식이 맞을 때만 토큰 없이 통과시킨다.
+    if (!rawTok && !NONCE_RE.test(assistGrant)) throw new HttpError(401, 'AI 토큰 또는 로그인이 필요합니다.');
 
     const t = await req.text();
     if (t.length > LIMIT.maxBody) throw new HttpError(413, '요청이 너무 큽니다.');
@@ -355,7 +357,7 @@ Deno.serve(async (req) => {
     try { b = t ? JSON.parse(t) as Record<string, unknown> : {}; } catch { throw new HttpError(400, 'JSON 형식이 아닙니다.'); }
 
     // 1) 누가 부르나 — 허브 내부 도우미 · 앱 토큰 · 허브 로그인(관리자·담당 개발자)
-    const internal = await takeAssistantGrant(req.headers.get(ASSIST_HEADER) ?? '');
+    const internal = await takeAssistantGrant(assistGrant);
     let ai: AiRow = { enabled: true, allowed_models: null, hourly_limit: null, daily_limit: null, daily_token_limit: null };
     let byTok: Awaited<ReturnType<typeof appByToken>> = null;
     try { byTok = await appByToken(rawTok); }

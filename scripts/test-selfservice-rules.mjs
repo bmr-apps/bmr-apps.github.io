@@ -383,7 +383,8 @@ let nonceThrew = false; try { AS.newNonce(new Uint8Array(16)); } catch { nonceTh
 ok(AS.GRANT_HEADER === 'x-hub-assistant-grant' && AS.GRANT_TTL_SECONDS === 60, '헤더 이름·60초 유효', AS.GRANT_HEADER);
 const aiS = readFileSync(new URL('../supabase/functions/hub-ai/index.ts', import.meta.url), 'utf8');
 ok(aiS.includes(`const ASSIST_HEADER = '${AS.GRANT_HEADER}'`) && aiS.includes(`const ASSIST_TTL = ${AS.GRANT_TTL_SECONDS}`) && aiS.includes(`const NONCE_RE = ${AS.NONCE_RE.toString()}`), 'hub-ai 와 도우미가 같은 헤더·60초·64자 규칙을 쓴다');
-ok(aiS.includes('takeAssistantGrant(req.headers.get(ASSIST_HEADER)') && aiS.includes('used_at is null') && aiS.includes('return rows.length === 1'), 'hub-ai: 표를 한 번만 쓰이게 표시하며 확인(동시에 두 번 못 씀)');
+ok((aiS.includes('takeAssistantGrant(assistGrant)') || aiS.includes('takeAssistantGrant(req.headers.get(ASSIST_HEADER)')) && aiS.includes('used_at is null') && aiS.includes('return rows.length === 1'), 'hub-ai: 표를 한 번만 쓰이게 표시하며 확인(동시에 두 번 못 씀)');
+ok(/if \(!rawTok && !NONCE_RE\.test\(assistGrant\)\)/.test(aiS), 'hub-ai: 일회용 표가 있으면 Bearer 없이도 도우미 호출을 받는다 (표 없으면 401)');
 ok(aiS.includes('app = null;') && aiS.includes("actor = { kind: 'user', email: 'hub-assistant'"), 'hub-ai: 도우미는 앱 하나에 매이지 않는다');
 ok(aiS.includes('async function usage(appId: number | null)') && aiS.includes('usage(app?.id ?? null)'), 'hub-ai: 앱 없이 학교 전체 한도만 세도록 계산');
 ok(aiS.includes("'hub-assistant'") && !aiS.includes("'bmrai_'"), 'hub-ai: 기록에 hub-assistant 로 남기고, 토큰 접두어 평문은 여전히 없다');
@@ -393,6 +394,7 @@ ok(aS.includes('assistant_attempts') && aS.includes('RATE.dayAll') && aS.include
 ok(aS.includes('assistant_grants') && aS.includes('[GRANT_HEADER]: grant'), 'hub-assistant: 일회용 표를 넣고 헤더로 보낸다');
 ok(aS.includes('roleOf(me?.role)') && aS.includes("me?.role === 'disabled'"), 'hub-assistant: 역할은 profiles 에서 읽고 사용 중지 계정은 거절');
 ok(aS.includes("status = 'active'") && aS.includes('canSeeInternalApps'), 'hub-assistant: 손님·일반 사용자에게는 운영 중인 앱만 모은다');
+ok(aS.includes("role === 'admin'") && aS.includes("status in ('active', 'preparing', 'paused')"), 'hub-assistant: 준비·중지 앱 전체 목록은 관리자만 (개발자는 담당 앱으로만)');
 ok(aS.includes('buildSystemPrompt') && aS.includes('functions/v1/hub-ai'), 'hub-assistant: 프롬프트를 만들어 hub-ai 로 넘긴다');
 ok(!/BMR_(GEMINI|OPENAI|ANTHROPIC|XAI)_API_KEY/.test(aS) && !aS.includes('crypto.subtle.decrypt'), 'hub-assistant: 업체 키를 풀지 않는다 (키는 hub-ai 만)');
 ok(aS.includes('질문·답 본문은 남기지 않는다') || aS.includes('남기지 않는 것'), 'hub-assistant: 질문·답 본문을 남기지 않는다고 적혀 있음');

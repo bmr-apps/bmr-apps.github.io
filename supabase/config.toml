@@ -33,3 +33,7 @@ verify_jwt = false
 
 [functions.hub-favicon]
 verify_jwt = false
+
+# 손님은 로그인 없이, 회원은 허브 JWT 를 함수 안에서 확인한다
+[functions.hub-assistant]
+verify_jwt = false
