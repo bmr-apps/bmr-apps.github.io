@@ -4,6 +4,8 @@
 //  · GitHub API: 조직 bmr-apps 의 그 앱 저장소 하나. 저장소 지우기·설정 바꾸기·조직 멤버 관리 없음. 초대는 push 권한만.
 //  · Storage: 그 앱 버킷 하나 만들기(비공개). 지우기 없음.
 
+import { deployFiles } from './deploy-files.ts';
+
 export const REF = 'psupfmarnyxontorftio';
 export const ORG = 'bmr-apps';
 export const DOMAIN = 'apps.bmrschool.net';
@@ -93,11 +95,13 @@ export class Mgmt {
     if (!r.ok) { await r.body?.cancel(); throw new HttpError(502, `함수 목록 실패 (${r.status})`); }
     return ((await r.json()) as { slug: string }[]).map((f) => f.slug);
   }
-  /** 이 앱의 시작 함수 <slug>-fn 만 배포 */
-  async deployFn(source: string) {
+  /** 이 앱의 시작 함수 <slug>-fn 만 배포. index.ts 와 함께 쓰는 파일(lib/hub.ts · mail.ts)도 함께 넣는다 */
+  async deployFn(source: string, extra: Record<string, string> = {}) {
+    let files: [string, string][];
+    try { files = deployFiles(source, extra); } catch (e) { throw new HttpError(500, (e as Error).message); }
     const fd = new FormData();
     fd.append('metadata', JSON.stringify({ entrypoint_path: 'index.ts', name: this.n.fn, verify_jwt: false }));
-    fd.append('file', new Blob([source], { type: 'application/typescript' }), 'index.ts');
+    for (const [rel, text] of files) fd.append('file', new Blob([text], { type: 'application/typescript' }), rel);
     const r = await this.call('POST', `/functions/deploy?slug=${this.n.fn}`, fd, false);
     const t = await r.text();
     if (!r.ok) throw new HttpError(502, `함수 ${this.n.fn} 배포 실패 (${r.status}): ${t.slice(0, 300)}`);

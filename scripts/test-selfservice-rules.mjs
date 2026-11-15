@@ -315,4 +315,20 @@ ok(T.REPO_FILES['README.md'].includes('{{PREFIX}}MAIL_TOKEN'), 'README 도 {{PRE
 const provRenderSrc = readFileSync(new URL('../supabase/functions/hub-provision/index.ts', import.meta.url), 'utf8');
 ok(provRenderSrc.includes('files[render(p, rv)] = render(t, rv)'), 'hub-provision: 파일 경로도 {{FN}} 을 채운다 (lib/hub.ts 가 제자리에 올라감)');
 
+console.log('[처음 함수 배포 (lib/hub.ts 함께)]');
+const G = await import('../supabase/functions/hub-provision/deploy-files.ts');
+const df = G.deployFiles('// index', { 'lib/hub.ts': '// lib', 'mail.ts': '// mail' });
+ok(df.map(([p]) => p).join(',') === 'index.ts,lib/hub.ts,mail.ts', '배포 파일: index.ts + lib/hub.ts + mail.ts (index.ts 가 먼저)', JSON.stringify(df.map(([p]) => p)));
+ok(df[0][1] === '// index' && df[1][1] === '// lib' && df[2][1] === '// mail', '배포 파일 내용이 그대로 들어감');
+ok(G.deployFiles('// index').map(([p]) => p).join(',') === 'index.ts', '함께 넣을 파일이 없으면 index.ts 하나');
+let dfThrew = false; try { G.deployFiles('x', { '../evil.ts': 'x' }); } catch { dfThrew = true; } ok(dfThrew, '배포 파일 이름에 .. → 거부');
+dfThrew = false; try { G.deployFiles('x', { 'index.ts': 'y' }); } catch { dfThrew = true; } ok(dfThrew, 'index.ts 를 또 넣으면 → 거부');
+const guardSrc = readFileSync(new URL('../supabase/functions/hub-provision/guard.ts', import.meta.url), 'utf8');
+const deployBody = guardSrc.slice(guardSrc.indexOf('async deployFn('), guardSrc.indexOf('async exposedSchemas('));
+ok(deployBody.includes('deployFiles(source, extra)') && /for \(const \[rel, text\] of files\)/.test(deployBody), 'deployFn 은 deployFiles 목록(index.ts·lib/hub.ts·mail.ts)을 모두 FormData 에 넣는다', deployBody.replace(/\s+/g, ' ').slice(0, 200));
+ok(guardSrc.includes("from './deploy-files.ts'"), 'guard.ts 는 deploy-files.ts 의 목록을 씀');
+const fnStep = provRenderSrc.slice(provRenderSrc.indexOf("case 'function':"), provRenderSrc.indexOf("case 'repo':"));
+ok(fnStep.includes("'lib/hub.ts': render(REPO_FILES['supabase/functions/{{FN}}/lib/hub.ts'], rv)") && fnStep.includes("'mail.ts': render(MAIL_SOURCE, rv)"), 'hub-provision function 단계: lib/hub.ts · mail.ts 를 함께 배포 (400 Module not found 방지)', fnStep.replace(/\s+/g, ' ').slice(0, 240));
+ok(T.FN_SOURCE.includes("from './lib/hub.ts'") && fnStep.includes("'lib/hub.ts'"), '시작 함수가 가져오는 lib/hub.ts 를 배포 목록에 넣음');
+
 console.log(`\n결과: ${pass} 통과, ${fail} 실패`); process.exit(fail ? 1 : 0);

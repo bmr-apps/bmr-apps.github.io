@@ -269,7 +269,13 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
     case 'function': {
       if (!started && (await mgmt.functionSlugs()).includes(n.fn)) throw new HttpError(409, `서버 함수 ${n.fn} 가 이미 있어 멈췄습니다`);
       await mark();
-      await mgmt.deployFn(render(FN_SOURCE, vars(c)));
+      // index.ts 가 './lib/hub.ts' 를 가져오므로 함께 넣어야 배포된다 (빠지면 400 Module not found).
+      // mail.ts 는 index.ts 가 쓰지 않지만 저장소와 배포본을 같게 두려고 함께 넣는다.
+      const rv = vars(c);
+      await mgmt.deployFn(render(FN_SOURCE, rv), {
+        'lib/hub.ts': render(REPO_FILES['supabase/functions/{{FN}}/lib/hub.ts'], rv),
+        'mail.ts': render(MAIL_SOURCE, rv),
+      });
       return true;
     }
     case 'repo': {
