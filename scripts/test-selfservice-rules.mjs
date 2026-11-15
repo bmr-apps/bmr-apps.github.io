@@ -201,6 +201,7 @@ const dirSrc = readFileSync(new URL('../supabase/functions/hub-directory/index.t
 ok(['list_groups', 'check', 'members', 'me', 'group_save', 'group_delete', 'member_add', 'member_remove'].every((a) => dirSrc.includes(`action === '${a}'`)), 'hub-directory: 여덟 동작');
 ok(dirSrc.includes('bmr_admin.mail_tokens') && dirSrc.includes('bmr_admin.ai_tokens') && !dirSrc.includes('token_issue'), '앱 신분은 이미 있는 메일·AI 토큰 해시로 확인 (새 토큰 발급 없음)');
 ok(dirSrc.includes("me.role !== 'admin'") && dirSrc.indexOf("me.role !== 'admin'") < dirSrc.indexOf("action === 'group_save'"), '그룹 고치기는 관리자만');
+ok(/action === 'list_groups'[\s\S]{0,500}me\.role !== 'admin'/.test(dirSrc), 'list_groups: 사람은 관리자만 (앱 토큰은 me 가 없어 통과)');
 ok(!dirSrc.includes("from './_key.ts'") && dirSrc.includes('directory_attempts'), 'hub-directory: 열쇠를 풀지 않고(키 없는 함수) 호출 횟수를 남김');
 ok(dirSrc.includes('MEMBER_LIST_MAX') && dirSrc.includes('directory:member_add'), '구성원 목록에 상한, 변경은 감사 기록에');
 const dirMig = readFileSync(new URL('../supabase/migrations/20261115120000_hub_groups_files.sql', import.meta.url), 'utf8');

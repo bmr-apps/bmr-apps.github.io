@@ -6,7 +6,7 @@
 //                                          (이미 모든 앱에 있는 토큰을 그대로 쓴다. 새 비밀값을 발급하지 않는다)
 //   Authorization: Bearer <허브 로그인 토큰> — 사람이 부를 때 (내 소속 보기 · 관리자 명부 관리)
 //
-//   list_groups                     그룹 목록 + 구성원 수 (앱·사람). 앱은 이걸로 '고를 수 있는 그룹'을 그린다
+//   list_groups                     그룹 목록 + 구성원 수 (앱 토큰 · 관리자). 앱은 이걸로 '고를 수 있는 그룹'을 그린다
 //   check { user_email?, groups? }   그 사람이 어느 그룹인지. 앱=아무 메일, 사람=내 메일만
 //                                    groups 는 slug 또는 이름(교직원·10학년…). 20개까지
 //   members { group }               그룹 구성원 메일 목록 (앱 · 관리자). 이름은 두지 않는다 (최대 1,000명)
@@ -206,6 +206,11 @@ Deno.serve(async (req) => {
 
     // ---------- 앱·사람 공통 읽기 ----------
     if (action === 'list_groups') {
+      // 사람은 관리자만. 앱 토큰은 그대로 허용 (시작 틀·앱이 고를 수 있는 그룹을 그릴 때)
+      if (me && me.role !== 'admin') {
+        await audit(actor, 'directory:list_groups', '', 'denied', '관리자가 아님');
+        throw new HttpError(403, '그룹 목록은 앱 또는 관리자만 볼 수 있습니다.');
+      }
       const groups = await listGroups();
       return json(req, 200, {
         ok: true,

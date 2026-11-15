@@ -27,22 +27,22 @@ export function GroupsPage({ ctx }: { ctx: Ctx }) {
   const [addRole, setAddRole] = useState<'member' | 'leader'>('member');
 
   const load = useCallback(async () => {
-    if (!ctx.session) return;
+    if (!ctx.session || !ctx.isAdmin) return;
     try {
       const r = await directoryApi<DirGroupList>(ctx.session, 'list_groups');
       setGroups(r.groups); setKinds(r.kinds); setFolder(r.file_bucket);
     } catch (e) { setErr(withDeployHint((e as Error).message)); }
-  }, [ctx.session]);
+  }, [ctx.session, ctx.isAdmin]);
   useEffect(() => { load(); }, [load]);
 
   const loadMembers = useCallback(async (g: DirGroup) => {
-    if (!ctx.session) return;
+    if (!ctx.session || !ctx.isAdmin) return;
     try {
       const r = await directoryApi<DirMembers>(ctx.session, 'members', { group: g.slug });
       setMembers(r.members);
       setDetail(r.group);
     } catch (e) { setErr(withDeployHint((e as Error).message)); }
-  }, [ctx.session]);
+  }, [ctx.session, ctx.isAdmin]);
 
   if (!ctx.isAdmin) return <div className="card">관리자만 볼 수 있습니다.</div>;
 
