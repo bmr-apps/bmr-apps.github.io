@@ -40,7 +40,7 @@ export const ASK = {
 } as const;
 
 /** 한 시간에 부를 수 있는 횟수 — 남용은 막고, 한 교실에서 여럿이 써도 막히지 않게 */
-export const RATE = { guestHour: 12, userHour: 30, staffHour: 60, adminHour: 120, ipHour: 60, dayAll: 600 } as const;
+export const RATE = { guestHour: 12, userHour: 30, staffHour: 60, adminHour: 120, ipHour: 60, dayAll: 400 } as const;
 
 export function hourLimitOf(role: Role): number {
   if (role === 'admin') return RATE.adminHour;
