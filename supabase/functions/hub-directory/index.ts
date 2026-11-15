@@ -319,7 +319,7 @@ Deno.serve(async (req) => {
       // 메일 목록은 JSON 으로 넘긴다 (배열 그대로 넘기지 않아 드라이버 차이에 흔들리지 않게)
       const emailsJson = JSON.stringify(list);
       await db`insert into bmr_admin.group_members (group_id, user_email, role)
-        select ${g.id}, e, ${role} from jsonb_array_elements_text(${emailsJson}::jsonb) as e
+        select ${g.id}, t.email, ${role} from jsonb_array_elements_text(${emailsJson}::jsonb) as t(email)
         on conflict (group_id, user_email) do update set role = excluded.role`;
       const after = await groupById(g.id);
       await audit(actor, 'directory:member_add', g.name, 'ok', `${list.length}명 ${role === 'leader' ? '운영자로 ' : ''}추가 (전체 ${after?.members ?? 0}명)`);
