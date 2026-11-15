@@ -102,6 +102,18 @@ export function eventPayload(o: { kind: 'app_request' | 'dev_request'; title: st
   };
 }
 
+/** 운영 점검 알림 내용 (앱이 응답하지 않을 때 · 다시 정상이 되었을 때) */
+export function healthPayload(o: { name: string; slug: string; ok: boolean }): { title: string; body: string; url: string; tag: string } {
+  const name = previewText(o.name, 40) || '앱';
+  const slug = String(o.slug ?? '').replace(/[^a-z0-9-]/g, '').slice(0, 40);
+  return {
+    title: o.ok ? `📡 ${name} 회복` : `📡 ${name} 점검 실패`,
+    body: o.ok ? `${name} 이(가) 다시 정상으로 응답합니다.` : `${name} 이(가) 응답하지 않습니다. 운영 상태를 확인해 주세요.`,
+    url: '/hub/status',
+    tag: `health-${slug || 'app'}`,
+  };
+}
+
 /** 알림 메일 제목 */
 export function mailSubject(o: { sender: string; count?: number }): string {
   const sender = previewText(o.sender, 40) || '회원';

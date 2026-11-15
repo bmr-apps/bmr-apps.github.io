@@ -511,6 +511,7 @@ ok(nS.includes('LIMITS.emailPerRecipientHour') && nS.includes('LIMITS.emailPerDa
 ok(nS.includes('bmr_admin.notify_attempts') && nS.includes('bmr_admin.notify_grants') && nS.includes('bmr_admin.push_config'), '횟수·일회용 표·VAPID 열쇠 표를 쓴다');
 ok(nS.includes("'x-bmr-notify-grant': nonce"), '메일은 hub-mail 에 일회용 표(헤더)로만 부탁한다');
 ok(nS.includes("else if (await usedIn(who, 'event:email', 3600)") && nS.includes("lastMailAt(who, ref, 'event:email')"), '신청 결과도 푸시가 안 닿았을 때만 메일로 (같은 신청 10분 한 통)');
+ok(nS.includes("return r.ok && j?.ok === true ? 'sent' : 'error';"), '메일 결과는 hub-mail 의 ok 값을 보고 센다 (한도 거절 200 을 보냄으로 세지 않음)');
 ok(nS.includes('const payload = chatPayload({ sender') && N.LIMITS.previewLen === 80, '알림에 실리는 쪽지는 짧은 미리보기로 만든다 (chatPayload, 80자)');
 ok((nS.match(/getVapid|vipid\(\)/g) ?? []).length >= 2 && nS.includes("namedCurve: 'P-256'") && nS.includes('bmr_admin.push_config'), 'VAPID 열쇠는 Web Crypto 로 만들어 서버 표에만 (공개키만 내보냄)');
 ok(nS.includes("if (u.role !== 'admin') throw new HttpError(403, '관리자만 신청 결과를 알릴 수 있습니다.')"), '신청 결과 알림은 관리자만');
@@ -564,5 +565,18 @@ ok(accUi.includes('<NotifySettings session={ctx.session} />'), '내 계정에 �
 ok(chatUi.includes('notifyChat(ctx.session, openId)') && chatUi.includes('<NotifyQuickToggle'), '쪽지: 보낸 뒤 상대에게 알림 + 화면에서 바로 켜고 끄기');
 const reqUi = readFileSync(new URL('../src/pages/Requests.tsx', import.meta.url), 'utf8');
 ok(reqUi.includes("notifyEvent(ctx.session, 'app_request', r.id)"), '신청 승인·반려 뒤 신청자에게 알림');
+
+console.log('[알림 · 운영 점검 연결]');
+const hp = N.healthPayload({ name: '도서 대출', slug: 'library', ok: false });
+ok(hp.url === '/hub/status' && hp.tag === 'health-library' && hp.title.includes('점검 실패'), '점검 실패 알림: 제목·/hub/status·앱별 tag', JSON.stringify(hp));
+ok(N.healthPayload({ name: 'x', slug: 'library', ok: true }).title.includes('회복'), '회복 알림은 제목이 다르다');
+const healthS = readFileSync(new URL('../supabase/functions/hub-health/index.ts', import.meta.url), 'utf8');
+ok(healthS.includes('app_health_latest') && healthS.includes('notifyTransitions(appById, prev, rows)'), '점검: 넣기 전 판정을 읽어 바뀐 앱만 고른다');
+ok(healthS.includes("now === 'down' && was !== 'down'") && healthS.includes("now === 'ok' && was === 'down'"), '알림 기준: 장애가 될 때·장애에서 회복할 때만');
+ok(healthS.includes("kind: 'health', ref: app.slug") && healthS.includes("url: '/hub/status'"), '알림함에 health 줄 (앱 담당자만)');
+ok(healthS.includes('recentHealthNotice') && healthS.includes('12 * 3600_000'), '같은 앱 알림은 12시간에 한 번');
+ok(healthS.includes("'x-hub-cron': CRON") && healthS.includes("action: 'health', app_id: app.id, ok: now === 'ok'"), '푸시는 점검 비밀값으로 hub-notify 에 부탁 (실패해도 점검은 그대로)');
+ok(nS.includes("if (action === 'health') return json(req, 200, await healthAlert(req, b));") && nS.includes('safeEqual(req.headers.get(\'x-hub-cron\') ?? \'\', CRON)'), 'hub-notify: 점검 알림은 비밀값을 먼저 확인 (사람 토큰 없이)');
+ok(nS.includes("where o.app_id = ${appId} and p.role <> 'disabled'") && nS.includes("if (!canPush(normalizePrefs(prefsRow), 'admin')) { off++; continue; }"), '점검 알림도 담당자·설정(관리 알림·푸시)을 지킨다');
 
 console.log(`\n결과: ${pass} 통과, ${fail} 실패`); process.exit(fail ? 1 : 0);

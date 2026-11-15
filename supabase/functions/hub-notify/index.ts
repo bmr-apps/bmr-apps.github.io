@@ -7,6 +7,7 @@
 //   test         내 기기로 시험 알림 한 통 (경로 전체가 살아 있는지 확인)
 //   chat         { thread_id }  방금 내가 보낸 쪽지를 상대에게 알린다 (푸시 → 안 닿으면 메일)
 //   event        { kind: 'app_request' | 'dev_request', id }  (관리자) 결정된 신청을 신청자에게 알린다
+//   health       { app_id, ok }  (점검 함수) 운영 점검이 실패·회복될 때 그 앱 담당자에게 알린다 — x-hub-cron 비밀값 필요
 //   GET /health  살아 있는지 (웹 푸시 라이브러리·열쇠 준비 여부)
 //
 // 지키는 경계
@@ -20,7 +21,7 @@
 // 이 함수는 _key.ts(암호문을 푸는 열쇠)를 쓰지 않는다 — 메일은 hub-mail 에 일회용 표(notify_grants)로 부탁한다.
 import postgres from 'npm:postgres@3.4.5';
 import {
-  LIMITS, canEmail, canPush, chatPayload, deviceLabel, emailAllowed, endpointHost, eventPayload,
+  LIMITS, canEmail, canPush, chatPayload, deviceLabel, emailAllowed, endpointHost, eventPayload, healthPayload,
   mailBody, mailSubject, normalizePrefs, prefsProblem,
 } from './rules.ts';
 
@@ -31,6 +32,8 @@ const HUB = 'https://apps.bmrschool.net';
 const ORIGINS = [HUB, 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:4173', 'http://127.0.0.1:4173'];
 const ICON = `${HUB}/favicon-192x192.png`;
 const VAPID_SUBJECT = 'mailto:bmrapps@bmrschool.org';
+/** 점검 함수(hub-health)가 부를 때 쓰는 비밀값. 비어 있으면 점검 알림은 받지 않는다 */
+const CRON = Deno.env.get('HUB_CRON_SECRET') ?? '';
 if (new URL(SB_URL).hostname.split('.')[0] !== REF) throw new Error('hub-notify: 다른 프로젝트에서는 실행하지 않습니다');
 
 const db = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
@@ -49,6 +52,14 @@ try {
   webpush = mod.default ?? null;
 } catch (e) {
   console.error('hub-notify', 'web-push 를 불러오지 못했습니다', String((e as Error)?.message ?? e).slice(0, 200));
+}
+
+/** 비밀값 비교 — 길이·내용을 한 번에 비교해 시간 차이로 알아내지 못하게 한다 */
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return d === 0;
 }
 
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
@@ -226,8 +237,32 @@ async function sendMail(to: string, subject: string, body: string): Promise<'sen
     body: '{}',
     signal: AbortSignal.timeout(25_000),
   });
-  await r.body?.cancel();
-  return r.ok ? 'sent' : 'error';
+  const j = await r.json().catch(() => null) as { ok?: boolean; skipped?: string } | null;
+  // hub-mail 은 한도에 닿으면 200 + { ok: false, skipped } 로 답한다 — 그것도 '못 보냄'으로 센다
+  return r.ok && j?.ok === true ? 'sent' : 'error';
+}
+
+/** 운영 점검 알림 — hub-health(점검 함수)만 부른다. 그 앱 담당자에게만, 꺼 두었으면 보내지 않는다 */
+async function healthAlert(req: Request, b: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (CRON.length < 16) throw new HttpError(503, '점검 알림 비밀값(HUB_CRON_SECRET)이 없습니다. 관리자에게 알려 주세요.');
+  if (!safeEqual(req.headers.get('x-hub-cron') ?? '', CRON)) throw new HttpError(403, '점검 함수만 점검 알림을 보낼 수 있습니다.');
+  const appId = Number(b.app_id);
+  if (!Number.isInteger(appId) || appId <= 0) throw new HttpError(400, '알릴 앱을 골라 주세요.');
+  const ok = b.ok === true;
+  const [app] = await db`select id, slug, name, status from public.apps where id = ${appId}`;
+  if (!app || String(app.status) !== 'active') return { ok: true, skipped: 'no_app' };
+  const owners = await db`select distinct p.id from public.app_owners o
+    join public.profiles p on lower(p.email) = lower(o.email)
+    where o.app_id = ${appId} and p.role <> 'disabled'` as unknown as { id: string }[];
+  const payload = healthPayload({ name: String(app.name), slug: String(app.slug), ok });
+  let sent = 0, off = 0;
+  for (const o of owners) {
+    const [prefsRow] = await db`select push_enabled, email_enabled, notify_chat, notify_admin from public.notification_prefs where user_id = ${String(o.id)}`;
+    if (!canPush(normalizePrefs(prefsRow), 'admin')) { off++; continue; }
+    sent += (await sendPush(await subsOf(String(o.id)), payload)).sent;
+  }
+  await tally('cron', null, 'health', `${appId}:${ok ? 'ok' : 'down'}`, sent > 0);
+  return { ok: true, owners: owners.length, off, sent };
 }
 
 // ---------- 화면이 부르는 것들 ----------
@@ -248,17 +283,20 @@ Deno.serve(async (req) => {
   const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'unknown';
   let u: Me | null = null;
   try {
-    const rawTok = /^Bearer\s+(.+)$/i.exec(req.headers.get('Authorization') ?? '')?.[1] ?? '';
-    if (!rawTok) throw new HttpError(401, '로그인이 필요합니다.');
-    u = await userByJwt(rawTok);
-    if (!u) throw new HttpError(401, '로그인이 만료되었습니다. 다시 로그인해 주세요.');
-    if (u.role === 'disabled') throw new HttpError(403, '사용이 중지된 계정입니다. 관리자에게 문의하세요.');
-
     const t = await req.text();
     if (t.length > 8000) throw new HttpError(413, '요청이 너무 큽니다.');
     let b: Record<string, unknown>;
     try { b = t ? JSON.parse(t) as Record<string, unknown> : {}; } catch { throw new HttpError(400, 'JSON 형식이 아닙니다.'); }
     const action = String(b.action ?? '');
+
+    // ---------- 운영 점검 알림 (점검 함수만: x-hub-cron 비밀값. 사람 토큰 없이 부른다) ----------
+    if (action === 'health') return json(req, 200, await healthAlert(req, b));
+
+    const rawTok = /^Bearer\s+(.+)$/i.exec(req.headers.get('Authorization') ?? '')?.[1] ?? '';
+    if (!rawTok) throw new HttpError(401, '로그인이 필요합니다.');
+    u = await userByJwt(rawTok);
+    if (!u) throw new HttpError(401, '로그인이 만료되었습니다. 다시 로그인해 주세요.');
+    if (u.role === 'disabled') throw new HttpError(403, '사용이 중지된 계정입니다. 관리자에게 문의하세요.');
 
     // ---------- 내 설정·기기·안 읽은 수 ----------
     if (action === 'state') {
