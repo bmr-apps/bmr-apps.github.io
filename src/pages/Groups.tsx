@@ -59,8 +59,15 @@ export function GroupsPage({ ctx }: { ctx: Ctx }) {
 
   const removeGroup = async (g: DirGroup) => {
     if (!confirm(`'${g.name}' 그룹을 지울까요? 구성원 ${g.members}명의 소속도 함께 지워집니다. (공용 파일은 지우지 않습니다)`)) return;
-    await run(() => directoryApi(ctx.session!, 'group_delete', { id: g.id }), '그룹을 지웠습니다.');
-    if (detail?.id === g.id) setDetail(null);
+    // 지운 그룹의 명부를 다시 불러오지 않도록 run() 대신 직접 (지운 뒤 404 안내가 뜨지 않게)
+    setBusy(true); setErr(''); setMsg('');
+    try {
+      await directoryApi(ctx.session!, 'group_delete', { id: g.id });
+      setMsg('그룹을 지웠습니다.');
+      setDetail(null); setMembers([]);
+      await load();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
   };
 
   const addMembers = async (e: FormEvent) => {
