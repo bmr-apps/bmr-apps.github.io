@@ -11,6 +11,8 @@ import { DbCredPage } from './pages/DbCred';
 import { AccountPage } from './pages/Account';
 import { MonitorPage } from './pages/Monitor';
 import { GroupsPage } from './pages/Groups';
+import { ChatPage, useChatUnread } from './pages/Chat';
+import { Assistant, openAssistant } from './Assistant';
 import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 import { ownedAppIds, scopeToOwned, type OwnerRef } from './scope';
 
@@ -114,6 +116,8 @@ export function App() {
   else if (me.role === 'disabled') page = <div className="card narrow center"><div className="logo big">🚫</div><h2>사용 중지</h2><p>사용이 중지된 계정입니다. 관리자에게 문의하세요.</p><p className="muted">{me.email}</p></div>;
   // /hub/account 만은 개발자 승인 전에도 연다 (자기 역할 보기·비밀번호 바꾸기·로그아웃)
   else if (path === '/hub/account') page = <AccountPage ctx={ctx} />;
+  // 회원 쪽지는 가입한 회원이면 누구나 (개발자 승인 전 일반 사용자도)
+  else if (path === '/hub/chat') page = <ChatPage ctx={ctx} />;
   else if (path === '/hub/db') page = <StaffOnly ctx={ctx}><DbCredPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub' || path === '/hub/apps') page = <StaffOnly ctx={ctx}><AppsPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/requests') page = <StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>;
@@ -179,6 +183,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const [theme, toggleTheme] = useTheme();
   const [pal, setPal] = useState(false);
   const [menu, setMenu] = useState(false);
+  const unread = useChatUnread(ctx.session);
   const c = ctx.counts;
   // 허브 틀(사이드바)은 개발자 승인을 받은 사람에게만 — 일반 사용자는 메인·가이드·내 계정만 본다
   const inHub = !!ctx.session && ctx.isStaff && path !== '/' && path !== '/hub/login';
@@ -186,6 +191,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     ['둘러보기', [
       { to: '/guide', icon: '🧭', label: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', show: true },
       { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
+      { to: '/hub/chat', icon: '💬', label: '회원 쪽지', sub: '가입 회원끼리 1:1 대화', show: true, badge: unread, tone: 'amber' },
     ]],
     ['운영', [
       { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·개발자 요청 승인', show: true, badge: c?.reqPending, tone: 'amber' },
@@ -223,6 +229,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       else list.push({ id: 'guide', group: '메뉴', icon: '🧭', title: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', run: () => go('/guide') });
       list.push({ id: 'quick', group: '메뉴', icon: '⚡', title: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', run: () => go('/guide/quick') });
       list.push({ id: 'account', group: '메뉴', icon: '👤', title: '내 계정', sub: '허브 로그인 비밀번호 바꾸기', run: () => go('/hub/account') });
+      list.push({ id: 'chat', group: '메뉴', icon: '💬', title: '회원 쪽지', sub: '가입 회원끼리 1:1 대화', run: () => go('/hub/chat') });
       if (ctx.isStaff) list.push({ id: 'db', group: '메뉴', icon: '🗄️', title: 'DB 접속 정보 모아 보기', sub: '앱마다 앱 정보 → DB 접속 정보에서도 할 수 있어요', run: () => go('/hub/db') });
     } else {
       list.push({ id: 'guide', group: '메뉴', icon: '🧭', title: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', run: () => go('/guide') });
@@ -231,6 +238,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     const apps = (inHub ? c?.apps : pubApps)?.filter((a) => a.status !== 'retired') ?? [];
     apps.forEach((a) => list.push({ id: 'app' + a.id, group: '서비스 열기', icon: a.card_icon || appIcon(a.slug), title: a.name, sub: a.url.replace(/^https?:\/\//, ''), run: () => { open(a.url, '_blank', 'noopener'); } }));
     list.push({ id: 'theme', group: '동작', icon: theme === 'dark' ? '☀️' : '🌙', title: theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로', sub: '테마 바꾸기', run: toggleTheme });
+    list.push({ id: 'assist', group: '동작', icon: '✨', title: 'BMR 도우미에게 묻기', sub: '사용법·앱·개발 안내', run: openAssistant });
     if (ctx.session && ctx.isStaff) {
       list.push({ id: 'new', group: '동작', icon: '✨', title: '새 앱 신청하기', sub: '앱 신청 화면으로', run: () => go('/hub/requests') });
       if (ctx.isAdmin) list.push({ id: 'chk', group: '동작', icon: '🩺', title: '운영 상태 점검하러 가기', sub: '운영 상태 화면의 “지금 점검”', run: () => go('/hub/status') });
@@ -273,6 +281,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           {!inHub && <Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>}
           {inHub ? <div className="greet"><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></div> : <div className="grow" />}
           <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
+          {ctx.session && <Link to="/hub/chat" className="icon-btn chat-btn" title="회원 쪽지" aria-label={`회원 쪽지${unread ? ` · 안 읽은 대화 ${unread}` : ''}`}>💬{unread > 0 && <span className="icon-count">{unread}</span>}</Link>}
           <Clock />
           <button className="icon-btn" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
           {ctx.session ? <>
@@ -284,12 +293,13 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
         <footer className="foot">
           <div className="foot-in">
             <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 함께 만들고 나누는 공간<small>별무리학교 · apps.bmrschool.net</small></p></div>
-            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.isStaff ? <Link to="/hub/apps">관리 허브</Link> : ctx.session ? <Link to="/hub/account">내 계정</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
+            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.session ? <Link to="/hub/chat">회원 쪽지</Link> : null}{ctx.isStaff ? <Link to="/hub/apps">관리 허브</Link> : ctx.session ? <Link to="/hub/account">내 계정</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
             {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/account">내 계정</Link><Link to="/hub/status">운영 상태</Link></nav>}
           </div>
         </footer>
       </div>
       {pal && <Palette cmds={cmds} onClose={() => setPal(false)} />}
+      <Assistant session={ctx.session} page={path === '/' ? '메인' : path} />
     </div>
   );
 }

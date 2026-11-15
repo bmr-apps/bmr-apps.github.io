@@ -2,6 +2,8 @@
 // 호출: POST { model?, prompt?, system?, messages?: [{ role, content }], temperature?, max_tokens?, response_mime_type?, slug? }
 //   Authorization: Bearer <앱 AI_TOKEN>   (bmrai_…)
 //     또는 허브 로그인 토큰(관리자, 또는 그 앱 담당 개발자 — 이때 slug 필요)
+//     또는 허브 내부 도우미(hub-assistant) — 헤더 x-hub-assistant-grant 에 일회용 표(60초·한 번)를 붙인다.
+//          앱 하나에 매이지 않는 허브 공용 호출이라 학교 전체 한도만 따르고, 로그는 slug 'hub-assistant' 로 남는다.
 // 정하는 것: 업체 키는 허브만 갖고(암호문 BMR_*_API_KEY), 앱은 이 앱 신분만 증명한다.
 //            모델은 학교 전체(또는 이 앱) 허용 목록 안에서만, 요청·토큰 수는 앱별·학교 전체 한도 안에서만.
 // 남기는 것: 업체·모델·토큰 수·결과·오류만 (bmr_admin.ai_log). 프롬프트와 응답 본문은 남기지 않는다.
@@ -51,6 +53,23 @@ const json = (req: Request, status: number, body: unknown) =>
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 const b64d = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+/** hub-assistant 가 보내는 '허브 내부 도우미' 일회용 표 — 60초 안에 쓰이지 않은 표인지 확인하고 바로 쓴 것으로 표시한다.
+ *  새 비밀값 없이 DB 만 본다. 무작위 64자라 짐작할 수 없고, 한 번 쓰면 효력이 없다.
+ *  hub-assistant/rules.ts 의 GRANT_HEADER·GRANT_TTL_SECONDS·NONCE_RE 와 같아야 한다. */
+const ASSIST_HEADER = 'x-hub-assistant-grant';
+const ASSIST_TTL = 60;
+const NONCE_RE = /^[0-9a-f]{64}$/;
+async function takeAssistantGrant(grant: string): Promise<boolean> {
+  if (!NONCE_RE.test(grant)) return false;
+  try {
+    const rows = await db`update bmr_admin.assistant_grants set used_at = now()
+      where nonce = ${grant} and used_at is null and created_at > now() - make_interval(secs => ${ASSIST_TTL})
+      returning id`;
+    return rows.length === 1;
+  } catch {
+    return false;   // 표가 아직 없으면(마이그레이션 전) 내부 호출로 보지 않는다
+  }
+}
 /** 업체 키는 필요할 때만 풀고 이 실행 동안만 메모리에 둔다 */
 const keyCache = new Map<Provider, string>();
 async function providerKey(p: Provider): Promise<string> {
@@ -110,9 +129,10 @@ async function audit(actor: Actor | null, action: string, target: string, result
 
 /** 호출 기록 — 본문(프롬프트·응답)은 넘기지 않는다 */
 async function aiLog(app: AppRow | null, provider: string, model: string, tokens: { input: number; output: number; total: number }, status: 'ok' | 'error' | 'denied', error: string, actor: string) {
+  const slug = (app?.slug ?? (actor === 'hub-assistant' ? 'hub-assistant' : '')).slice(0, 40);
   try {
     await db`insert into bmr_admin.ai_log (app_id, slug, provider, model, input_tokens, output_tokens, total_tokens, status, error, actor)
-      values (${app?.id ?? null}, ${(app?.slug ?? '').slice(0, 40)}, ${provider.slice(0, 20)}, ${model.slice(0, 120)},
+      values (${app?.id ?? null}, ${slug}, ${provider.slice(0, 20)}, ${model.slice(0, 120)},
         ${Math.max(0, Math.trunc(tokens.input))}, ${Math.max(0, Math.trunc(tokens.output))}, ${Math.max(0, Math.trunc(tokens.total))},
         ${status}, ${scrub(error).slice(0, 500)}, ${actor.slice(0, 200)})`;
   } catch (e) { console.error('ai_log', String((e as Error)?.message ?? e).slice(0, 200)); }
@@ -194,7 +214,7 @@ function readAsk(b: Record<string, unknown>): Ask {
 }
 
 /** 최근 24시간 사용량 (요청은 '거부'를 빼고 센다 — 막힌 요청이 한도를 먹지 않게) */
-async function usage(appId: number) {
+async function usage(appId: number | null) {
   const [c] = await db`select
       count(*) filter (where app_id = ${appId} and status <> 'denied') as app_24h,
       count(*) filter (where app_id = ${appId} and status <> 'denied' and at > now() - interval '1 hour') as app_hour,
@@ -334,7 +354,8 @@ Deno.serve(async (req) => {
     let b: Record<string, unknown>;
     try { b = t ? JSON.parse(t) as Record<string, unknown> : {}; } catch { throw new HttpError(400, 'JSON 형식이 아닙니다.'); }
 
-    // 1) 누가 부르나 — 앱 토큰 또는 허브 로그인(관리자·담당 개발자)
+    // 1) 누가 부르나 — 허브 내부 도우미 · 앱 토큰 · 허브 로그인(관리자·담당 개발자)
+    const internal = await takeAssistantGrant(req.headers.get(ASSIST_HEADER) ?? '');
     let ai: AiRow = { enabled: true, allowed_models: null, hourly_limit: null, daily_limit: null, daily_token_limit: null };
     let byTok: Awaited<ReturnType<typeof appByToken>> = null;
     try { byTok = await appByToken(rawTok); }
@@ -342,7 +363,11 @@ Deno.serve(async (req) => {
       if (missingTable(e)) throw new HttpError(503, 'AI 기록 표가 아직 준비되지 않았습니다(마이그레이션). 관리자에게 알려 주세요.');
       throw e;
     }
-    if (byTok) {
+    if (internal) {
+      // 허브 도우미: 앱 하나에 매이지 않는다 — 앱 상태·앱 한도 검사를 건너뛰고 학교 전체 한도만 따른다
+      app = null;
+      actor = { kind: 'user', email: 'hub-assistant', id: null };
+    } else if (byTok) {
       if (typeof b.slug === 'string' && b.slug && b.slug !== byTok.app.slug) throw new HttpError(403, '토큰과 앱 주소 이름이 맞지 않습니다.');
       app = byTok.app; ai = byTok.ai;
       actor = { kind: 'token', email: `${byTok.app.slug}-fn`, id: null };
@@ -363,7 +388,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (app.status !== 'active' && app.status !== 'preparing') {
+    if (app && app.status !== 'active' && app.status !== 'preparing') {
       await aiLog(app, '', '', { input: 0, output: 0, total: 0 }, 'denied', '앱이 일시 중지·종료 상태', actor?.email ?? '');
       throw new HttpError(403, '이 앱은 지금 AI를 쓸 수 없습니다. (일시 중지·종료 상태)');
     }
@@ -381,7 +406,7 @@ Deno.serve(async (req) => {
     if (!picked) throw new HttpError(400, `model 은 '업체:모델' 또는 모델 이름입니다 (예: gemini:gemini-2.5-flash). 받은 값: ${String(want).slice(0, 60)}`);
     if (!modelAllowed(picked, allowed)) {
       await aiLog(app, picked.provider, picked.model, { input: 0, output: 0, total: 0 }, 'denied', `허용되지 않은 모델 ${picked.spec}`, actor?.email ?? '');
-      await audit(actor, 'ai:deny', app.slug, 'denied', `허용되지 않은 모델 ${picked.spec}`);
+      await audit(actor, 'ai:deny', app?.slug ?? 'hub-assistant', 'denied', `허용되지 않은 모델 ${picked.spec}`);
       throw new HttpError(403, `이 앱은 '${picked.spec}' 모델을 쓸 수 없습니다. 쓸 수 있는 모델: ${allowed.slice(0, 6).join(', ')}${allowed.length > 6 ? ' …' : ''}`);
     }
     if (!configuredProviders()[picked.provider]) {
@@ -395,11 +420,11 @@ Deno.serve(async (req) => {
       daily: limitOf(ai.daily_limit, c.default_app_daily),
       tokens: limitOf(ai.daily_token_limit, c.default_app_daily_tokens),
     };
-    const u = await usage(app.id);
+    const u = await usage(app?.id ?? null);
     const limited = overLimit(u, eff, c);
     if (limited) {
       await aiLog(app, picked.provider, picked.model, { input: 0, output: 0, total: 0 }, 'denied', limited, actor?.email ?? '');
-      await audit(actor, 'ai:deny', app.slug, 'denied', `한도 · ${picked.spec} · ${limited}`);
+      await audit(actor, 'ai:deny', app?.slug ?? 'hub-assistant', 'denied', `한도 · ${picked.spec} · ${limited}`);
       throw new HttpError(429, limited);
     }
 
@@ -413,17 +438,17 @@ Deno.serve(async (req) => {
     } catch (e) {
       if (e instanceof HttpError) {
         await aiLog(app, picked.provider, picked.model, { input: 0, output: 0, total: 0 }, 'error', `${e.status} ${e.message}`, actor?.email ?? '');
-        await audit(actor, 'ai:call', app.slug, 'error', `${picked.spec} · ${e.status} ${e.message}`.slice(0, 400));
+        await audit(actor, 'ai:call', app?.slug ?? 'hub-assistant', 'error', `${picked.spec} · ${e.status} ${e.message}`.slice(0, 400));
         throw e;
       }
       throw e;
     }
 
     await aiLog(app, picked.provider, picked.model, { input: ans.input, output: ans.output, total: ans.total }, 'ok', '', actor?.email ?? '');
-    await audit(actor, 'ai:call', app.slug, 'ok', `${picked.spec} · ${ans.total} 토큰`);
+    await audit(actor, 'ai:call', app?.slug ?? 'hub-assistant', 'ok', `${picked.spec} · ${ans.total} 토큰`);
     return json(req, 200, {
       ok: true,
-      app: app.slug,
+      app: app?.slug ?? 'hub-assistant',
       provider: picked.provider,
       model: picked.model,
       text: ans.text,

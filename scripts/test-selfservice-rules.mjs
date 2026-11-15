@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 개발자 셀프서비스 규칙 시험 (네트워크 없음): 비밀값 이름 접두어 · 다른 앱 이름 공간 · 추가 함수 이름 · 로그 SQL · 비밀값 가리기.
 // 사용: node scripts/test-selfservice-rules.mjs
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 const R = await import('../supabase/functions/hub-devtools/rules.ts');
 let pass = 0, fail = 0;
 const ok = (c, l, x = '') => { if (c) { pass++; console.log('  ✓', l); } else { fail++; console.log('  ✗', l, x); } };
@@ -330,5 +330,118 @@ ok(guardSrc.includes("from './deploy-files.ts'"), 'guard.ts 는 deploy-files.ts 
 const fnStep = provRenderSrc.slice(provRenderSrc.indexOf("case 'function':"), provRenderSrc.indexOf("case 'repo':"));
 ok(fnStep.includes("'lib/hub.ts': render(REPO_FILES['supabase/functions/{{FN}}/lib/hub.ts'], rv)") && fnStep.includes("'mail.ts': render(MAIL_SOURCE, rv)"), 'hub-provision function 단계: lib/hub.ts · mail.ts 를 함께 배포 (400 Module not found 방지)', fnStep.replace(/\s+/g, ' ').slice(0, 240));
 ok(T.FN_SOURCE.includes("from './lib/hub.ts'") && fnStep.includes("'lib/hub.ts'"), '시작 함수가 가져오는 lib/hub.ts 를 배포 목록에 넣음');
+
+console.log('[BMR 도우미 (hub-assistant)]');
+const AS = await import('../supabase/functions/hub-assistant/rules.ts');
+ok(AS.roleOf('admin') === 'admin' && AS.roleOf('staff') === 'staff' && AS.roleOf('pending') === 'user' && AS.roleOf('') === 'guest'
+  && AS.roleOf('disabled') === 'guest' && AS.roleOf(null) === 'guest' && AS.roleOf('ADMIN') === 'admin', '역할: profiles.role → 손님·일반 사용자·개발자·관리자 (모르는 값은 손님)');
+ok(AS.canSeeInternalApps('staff') && AS.canSeeInternalApps('admin') && !AS.canSeeInternalApps('user') && !AS.canSeeInternalApps('guest'), '경계: 준비 중 앱·담당 앱은 개발자·관리자만');
+ok(AS.canSeeStats('admin') && !AS.canSeeStats('staff') && AS.canSeeDevGuide('staff') && !AS.canSeeDevGuide('user'), '경계: 운영 집계는 관리자만, 개발 가이드는 개발자부터');
+ok(AS.hourLimitOf('guest') < AS.hourLimitOf('user') && AS.hourLimitOf('user') < AS.hourLimitOf('staff') && AS.hourLimitOf('staff') < AS.hourLimitOf('admin'), '한도: 손님 < 일반 < 개발자 < 관리자', [AS.hourLimitOf('guest'), AS.hourLimitOf('user'), AS.hourLimitOf('admin')].join('/'));
+const askOne = AS.checkAsk({ messages: [{ role: 'user', content: ' 안녕 ' }] });
+ok(askOne.ok && askOne.messages.length === 1 && askOne.messages[0].content === '안녕', '질문 한 개: 앞뒤 공백을 지우고 통과');
+const askBad = (b) => { const r = AS.checkAsk(b); return r.ok ? null : r.status; };
+ok(askBad({}) === 400 && askBad({ messages: [] }) === 400 && askBad({ messages: 'hi' }) === 400, '질문이 없거나 형식이 틀리면 400');
+ok(askBad({ messages: [{ role: 'system', content: 'x' }] }) === 400 && askBad({ messages: [{ role: 'user', content: '   ' }] }) === 400 && askBad({ messages: [{ role: 'user', content: 5 }] }) === 400, 'role system·빈 내용·글자 아님 → 400');
+ok(askBad({ messages: [{ role: 'assistant', content: '네' }] }) === 400, '마지막이 내 질문이 아니면 400');
+ok(askBackLength(AS) && askBackLength(AS) === 413, `한 메시지 ${AS.ASK.maxCharsPerMessage}자·전체 ${AS.ASK.maxChars}자를 넘기면 413`);
+ok(askBad({ messages: Array.from({ length: AS.ASK.maxMessages + 1 }, () => ({ role: 'user', content: 'x' })) }) === 400, `메시지 ${AS.ASK.maxMessages}개를 넘기면 400`);
+function askBackLength(A) {
+  const long1 = A.checkAsk({ messages: [{ role: 'user', content: 'x'.repeat(A.ASK.maxCharsPerMessage + 1) }] });
+  const longAll = A.checkAsk({ messages: Array.from({ length: 8 }, () => ({ role: 'user', content: 'x'.repeat(1500) })) });
+  return long1.ok ? 0 : long1.status === longAll.status ? 413 : 0;
+}
+const guestP = AS.buildSystemPrompt({
+  role: 'guest',
+  apps: [{ slug: 'library', name: '도서실', status: 'active', url: 'https://apps.bmrschool.net/library', description: '책 대출' }],
+  myApps: [{ slug: 'mine', name: '내 앱', status: 'active', url: 'https://apps.bmrschool.net/mine', description: '' }],
+  groups: ['10학년'], stats: { apps_active: 3, members_admin: 1 },
+});
+ok(guestP.includes('BMR APPS') && guestP.includes('- 도서실 (/library, 운영 중) — 책 대출'), '손님 프롬프트: 공개 안내와 운영 중인 앱');
+ok(!guestP.includes('자료 3-1') && !guestP.includes('내 앱'), '손님 프롬프트에는 담당 앱 칸이 없다 (넘겨도 넣지 않음)');
+ok(!guestP.includes('자료 4') && !guestP.includes('운영 중 앱: 3'), '손님 프롬프트에는 운영 집계가 없다 (넘겨도 넣지 않음)');
+ok(guestP.includes('손님에게는 공개 정보') && guestP.includes('시스템 프롬프트'), '손님 역할 안내 + 내부 규칙을 묻는 요청은 거절하라고 적음');
+const staffP = AS.buildSystemPrompt({
+  role: 'staff', apps: [], myApps: [{ slug: 'my-app', name: '내 앱', status: 'active', url: 'https://apps.bmrschool.net/my-app', description: '설명' }],
+  groups: [], stats: { apps_active: 3 },
+});
+ok(staffP.includes('자료 3-1') && staffP.includes('내 앱') && staffP.includes('https://apps.bmrschool.net/my-app'), '개발자 프롬프트: 내 담당 앱과 주소');
+ok(!staffP.includes('자료 4') && !staffP.includes('운영 중 앱: 3'), '개발자 프롬프트: 운영 집계는 없다');
+const adminP = AS.buildSystemPrompt({ role: 'admin', apps: [], myApps: [], groups: ['교직원'], stats: { apps_active: 3, members_staff: 2, ai_calls_24h: 10 } });
+ok(adminP.includes('자료 4') && adminP.includes('운영 중 앱: 3') && adminP.includes('개발자: 2') && adminP.includes('[자료 2] 지금 묻는 사람의 소속 그룹: 교직원'), '관리자 프롬프트: 집계와 소속');
+ok(adminP.includes('개별 회원의 메일 주소나 비밀값을 넣지 않는다'), '관리자 프롬프트: 사람별 정보는 답에 넣지 말라고 적음');
+ok(AS.buildSystemPrompt({ role: 'guest', apps: [], myApps: [], groups: [], stats: {} }).includes('- (아직 없음)'), '앱이 없으면 그렇게 적는다');
+ok(AS.appLine({ slug: 'library', name: '도서실', status: 'active', url: '', description: '  책  ' }) === '- 도서실 (/library, 운영 중) — 책', '앱 한 줄 모양', AS.appLine({ slug: 'library', name: '도서실', status: 'active', url: '', description: '  책  ' }));
+ok(AS.appLine({ slug: 'x', name: '이름', status: 'retired', url: '', description: '' }) === '- 이름 (/x, 종료)', '상태 이름 바꿔 쓰기');
+ok(AS.statsLines({ apps_active: 3, unknown: 9 }).join('|') === '- 운영 중 앱: 3', '집계 줄은 아는 항목만');
+ok(Object.keys(AS.STAT_LABEL).includes('chat_messages_24h') && Object.keys(AS.STAT_LABEL).includes('health_down'), '집계 항목 이름표에 점검·쪽지 포함');
+const fixed = new Uint8Array(32).map((_, i) => i);
+const nonce = AS.newNonce(fixed);
+ok(AS.NONCE_RE.test(nonce) && nonce.length === 64 && nonce.startsWith('00010203'), '일회용 표: 무작위 32바이트 → 64자 hex', nonce.slice(0, 12));
+ok(AS.newNonce() !== AS.newNonce() && AS.NONCE_RE.test(AS.newNonce()), '표는 매번 새로 만든다');
+let nonceThrew = false; try { AS.newNonce(new Uint8Array(16)); } catch { nonceThrew = true; } ok(nonceThrew, '32바이트가 아니면 거부');
+ok(AS.GRANT_HEADER === 'x-hub-assistant-grant' && AS.GRANT_TTL_SECONDS === 60, '헤더 이름·60초 유효', AS.GRANT_HEADER);
+const aiS = readFileSync(new URL('../supabase/functions/hub-ai/index.ts', import.meta.url), 'utf8');
+ok(aiS.includes(`const ASSIST_HEADER = '${AS.GRANT_HEADER}'`) && aiS.includes(`const ASSIST_TTL = ${AS.GRANT_TTL_SECONDS}`) && aiS.includes(`const NONCE_RE = ${AS.NONCE_RE.toString()}`), 'hub-ai 와 도우미가 같은 헤더·60초·64자 규칙을 쓴다');
+ok(aiS.includes('takeAssistantGrant(req.headers.get(ASSIST_HEADER)') && aiS.includes('used_at is null') && aiS.includes('return rows.length === 1'), 'hub-ai: 표를 한 번만 쓰이게 표시하며 확인(동시에 두 번 못 씀)');
+ok(aiS.includes('app = null;') && aiS.includes("actor = { kind: 'user', email: 'hub-assistant'"), 'hub-ai: 도우미는 앱 하나에 매이지 않는다');
+ok(aiS.includes('async function usage(appId: number | null)') && aiS.includes('usage(app?.id ?? null)'), 'hub-ai: 앱 없이 학교 전체 한도만 세도록 계산');
+ok(aiS.includes("'hub-assistant'") && !aiS.includes("'bmrai_'"), 'hub-ai: 기록에 hub-assistant 로 남기고, 토큰 접두어 평문은 여전히 없다');
+const aS = readFileSync(new URL('../supabase/functions/hub-assistant/index.ts', import.meta.url), 'utf8');
+ok(aS.includes("from './rules.ts'") && !aS.includes("from './_key.ts'"), 'hub-assistant: 열쇠(_key.ts)를 쓰지 않는다 (배포가 가볍고 CI 목록도 그대로)');
+ok(aS.includes('assistant_attempts') && aS.includes('RATE.dayAll') && aS.includes('RATE.ipHour'), 'hub-assistant: 호출 횟수를 남기고 사람·IP·전체 한도를 지킨다');
+ok(aS.includes('assistant_grants') && aS.includes('[GRANT_HEADER]: grant'), 'hub-assistant: 일회용 표를 넣고 헤더로 보낸다');
+ok(aS.includes('roleOf(me?.role)') && aS.includes("me?.role === 'disabled'"), 'hub-assistant: 역할은 profiles 에서 읽고 사용 중지 계정은 거절');
+ok(aS.includes("status = 'active'") && aS.includes('canSeeInternalApps'), 'hub-assistant: 손님·일반 사용자에게는 운영 중인 앱만 모은다');
+ok(aS.includes('buildSystemPrompt') && aS.includes('functions/v1/hub-ai'), 'hub-assistant: 프롬프트를 만들어 hub-ai 로 넘긴다');
+ok(!/BMR_(GEMINI|OPENAI|ANTHROPIC|XAI)_API_KEY/.test(aS) && !aS.includes('crypto.subtle.decrypt'), 'hub-assistant: 업체 키를 풀지 않는다 (키는 hub-ai 만)');
+ok(aS.includes('질문·답 본문은 남기지 않는다') || aS.includes('남기지 않는 것'), 'hub-assistant: 질문·답 본문을 남기지 않는다고 적혀 있음');
+const aMig = readFileSync(new URL('../supabase/migrations/20261115220000_hub_assistant.sql', import.meta.url), 'utf8');
+ok(aMig.includes('bmr_admin.assistant_attempts') && aMig.includes("kind in ('user', 'ip')") && aMig.includes('revoke all'), '도우미 마이그레이션: 호출 기록 표 + 브라우저 권한 회수');
+ok(aMig.includes('bmr_admin.assistant_grants') && aMig.includes("nonce ~ '^[0-9a-f]{64}$'") && aMig.includes('used_at'), '도우미 마이그레이션: 일회용 표(64자 hex·한 번)');
+ok(aMig.includes("role in ('guest', 'user', 'staff', 'admin')"), '도우미 마이그레이션: 역할 값이 rules.ts 와 같음');
+ok(!H.KEYED.includes('hub-assistant') && hubFns.some((f) => f.name === 'hub-assistant' && !f.keyed), '배포: hub-assistant 는 열쇠 없이 배포되는 함수 (KEYED 목록 그대로)');
+ok(!wf.includes('hub-assistant'), 'CI 검사 워크플로는 손대지 않아도 된다 (열쇠 자리 채우기 목록 그대로)');
+
+console.log('[회원 쪽지 (1:1)]');
+const cMig = readFileSync(new URL('../supabase/migrations/20261115230000_member_chat.sql', import.meta.url), 'utf8');
+ok(['public.chat_threads', 'public.chat_messages', 'public.chat_reads'].every((t) => cMig.includes(`create table if not exists ${t}`)), '쪽지 마이그레이션: 대화·메시지·읽음 세 표');
+ok(cMig.includes('check (user_lo < user_hi)') && cMig.includes('chat_threads_pair_uniq'), '두 사람을 정렬해 한 쌍에 대화 하나 (중복 대화 없음)');
+ok(cMig.includes('alter table public.chat_threads enable row level security') && cMig.includes('alter table public.chat_messages enable row level security')
+  && cMig.includes('alter table public.chat_reads enable row level security'), '세 표 모두 RLS 켬');
+ok(['chat_threads_select', 'chat_messages_select', 'chat_messages_insert', 'chat_reads_select', 'chat_reads_insert', 'chat_reads_update'].every((p) => cMig.includes(`policy ${p}`)), '표마다 정책 (읽기·쓰기)');
+ok(cMig.includes('private.chat_member') && cMig.includes('create policy chat_messages_insert') && cMig.includes('sender = (select auth.uid())'), '참여자만 읽고, 보낸 사람은 자기 자신으로만 넣는다');
+ok(cMig.includes("raise exception '이 대화를 볼 수 없습니다.'"), '읽음 표시도 참여자만');
+ok(['chat_start', 'chat_inbox()', 'chat_people()', 'chat_mark_read'].every((f) => cMig.includes(f)), '화면이 부르는 함수 네 가지');
+ok(cMig.includes('grant execute on function public.chat_start(uuid), public.chat_inbox(), public.chat_people(), public.chat_mark_read(bigint, bigint) to authenticated')
+  && cMig.includes('from public, anon'), '함수는 로그인한 사람에게만 (anon 은 실행 불가)');
+ok(cMig.includes("p.role <> 'disabled'") && cMig.includes("split_part(coalesce(p.email, ''), '@', 1)") && !cMig.includes('p.email as'), '상대 목록: 사용 중지 회원 제외, 메일 전체는 돌려주지 않음');
+ok(cMig.includes('supabase_realtime') && cMig.includes('chat_messages_after_insert'), '실시간 발행 + 메시지 트리거(대화 시각·읽음 갱신)');
+ok(cMig.includes('greatest(public.chat_reads.last_read_id, excluded.last_read_id)'), '읽음 번호는 뒤로 가지 않는다 (greatest)');
+const sbS = readFileSync(new URL('../src/sb.ts', import.meta.url), 'utf8');
+ok(['chatThreads', 'chatPeople', 'chatStart', 'chatSend', 'chatMarkRead', 'chatMessages', 'askAssistant'].every((f) => sbS.includes(`export async function ${f}`)), '화면 호출 함수: 쪽지 일곱 가지·도우미');
+ok(sbS.includes('functions/v1/hub-assistant') && sbS.includes('session ? { Authorization'), '도우미 호출: 로그인했으면 토큰을 붙여 역할을 서버가 가른다');
+const chatUi = readFileSync(new URL('../src/pages/Chat.tsx', import.meta.url), 'utf8');
+ok(chatUi.includes("sb.channel('bmr-chat')") && chatUi.includes("'postgres_changes'") && chatUi.includes('removeChannel'), '쪽지 화면: 실시간 구독과 정리');
+ok(chatUi.includes('chatMarkRead') && chatUi.includes('unread'), '쪽지 화면: 안 읽은 수 표시·읽음 처리');
+ok(chatUi.includes('PeoplePicker') && chatUi.includes('ROLE_LABEL'), '쪽지 화면: 회원 고르기(이름·역할 배지)');
+ok(chatUi.includes('2000') && chatUi.includes('maxLength={2000}'), '쪽지 화면: 2,000자 상한을 화면에서도 지킴');
+const appS2 = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+ok(appS2.includes("path === '/hub/chat'" ) && appS2.includes("to: '/hub/chat'") && appS2.includes('useChatUnread'), '허브: /hub/chat 갈래·사이드바·안 읽은 배지');
+ok(appS2.indexOf("path === '/hub/chat'") < appS2.indexOf('<StaffOnly ctx={ctx}><AppsPage'), '쪽지는 개발자 승인 전 일반 사용자도 연다 (StaffOnly 앞)');
+ok(appS2.includes('<Assistant session={ctx.session}') && appS2.includes('openAssistant'), '허브: 어디서나 도우미를 열 수 있다');
+const asUi = readFileSync(new URL('../src/Assistant.tsx', import.meta.url), 'utf8');
+ok(asUi.includes('askAssistant') && asUi.includes('개인정보') && asUi.includes('개인정보·비밀번호는 넣지 마세요'), '도우미 화면: hub-assistant 호출 + 개인정보 주의 문구');
+ok(asUi.includes('roleLabel') && asUi.includes('권한으로 안내합니다'), '도우미 화면: 어느 역할로 답하는지 보여 준다');
+
+console.log('[파비콘]');
+const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+ok(html.includes('rel="icon" href="/favicon.svg" type="image/svg+xml"') && html.includes('rel="apple-touch-icon"') && !html.includes('href="data:,"'), 'index.html: SVG 파비콘 + PNG 대체본을 연결 (빈 파비콘 제거)');
+const svg = readFileSync(new URL('../public/favicon.svg', import.meta.url), 'utf8');
+ok(svg.includes('viewBox="0 0 32 32"') && svg.includes('#0abbee') && svg.includes('#ffdc1a') && svg.includes('stroke="#000" stroke-width="2"'), '파비콘 SVG: 32 격자 · 시안 · 노랑 · 2px 검은 테두리');
+ok((svg.match(/<rect/g) ?? []).length >= 8 && svg.includes('<title>BMR APPS</title>'), '파비콘 SVG: 각진 사각형으로 만든 B + 이름');
+const pngSize = (p) => { const b = readFileSync(new URL(`../public/${p}`, import.meta.url)); return [b.readUInt32BE(16), b.readUInt32BE(20)].join('x'); };
+ok(['favicon-32x32.png', 'favicon-192x192.png', 'apple-touch-icon.png'].every((f) => existsSync(new URL(`../public/${f}`, import.meta.url))), '파비콘 PNG 대체본 세 개가 있다');
+ok(pngSize('favicon-32x32.png') === '32x32' && pngSize('apple-touch-icon.png') === '180x180' && pngSize('favicon-192x192.png') === '192x192', 'PNG 크기: 32 · 180 · 192', `${pngSize('favicon-32x32.png')} ${pngSize('apple-touch-icon.png')} ${pngSize('favicon-192x192.png')}`);
 
 console.log(`\n결과: ${pass} 통과, ${fail} 실패`); process.exit(fail ? 1 : 0);

@@ -258,3 +258,73 @@ export async function backupLink(path: string): Promise<string> {
   return data.signedUrl;
 }
 export const fmtBytes = (n: number) => (n < 1024 ? `${n}B` : n < 1048576 ? `${(n / 1024).toFixed(0)}KB` : `${(n / 1048576).toFixed(1)}MB`);
+
+// ---------- BMR 도우미 (Edge Function hub-assistant) ----------
+export type AssistantRole = 'guest' | 'user' | 'staff' | 'admin';
+export type AssistantMsg = { role: 'user' | 'assistant'; content: string };
+export type AssistantAnswer = {
+  ok: true; role: AssistantRole; role_label: string; text: string; provider: string; model: string;
+  usage: { input_tokens: number; output_tokens: number; total_tokens: number } | null;
+};
+/** 도우미에게 묻기. 로그인하지 않았으면 손님으로(공개 안내만) 답한다 — 역할 판단은 서버(hub-assistant)가 한다 */
+export async function askAssistant(session: Session | null, messages: AssistantMsg[]): Promise<AssistantAnswer> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-assistant`, {
+    method: 'POST', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json', apikey: ANON, ...(session ? { Authorization: 'Bearer ' + session.access_token } : {}) },
+    body: JSON.stringify({ messages: messages.slice(-10) }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = String((j as { error?: string } | null)?.error ?? '');
+    throw Object.assign(new Error(msg || (r.status === 404 ? '도우미 서버가 아직 배포되지 않았습니다. 관리자에게 알려 주세요.' : `도우미에게 묻지 못했습니다 (HTTP ${r.status}).`)), { status: r.status });
+  }
+  return j as AssistantAnswer;
+}
+
+// ---------- 회원 쪽지 (public.chat_* 함수·표) ----------
+export type ChatThread = {
+  thread_id: number; peer_id: string; peer_name: string; peer_label: string; peer_role: Role;
+  last_at: string; last_body: string; last_from: string | null; unread: number;
+};
+export type ChatPerson = { id: string; name: string; label: string; role: Role };
+export type ChatMessage = { id: number; thread_id: number; sender: string; body: string; created_at: string };
+
+/** 쪽지 표·함수가 아직 없을 때(마이그레이션 전) 알아보기 쉬운 한국어로 바꾼다 */
+export function chatError(e: unknown): string {
+  const err = e as { message?: string; code?: string; details?: string } | null;
+  const m = String(err?.message ?? e ?? '');
+  if (err?.code === '42P01' || err?.code === 'PGRST202' || /does not exist|schema cache|function .* not found/i.test(m)) {
+    return '쪽지 기능이 아직 준비되지 않았습니다(마이그레이션). 관리자에게 알려 주세요.';
+  }
+  if (/row-level security|permission denied/i.test(m)) return '이 대화를 볼 권한이 없습니다.';
+  return m || '쪽지 요청에 실패했습니다.';
+}
+export async function chatThreads(): Promise<ChatThread[]> {
+  const { data, error } = await sb.rpc('chat_inbox');
+  if (error) throw new Error(chatError(error));
+  return ((data ?? []) as ChatThread[]).map((t) => ({ ...t, thread_id: Number(t.thread_id), unread: Number(t.unread ?? 0) }));
+}
+export async function chatPeople(): Promise<ChatPerson[]> {
+  const { data, error } = await sb.rpc('chat_people');
+  if (error) throw new Error(chatError(error));
+  return (data ?? []) as ChatPerson[];
+}
+export async function chatStart(peer: string): Promise<number> {
+  const { data, error } = await sb.rpc('chat_start', { p_peer: peer });
+  if (error) throw new Error(chatError(error));
+  return Number(data);
+}
+export async function chatMarkRead(thread: number, lastId?: number) {
+  const { error } = await sb.rpc('chat_mark_read', { p_thread: thread, p_last_id: lastId ?? null });
+  if (error) throw new Error(chatError(error));
+}
+export async function chatSend(thread: number, body: string): Promise<void> {
+  const { error } = await sb.from('chat_messages').insert({ thread_id: thread, body });
+  if (error) throw new Error(chatError(error));
+}
+export async function chatMessages(thread: number): Promise<ChatMessage[]> {
+  const { data, error } = await sb.from('chat_messages')
+    .select('id, thread_id, sender, body, created_at').eq('thread_id', thread).order('id', { ascending: false }).limit(100);
+  if (error) throw new Error(chatError(error));
+  return ((data ?? []) as ChatMessage[]).reverse();
+}
