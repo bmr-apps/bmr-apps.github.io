@@ -12,6 +12,16 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+/** 알림 클릭 주소는 같은 자리(상대 경로)만 연다 — 외부 주소·javascript: 로 새지 않게 */
+function safePath(v, fallback) {
+  const s = String(v || '');
+  return /^\/[A-Za-z0-9/_-]*$/.test(s) ? s : fallback;
+}
+function safeIcon(v) {
+  const s = String(v || '');
+  return /^\/[A-Za-z0-9._/-]*$/.test(s) ? s : '/favicon-192x192.png';
+}
+
 self.addEventListener('push', (event) => {
   let data = {};
   try {
@@ -21,9 +31,9 @@ self.addEventListener('push', (event) => {
   }
   const title = String(data.title || 'BMR APPS');
   const body = String(data.body || '새 알림이 도착했어요.');
-  const url = String(data.url || '/');
+  const url = safePath(data.url, '/hub/');
   const tag = String(data.tag || 'bmr-apps');
-  const icon = data.icon ? String(data.icon) : '/favicon-192x192.png';
+  const icon = data.icon ? safeIcon(data.icon) : '/favicon-192x192.png';
 
   event.waitUntil((async () => {
     await self.registration.showNotification(title, {
@@ -44,7 +54,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || '/';
+  const target = safePath(event.notification.data && event.notification.data.url, '/hub/');
   event.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const client of all) {
