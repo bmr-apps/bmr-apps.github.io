@@ -6,6 +6,12 @@ import { Modal } from '../ui';
 type Edit = { id?: number; slug: string; name: string; kind: string; description: string };
 const EMPTY: Edit = { slug: '', name: '', kind: 'grade', description: '' };
 
+/** 404 면 서버 함수(hub-directory)가 아직 새 버전이 아닐 때가 많다 — 그때는 배포 명령을 알려 준다 */
+const withDeployHint = (msg: string) =>
+  /\(HTTP 404\)|찾을 수 없/.test(msg)
+    ? 'hub-directory 가 아직 새 버전이 아닙니다. 관리자 작업 상자에서 node scripts/deploy-hub.mjs --only hub-directory 를 한 번 실행해 주세요.'
+    : msg;
+
 /** 관리자 전용: 학교 그룹(교직원·학년·동아리…)과 명부 관리 — 앱은 hub-directory 로 이 명부를 읽는다 */
 export function GroupsPage({ ctx }: { ctx: Ctx }) {
   const [groups, setGroups] = useState<DirGroup[]>([]);
@@ -25,7 +31,7 @@ export function GroupsPage({ ctx }: { ctx: Ctx }) {
     try {
       const r = await directoryApi<DirGroupList>(ctx.session, 'list_groups');
       setGroups(r.groups); setKinds(r.kinds); setFolder(r.file_bucket);
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) { setErr(withDeployHint((e as Error).message)); }
   }, [ctx.session]);
   useEffect(() => { load(); }, [load]);
 
@@ -35,7 +41,7 @@ export function GroupsPage({ ctx }: { ctx: Ctx }) {
       const r = await directoryApi<DirMembers>(ctx.session, 'members', { group: g.slug });
       setMembers(r.members);
       setDetail(r.group);
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) { setErr(withDeployHint((e as Error).message)); }
   }, [ctx.session]);
 
   if (!ctx.isAdmin) return <div className="card">관리자만 볼 수 있습니다.</div>;
@@ -43,7 +49,7 @@ export function GroupsPage({ ctx }: { ctx: Ctx }) {
   const run = async (fn: () => Promise<unknown>, okText: string) => {
     setBusy(true); setErr(''); setMsg('');
     try { await fn(); setMsg(okText); await load(); if (detail) await loadMembers(detail); }
-    catch (e) { setErr((e as Error).message); }
+    catch (e) { setErr(withDeployHint((e as Error).message)); }
     finally { setBusy(false); }
   };
 
@@ -66,7 +72,7 @@ export function GroupsPage({ ctx }: { ctx: Ctx }) {
       setMsg('그룹을 지웠습니다.');
       setDetail(null); setMembers([]);
       await load();
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) { setErr(withDeployHint((e as Error).message)); }
     finally { setBusy(false); }
   };
 
