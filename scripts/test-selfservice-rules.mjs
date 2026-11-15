@@ -549,7 +549,7 @@ ok(mf.display === 'standalone' && mf.scope === '/hub/' && mf.start_url.startsWit
 ok(html.includes('rel="manifest" href="/manifest.webmanifest"') && html.includes('apple-mobile-web-app-capable'), 'index.html: manifest·아이폰 앱 선언');
 const nUi = readFileSync(new URL('../src/notify.ts', import.meta.url), 'utf8');
 ok(nUi.includes('hub-notify/rules') && nUi.includes("'/sw.js'") && nUi.includes("SW_SCOPE = '/hub/'"), '화면: 서버와 같은 규칙 파일, 서비스 워커 범위 /hub/ (다른 앱의 서비스 워커와 겹치지 않게)');
-ok(nUi.includes('setAppBadge') && nUi.includes('document.title = badgeText'), '화면: 탭 제목·홈 화면 배지');
+ok(nUi.includes('setAppBadge') && nUi.includes('document.title = n > 0 ? badgeText(n) : pageTitle'), '화면: 탭 제목(안 읽은 것이 있을 때만 (N))·홈 화면 배지');
 ok(nUi.includes('userVisibleOnly: true') && nUi.includes('applicationServerKey'), '푸시 구독: 공개키로 구독 (userVisibleOnly)');
 ok(nUi.includes("upsert(") && nUi.includes("onConflict: 'user_id,endpoint'"), '구독은 RLS 로 내 줄만 upsert');
 ok(nUi.includes('isIOS() && !isStandalone()'), '아이폰은 홈 화면 추가 전에는 켤 수 없다고 안내');

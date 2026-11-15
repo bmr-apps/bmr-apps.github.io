@@ -148,9 +148,13 @@ export async function syncSubscription(session: Session): Promise<void> {
 
 // ---------- 배지 (탭 제목 · 홈 화면 아이콘) ----------
 type BadgeNav = Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+let pageTitle: string | null = null;   // 원래 제목(BMR APPS · 앱 관리)은 그대로 두고, 안 읽은 것이 있을 때만 앞에 (N)
 export function applyBadge(total: number) {
   const n = Math.max(0, Math.trunc(Number(total) || 0));
-  try { document.title = badgeText(n); } catch { /* 서버 렌더 없음 */ }
+  try {
+    if (pageTitle === null) pageTitle = document.title;
+    document.title = n > 0 ? badgeText(n) : pageTitle;
+  } catch { /* 서버 렌더 없음 */ }
   const nav = navigator as BadgeNav;
   try {
     if (n > 0) void nav.setAppBadge?.(n);
