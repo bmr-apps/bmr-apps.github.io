@@ -11,6 +11,17 @@ export const OPS_PROBE_MAX_APPS = 40;
 export const OPS_ERROR_ROWS = 20;
 /** 같은 결과를 다시 쓰는 시간 (연속 새로고침으로 앱 /health 를 두들기지 않게) */
 export const OPS_CACHE_MS = 10_000;
+/** 운영 현황을 캐시에 담아 둘 수 있는 사람 수 (관리자 + 개발자들) — 넘으면 먼저 들어온 것부터 지운다 */
+export const OPS_CACHE_MAX_KEYS = 40;
+
+/**
+ * 운영 현황 캐시 열쇠: 관리자는 모두 같은 결과, 개발자는 사람마다 따로.
+ * 한 사람의 결과(담당 앱 목록·/health)가 다른 사람에게 가지 않게 하는 첫 단추다.
+ */
+export function opsCacheKey(u: { admin: boolean; id: string } | null | undefined): string {
+  if (!u) return '__none__';
+  return u.admin ? '__admin__' : `u:${u.id}`;
+}
 
 export type MailAgg = { sent: number; error: number; denied: number };
 export type AiAgg = { ok: number; error: number; denied: number; tokens: number };

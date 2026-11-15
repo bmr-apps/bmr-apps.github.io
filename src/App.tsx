@@ -12,6 +12,7 @@ import { AccountPage } from './pages/Account';
 import { MonitorPage } from './pages/Monitor';
 import { GroupsPage } from './pages/Groups';
 import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
+import { ownedAppIds, scopeToOwned, type OwnerRef } from './scope';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
 export function go(path: string) { history.pushState(null, '', path); dispatchEvent(new PopStateEvent('popstate')); }
@@ -32,22 +33,24 @@ export type Counts = {
 };
 export type Ctx = { session: Session | null; isAdmin: boolean; isStaff: boolean; me: Profile | null; counts?: Counts | null; refreshCounts?: () => void };
 
-function useCounts(enabled: boolean, isAdmin: boolean, path: string) {
+function useCounts(enabled: boolean, isAdmin: boolean, email: string, path: string) {
   const [c, setC] = useState<Counts | null>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!enabled) { setC(null); return; }
     let live = true;
     (async () => {
-      const [a, h, r, dr, m] = await Promise.all([
+      const [a, h, r, dr, m, ow] = await Promise.all([
         sb.from('apps').select('id, slug, name, url, status, card_icon').order('sort').order('name'),
         sb.from('app_health_latest').select('app_id, ok, state'),
         sb.from('app_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         isAdmin ? sb.from('dev_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending') : Promise.resolve(null),
         isAdmin ? sb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'pending') : Promise.resolve(null),
+        isAdmin ? Promise.resolve(null) : sb.from('app_owners').select('app_id, email'),
       ]);
       if (!live) return;
-      const apps = (a.data ?? []) as Counts['apps'];
+      // 관리자는 모든 앱, 개발자는 담당 앱만 (다른 개발자 서비스의 운영 상태는 세지 않는다)
+      const apps = scopeToOwned((a.data ?? []) as Counts['apps'], isAdmin, ownedAppIds(ow?.data as OwnerRef[] | null, email));
       const hl = new Map(((h.data ?? []) as { app_id: number; ok: boolean; state?: HealthState }[]).map((x) => [x.app_id, healthState(x)]));
       const watched = apps.filter((x) => x.status !== 'retired');
       setC({
@@ -95,7 +98,7 @@ export function App() {
   }, [uid]);
 
   const isAdmin = me?.role === 'admin'; const isStaff = isAdmin || me?.role === 'staff';
-  const [counts, refreshCounts] = useCounts(!!session && isStaff, isAdmin, path);
+  const [counts, refreshCounts] = useCounts(!!session && isStaff, isAdmin, me?.email ?? '', path);
   const ctx: Ctx = { session, isAdmin, isStaff, me, counts, refreshCounts };
   if (!configured) return <Shell ctx={ctx} path={path}><div className="card warn">환경 변수 VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY 가 없습니다.</div></Shell>;
   if (!ready) return <Shell ctx={ctx} path={path}><p className="muted">불러오는 중…</p></Shell>;
@@ -109,21 +112,35 @@ export function App() {
   else if (!meReady) page = <p className="muted">불러오는 중…</p>;
   else if (!me) page = <div className="card narrow center"><h2>프로필을 찾지 못했습니다</h2><p>다시 로그인하거나 관리자에게 문의하세요.</p></div>;
   else if (me.role === 'disabled') page = <div className="card narrow center"><div className="logo big">🚫</div><h2>사용 중지</h2><p>사용이 중지된 계정입니다. 관리자에게 문의하세요.</p><p className="muted">{me.email}</p></div>;
+  // /hub/account 만은 개발자 승인 전에도 연다 (자기 역할 보기·비밀번호 바꾸기·로그아웃)
   else if (path === '/hub/account') page = <AccountPage ctx={ctx} />;
   else if (path === '/hub/db') page = <StaffOnly ctx={ctx}><DbCredPage ctx={ctx} /></StaffOnly>;
-  else if (path === '/hub' || path === '/hub/apps') page = <AppsPage ctx={ctx} />;
+  else if (path === '/hub' || path === '/hub/apps') page = <StaffOnly ctx={ctx}><AppsPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/requests') page = <StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>;
-  else if (path === '/hub/tokens') page = <div className="card narrow center"><div className="logo big">🧾</div><h2>토큰 기록은 없어졌습니다</h2><p className="muted">DB 비밀번호 받기·사용자 관리 같은 기록은 이제 감사 기록에 남습니다.</p>{ctx.isAdmin ? <Link to="/hub/audit" className="btn">감사 기록 보기</Link> : <Link to="/hub/apps" className="btn">대시보드로</Link>}</div>;
+  else if (path === '/hub/tokens') page = <StaffOnly ctx={ctx}><div className="card narrow center"><div className="logo big">🧾</div><h2>토큰 기록은 없어졌습니다</h2><p className="muted">DB 비밀번호 받기·사용자 관리 같은 기록은 이제 감사 기록에 남습니다.</p>{ctx.isAdmin ? <Link to="/hub/audit" className="btn">감사 기록 보기</Link> : <Link to="/hub/apps" className="btn">대시보드로</Link>}</div></StaffOnly>;
   else if (path === '/hub/status') page = <StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>;
-  else if (path === '/hub/monitor') page = ctx.isAdmin ? <MonitorPage ctx={ctx} /> : <AdminOnly ctx={ctx} />;
-  else if (path === '/hub/groups') page = ctx.isAdmin ? <GroupsPage ctx={ctx} /> : <AdminOnly ctx={ctx} />;
-  else if (path === '/hub/members') page = <MembersPage ctx={ctx} />;
-  else if (path === '/hub/audit') page = <AuditPage ctx={ctx} />;
+  else if (path === '/hub/monitor') page = <StaffOnly ctx={ctx}><MonitorPage ctx={ctx} /></StaffOnly>;
+  else if (path === '/hub/groups') page = <AdminRoute ctx={ctx}><GroupsPage ctx={ctx} /></AdminRoute>;
+  else if (path === '/hub/members') page = <AdminRoute ctx={ctx}><MembersPage ctx={ctx} /></AdminRoute>;
+  else if (path === '/hub/audit') page = <AdminRoute ctx={ctx}><AuditPage ctx={ctx} /></AdminRoute>;
   else page = <div className="card narrow center"><div className="logo big">🧭</div><h2>페이지를 찾을 수 없습니다</h2><p className="muted">주소({path})에 해당하는 앱이 아직 배포되지 않았을 수 있습니다.</p><Link to="/" className="btn">처음으로</Link></div>;
   return <Shell ctx={ctx} path={path}>{page}</Shell>;
 }
 
-/** 관리자 전용 화면: 그 밖의 역할에게는 안내만 보여 준다 */
+/** 일반 사용자(개발자 승인 전): 관리·개발 허브는 통째로 잠긴다 — 메인으로 돌려보낸다 */
+function NoHubAccess({ ctx }: { ctx: Ctx }) {
+  return (
+    <div className="card narrow center">
+      <div className="logo big">🔒</div>
+      <h2>관리 허브 접근 권한이 없습니다</h2>
+      <p>개발자 승인 후 이용할 수 있어요. 필요하면 관리자에게 요청하세요.</p>
+      <p className="muted">{ctx.me?.email}</p>
+      <Link to="/" className="btn">메인으로</Link>
+    </div>
+  );
+}
+
+/** 관리자 전용 화면: 개발자에게는 안내만 보여 준다 */
 function AdminOnly({ ctx }: { ctx: Ctx }) {
   return (
     <div className="card narrow center">
@@ -131,23 +148,20 @@ function AdminOnly({ ctx }: { ctx: Ctx }) {
       <h2>관리자만 볼 수 있는 화면입니다</h2>
       <p>필요하면 관리자에게 요청하세요.</p>
       <p className="muted">{ctx.me?.email}</p>
-      <Link to="/hub/apps" className="btn">대시보드로</Link>
+      <Link to={ctx.isStaff ? '/hub/apps' : '/'} className="btn">{ctx.isStaff ? '대시보드로' : '메인으로'}</Link>
     </div>
   );
 }
 
-/** 개발자 전용 화면: 일반 사용자에게는 안내만 보여 준다 */
+/** 개발자(관리자 포함) 전용 화면: 일반 사용자에게는 허브 잠금 안내만 보여 준다 */
 function StaffOnly({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
-  if (ctx.isStaff) return children;
-  return (
-    <div className="card narrow center">
-      <div className="logo big">🔒</div>
-      <h2>개발자 승인 후 이용할 수 있어요</h2>
-      <p>관리자에게 요청하세요.</p>
-      <p className="muted">{ctx.me?.email}</p>
-      <Link to="/hub/apps" className="btn">대시보드로</Link>
-    </div>
-  );
+  return ctx.isStaff ? <>{children}</> : <NoHubAccess ctx={ctx} />;
+}
+
+/** 관리자 전용 주소: 일반 사용자 → 허브 잠금 안내, 개발자 → 관리자 안내 */
+function AdminRoute({ ctx, children }: { ctx: Ctx; children: ReactNode }) {
+  if (!ctx.isStaff) return <NoHubAccess ctx={ctx} />;
+  return ctx.isAdmin ? <>{children}</> : <AdminOnly ctx={ctx} />;
 }
 
 /** 인사말에 쓸 이름: 프로필 이름(일반 명칭 '관리자' 등 제외) → 가입 때 넣은 이름 → 이메일 앞부분 */
@@ -166,7 +180,8 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const [pal, setPal] = useState(false);
   const [menu, setMenu] = useState(false);
   const c = ctx.counts;
-  const inHub = !!ctx.session && ctx.me?.role !== 'disabled' && path !== '/' && path !== '/hub/login';
+  // 허브 틀(사이드바)은 개발자 승인을 받은 사람에게만 — 일반 사용자는 메인·가이드·내 계정만 본다
+  const inHub = !!ctx.session && ctx.isStaff && path !== '/' && path !== '/hub/login';
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
       { to: '/guide', icon: '🧭', label: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', show: true },
@@ -175,9 +190,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     ['운영', [
       { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·개발자 요청 승인', show: true, badge: c?.reqPending, tone: 'amber' },
       { to: '/hub/status', icon: '📡', label: '운영 상태', sub: '매시 자동 점검', show: true, badge: c?.healthBad, tone: 'red' },
+      { to: '/hub/monitor', icon: '📊', label: '운영 현황', sub: ctx.isAdmin ? '앱 상태·메일·AI 사용량' : '담당 서비스 상태·사용량', show: ctx.isStaff },
     ]],
     ['관리자', [
-      { to: '/hub/monitor', icon: '📊', label: '운영 현황', sub: '앱 상태·메일·AI 사용량', show: ctx.isAdmin },
       { to: '/hub/groups', icon: '👥', label: '그룹·명부', sub: '교직원·학년·동아리 소속', show: ctx.isAdmin },
       { to: '/hub/members', icon: '🧑‍🎓', label: '사용자 관리', sub: '역할·비밀번호·삭제', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
       { to: '/hub/audit', icon: '🧾', label: '감사 기록', sub: '승인·생성·권한·비밀번호 기록', show: ctx.isAdmin },
@@ -203,7 +218,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     const list: Cmd[] = [];
     list.push({ id: 'home', group: '메뉴', icon: '🌐', title: '메인', sub: '누구나 보는 서비스 모음', run: () => go('/') });
     if (ctx.session && ctx.me?.role !== 'disabled') {
-      tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
+      // 허브 탭(대시보드·앱 신청·운영 상태·운영 현황)은 개발자 승인 뒤에만
+      if (ctx.isStaff) tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
+      else list.push({ id: 'guide', group: '메뉴', icon: '🧭', title: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', run: () => go('/guide') });
       list.push({ id: 'quick', group: '메뉴', icon: '⚡', title: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', run: () => go('/guide/quick') });
       list.push({ id: 'account', group: '메뉴', icon: '👤', title: '내 계정', sub: '허브 로그인 비밀번호 바꾸기', run: () => go('/hub/account') });
       if (ctx.isStaff) list.push({ id: 'db', group: '메뉴', icon: '🗄️', title: 'DB 접속 정보 모아 보기', sub: '앱마다 앱 정보 → DB 접속 정보에서도 할 수 있어요', run: () => go('/hub/db') });
@@ -259,7 +276,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           <Clock />
           <button className="icon-btn" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
           {ctx.session ? <>
-            {!inHub && ctx.me && ctx.me.role !== 'disabled' && <Link to="/hub/apps" className="btn">관리 허브</Link>}
+            {!inHub && ctx.isStaff && <Link to="/hub/apps" className="btn">관리 허브</Link>}
             <button className="icon-btn" onClick={logout} aria-label="로그아웃" title="로그아웃">🚪</button>
           </> : path !== '/hub/login' && <Link to="/hub/login" className="btn">로그인</Link>}
         </header>
@@ -267,7 +284,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
         <footer className="foot">
           <div className="foot-in">
             <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 함께 만들고 나누는 공간<small>별무리학교 · apps.bmrschool.net</small></p></div>
-            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.session ? <Link to="/hub/apps">관리 허브</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
+            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.isStaff ? <Link to="/hub/apps">관리 허브</Link> : ctx.session ? <Link to="/hub/account">내 계정</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
             {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/account">내 계정</Link><Link to="/hub/status">운영 상태</Link></nav>}
           </div>
         </footer>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Ctx } from '../App';
 import { sb, errMsg, fmtTime, runHealth, healthState, STATUS_LABEL, type App, type Health } from '../sb';
+import { ownedAppIds, scopeToOwned, type OwnerRef } from '../scope';
 import { Pills, Stat, AppGlyph } from '../ui';
 import { ChecksSummary } from './Checks';
 
@@ -9,12 +10,19 @@ export function StatusPage({ ctx }: { ctx: Ctx }) {
   const [recent, setRecent] = useState<Health[]>([]); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
   const [tab, setTab] = useState<'all' | 'ok' | 'checking' | 'down' | 'none'>('all');
   const load = async () => {
-    const [a, l, r] = await Promise.all([
+    const [a, l, r, ow] = await Promise.all([
       sb.from('apps').select('*').neq('status', 'retired').order('sort'), sb.from('app_health_latest').select('*'),
       sb.from('health_checks').select('app_id, checked_at, url, http_status, ok, response_ms, error').order('checked_at', { ascending: false }).limit(200),
+      // 관리자는 전체, 개발자는 담당 앱만 (앱 담당자 명부로 거른다)
+      ctx.isAdmin ? Promise.resolve(null) : sb.from('app_owners').select('app_id, email'),
     ]);
     if (a.error) setErr(errMsg(a.error));
-    setApps((a.data as App[]) ?? []); setLatest(Object.fromEntries(((l.data as Health[]) ?? []).map((x) => [x.app_id, x]))); setRecent((r.data as Health[]) ?? []);
+    // 앱·점검 기록 모두 담당 범위로
+    const mine = ownedAppIds(ow?.data as OwnerRef[] | null, ctx.me?.email);
+    const apps = scopeToOwned((a.data as App[]) ?? [], ctx.isAdmin, mine);
+    const keep = new Set(apps.map((x) => x.id));
+    setApps(apps); setLatest(Object.fromEntries(((l.data as Health[]) ?? []).filter((x) => keep.has(x.app_id)).map((x) => [x.app_id, x])));
+    setRecent(((r.data as Health[]) ?? []).filter((x) => keep.has(x.app_id)));
   };
   useEffect(() => { load(); }, []);
   const run = async () => {
@@ -30,7 +38,7 @@ export function StatusPage({ ctx }: { ctx: Ctx }) {
   return (
     <section aria-busy={busy}>
       <div className="section-head"><h2>📡 운영 상태</h2>{ctx.isAdmin && <button disabled={busy} onClick={run}>{busy ? '점검 중…' : '🩺 지금 점검'}</button>}</div>
-      <p className="muted">운영 중인 앱 주소를 매시 정각에 자동으로 열어 봅니다. 응답 코드 200~399면 정상입니다. 한 번 실패하면 <b>확인 중</b>, 2번 연속 실패하면 <b>장애</b>로 표시합니다. 기록은 30일 동안 보관합니다.</p>
+      <p className="muted">{ctx.isAdmin ? '운영 중인 앱 주소를' : '담당 중인 서비스 주소를'} 매시 정각에 자동으로 열어 봅니다. 응답 코드 200~399면 정상입니다. 한 번 실패하면 <b>확인 중</b>, 2번 연속 실패하면 <b>장애</b>로 표시합니다. 기록은 30일 동안 보관합니다.</p>
       {err && <p className="error" role="alert">{err}</p>}{msg && <p className="ok" role="status">{msg}</p>}
       <div className="stats">
         <Stat tone="green" icon="✅" label="정상" value={cnt('ok')} sub={`점검 대상 ${apps.length}개`} />
@@ -41,6 +49,9 @@ export function StatusPage({ ctx }: { ctx: Ctx }) {
       <div className="section-head"><h3>앱별 점검 결과</h3>
         <Pills value={tab} onChange={setTab} items={[['all', '전체', apps.length], ['ok', '정상', cnt('ok')], ['checking', '확인 중', cnt('checking')], ['down', '장애', cnt('down')], ['none', '기록 없음', cnt('none')]]} />
       </div>
+      {!ctx.isAdmin && apps.length === 0 && (
+        <div className="card empty">담당으로 등록된 서비스가 없습니다. 앱 담당자 메일과 지금 로그인한 메일(<b>{ctx.me?.email}</b>)이 같아야 보여요. 관리자에게 담당자 등록을 요청하세요.</div>
+      )}
       {apps.filter((a) => tab === 'all' || kind(a) === tab).map((a) => {
         const h = latest[a.id]; const hist = recent.filter((x) => x.app_id === a.id).slice(0, 24).reverse(); const k = kind(a);
         return (

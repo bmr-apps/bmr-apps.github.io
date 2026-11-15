@@ -40,7 +40,7 @@ const withDeployHint = (msg: string, fn: string) =>
     ? `${fn} 가 아직 새 버전이 아닙니다. 관리자 작업 상자에서 node scripts/deploy-hub.mjs --only ${fn} 를 한 번 실행해 주세요.`
     : msg;
 
-/** 관리자 전용: 전체 앱의 상태·메일·AI 사용량·최근 오류를 한 화면에 */
+/** 관리자: 모든 앱 · 개발자: 담당 중인 앱만 — 상태·메일·AI 사용량·최근 오류를 한 화면에 */
 export function MonitorPage({ ctx }: { ctx: Ctx }) {
   const [data, setData] = useState<OpsOverview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -57,9 +57,8 @@ export function MonitorPage({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (!ctx.isAdmin) return <div className="card">관리자만 볼 수 있습니다.</div>;
-
   const apps = data?.apps ?? [];
+  const appCount = apps.length;
   const kindOf = (a: OpsApp) => (!a.health ? 'none' : a.health.state);
   const cnt = (k: string) => apps.filter((a) => kindOf(a) === k).length;
   const shown = apps.filter((a) => tab === 'all' || kindOf(a) === tab);
@@ -76,6 +75,7 @@ export function MonitorPage({ ctx }: { ctx: Ctx }) {
         앱마다 최근 {data?.window_hours ?? 24}시간 메일·AI 사용량과 오류를 모으고, <b>운영 중인 앱의 서버 함수 <code>/health</code></b>를
         {' '}{data ? (data.probe.timeout_ms / 1000).toFixed(1) : '2.5'}초 안에 병렬로 확인합니다. 10초 안에 다시 누르면 같은 결과입니다.
       </p>
+      {!ctx.isAdmin && <p className="warn" role="status">담당 중인 서비스의 최근 24시간 메일·AI 사용량과 <code>/health</code> 상태만 표시됩니다.</p>}
       {err && <p className="error" role="alert">{err}</p>}
       {data && (!data.mail_ready || !data.ai_ready || !data.errors_ready) && (
         <p className="warn" role="status">
@@ -95,7 +95,9 @@ export function MonitorPage({ ctx }: { ctx: Ctx }) {
         <h3>앱별 상태·사용량</h3>
         <Pills value={tab} onChange={setTab} items={[['all', '전체', apps.length], ['ok', '정상', cnt('ok')], ['down', '응답 없음', cnt('down')], ['warn', 'DB 끊김', cnt('warn')], ['none', '확인 안 함', cnt('none')]]} />
       </div>
-      {!data ? <div className="card empty">{busy ? '불러오는 중…' : '자료가 없습니다.'}</div> : shown.length === 0 ? <div className="card empty">해당하는 앱이 없습니다.</div> : (
+      {!data ? <div className="card empty">{busy ? '불러오는 중…' : '자료가 없습니다.'}</div> : appCount === 0 && !ctx.isAdmin ? (
+        <div className="card empty">담당으로 등록된 서비스가 없습니다. 앱 담당자 메일과 지금 로그인한 메일(<b>{ctx.me?.email}</b>)이 같아야 보여요. 관리자에게 담당자 등록을 요청하세요.</div>
+      ) : shown.length === 0 ? <div className="card empty">해당하는 앱이 없습니다.</div> : (
         <div className="card flush" style={{ overflowX: 'auto' }}>
           <table>
             <thead><tr><th>앱</th><th>상태</th><th>/health</th><th>응답</th><th>메일 24h</th><th>AI 24h</th><th>열기</th></tr></thead>
@@ -116,7 +118,7 @@ export function MonitorPage({ ctx }: { ctx: Ctx }) {
       {data && <p className="muted">/health 확인 {n(data.probe.probed)}개 · {n(data.probe.took_ms)}ms 걸림{data.probe.skipped ? ` · ${data.probe.skipped}개는 한 번에 확인할 수 있는 수를 넘어 건너뜀` : ''}{data.cached ? ' · 10초 안에 다시 눌러 저장된 결과' : ''} · {last}</p>}
 
       <div className="section-head"><h3>최근 오류·알림</h3></div>
-      <p className="muted">메일 실패·거부, AI 실패·거부, 감사 기록의 실패를 한 줄기로 모았습니다 (최근 7일 안에서 {data?.recent_errors.length ?? 0}건).</p>
+      <p className="muted">메일 실패·거부, AI 실패·거부, 감사 기록의 실패를 한 줄기로 모았습니다{ctx.isAdmin ? '' : ' (담당 서비스만)'} (최근 7일 안에서 {data?.recent_errors.length ?? 0}건).</p>
       {(data?.recent_errors.length ?? 0) === 0 ? <div className="card empty">최근 오류가 없습니다. 🎉</div> : (
         <div className="card flush" style={{ overflowX: 'auto' }}>
           <table>

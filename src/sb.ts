@@ -136,7 +136,7 @@ export type DevMailRes = {
 export const DEV_REQ_KIND: Record<DevRequest['kind'], string> = { fn_auto_deploy: '서버 함수 자동 배포 켜기' };
 export const DEV_REQ_STATUS: Record<DevRequest['status'], string> = { pending: '대기 중', approved: '승인', rejected: '반려', canceled: '취소' };
 
-// ---------- 운영 현황 (hub-devtools ops_overview, 관리자 전용) ----------
+// ---------- 운영 현황 (hub-devtools ops_overview, 개발자·관리자) ----------
 export type OpsMail = { sent: number; error: number; denied: number };
 export type OpsAi = { ok: number; error: number; denied: number; tokens: number };
 /** /health 결과: ok 정상 · warn 함수는 떴지만 DB 연결 안 됨 · down 응답 없음/오류 */
@@ -144,13 +144,13 @@ export type OpsHealth = { state: 'ok' | 'warn' | 'down'; http: number | null; ms
 export type OpsApp = { id: number; slug: string; name: string; status: Status; url: string; mail: OpsMail; ai: OpsAi; health: OpsHealth | null };
 export type OpsError = { src: 'mail' | 'ai' | 'audit' | string; at: string; slug: string; status: string; detail: string; extra: string };
 export type OpsOverview = {
-  ok: true; at: string; window_hours: number; cached?: boolean;
+  ok: true; at: string; window_hours: number; cached?: boolean; admin: boolean;
   apps: OpsApp[];
   totals: { apps_total: number; apps_active: number; apps_problem: number; mail_sent: number; mail_failed: number; ai_calls: number; ai_tokens: number; ai_failed: number; errors: number };
   recent_errors: OpsError[]; errors_ready: boolean; mail_ready: boolean; ai_ready: boolean;
   probe: { timeout_ms: number; probed: number; skipped: number; took_ms: number };
 };
-/** 전체 앱 운영 현황 (관리자만) */
+/** 운영 현황 (관리자 = 모든 앱 · 개발자 = 담당 앱만) */
 export const opsOverview = (session: Session) => devtools<OpsOverview>(session, 'ops_overview');
 
 // ---------- 학교 그룹·명부 (Edge Function hub-directory) ----------

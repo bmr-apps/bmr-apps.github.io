@@ -235,10 +235,46 @@ ok(opsT.errors === 1 + 1 + 4, '요약: 오류 = 메일 실패·거부 + AI 실�
 const tidy = O.tidyError({ src: 'mail', at: new Date('2026-11-15T00:00:00Z'), slug: 'demo', status: 'error', detail: 'a\nb\u0001', extra: '제목' });
 ok(tidy.at === '2026-11-15T00:00:00.000Z' && tidy.src === 'mail' && !/\n/.test(tidy.detail), '최근 오류 한 줄: 때·출처·내용 다듬기', JSON.stringify(tidy));
 const dvSrc = readFileSync(new URL('../supabase/functions/hub-devtools/index.ts', import.meta.url), 'utf8');
-ok(dvSrc.includes("action === 'ops_overview'") && dvSrc.includes('if (!u.admin)'), 'hub-devtools: ops_overview 는 관리자만');
-ok(dvSrc.indexOf("action === 'ops_overview'") < dvSrc.indexOf('const a = await appFor(u, Number(b.app_id))'), 'ops_overview 는 앱(app_id) 확인 전에 처리 (전체 보기라서)');
+ok(dvSrc.includes("action === 'ops_overview'") && !dvSrc.includes("error: '관리자만 운영 현황을 볼 수 있습니다.'"), 'hub-devtools: ops_overview 는 개발자도 부를 수 있음');
+ok(dvSrc.includes('await opsOverview(u)'), 'ops_overview 는 부른 사람(u)을 넘겨 담당 앱으로 거름');
+ok(dvSrc.includes('public.app_owners') && dvSrc.includes('lower(o.email) = ${u.email}'), 'ops_overview: 앱 담당자 명부(app_owners)로 담당 앱만');
+ok(dvSrc.includes('${admin}::boolean or') && (dvSrc.match(/\$\{admin\}::boolean or/g) ?? []).length >= 6, 'ops_overview: 앱·메일·AI·감사·최근 오류 모두 담당 범위 조건을 붙임', String((dvSrc.match(/\$\{admin\}::boolean or/g) ?? []).length));
+ok(dvSrc.includes('const key = opsCacheKey(u)') && dvSrc.includes('opsCache.get(key)') && dvSrc.includes('OPS_CACHE_MAX_KEYS'), '운영 현황 캐시는 사람마다 따로 (관리자·개발자 결과가 섞이지 않게)');
+ok(dvSrc.indexOf("action === 'ops_overview'") < dvSrc.indexOf('const a = await appFor(u, Number(b.app_id))'), 'ops_overview 는 앱(app_id) 확인 전에 처리 (앱 하나에 매이지 않으므로)');
 ok(dvSrc.includes('AbortSignal.timeout(OPS_PROBE_TIMEOUT_MS)') && dvSrc.includes('Promise.all'), '/health 는 2.5초 제한으로 병렬 확인');
 ok(dvSrc.includes("from './ops.ts'"), 'hub-devtools: 계산은 ops.ts (시험이 같은 함수를 확인)');
+ok(O.opsCacheKey({ admin: true, id: 'a' }) === O.opsCacheKey({ admin: true, id: 'b' }) && O.opsCacheKey({ admin: true, id: 'a' }) !== O.opsCacheKey({ admin: false, id: 'a' })
+  && O.opsCacheKey({ admin: false, id: 'x' }) !== O.opsCacheKey({ admin: false, id: 'y' }) && O.opsCacheKey({ admin: false, id: 'x' }) === O.opsCacheKey({ admin: false, id: 'x' }), '캐시 열쇠: 관리자는 하나, 개발자는 사람마다', O.opsCacheKey({ admin: false, id: 'x' }));
+ok(O.OPS_CACHE_MAX_KEYS >= 2 && O.OPS_CACHE_MAX_KEYS <= 1000, '캐시는 담아 둘 사람 수에 상한이 있음', String(O.OPS_CACHE_MAX_KEYS));
+
+console.log('[권한 경계: 일반 사용자 차단 · 개발자는 담당 앱만]');
+const S = await import('../src/scope.ts');
+ok(S.sameEmail(' A@Bmrschool.org ', 'a@bmrschool.org') && !S.sameEmail('', '') && !S.sameEmail(null, 'a@b.org'), '메일 비교: 공백·대문자 무시, 빈 값은 같지 않음');
+const OWN = [{ app_id: 1, email: 'me@bmrschool.org' }, { app_id: 2, email: 'other@bmrschool.org' }, { app_id: 3, email: null }];
+const mineIds = S.ownedAppIds(OWN, ' ME@bmrschool.org ');
+ok(mineIds.size === 1 && mineIds.has(1), '담당 앱 id: 내 메일이 담당자로 있는 앱만', JSON.stringify([...mineIds]));
+ok(S.ownedAppIds(OWN, '').size === 0 && S.ownedAppIds(null, 'me@bmrschool.org').size === 0, '메일이 없거나 명부가 비면 담당 앱 없음');
+const allApps = [{ id: 1 }, { id: 2 }, { id: 3 }];
+ok(S.scopeToOwned(allApps, true, mineIds).length === 3 && S.scopeToOwned(allApps, false, mineIds).length === 1 && S.scopeToOwned(allApps, false, mineIds)[0].id === 1, '관리자는 전체, 개발자는 담당 앱만');
+ok(S.scopeToOwned(null, true, mineIds).length === 0 && S.scopeToOwned(undefined, false, mineIds).length === 0, '목록이 없으면 빈 목록');
+const appSrc = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
+ok(/const inHub = !!ctx\.session && ctx\.isStaff &&/.test(appSrc), '허브 틀(사이드바·헤더 허브)은 개발자 승인 뒤에만');
+ok(appSrc.includes('<StaffOnly ctx={ctx}><AppsPage ctx={ctx} /></StaffOnly>') && appSrc.includes('<StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>')
+  && appSrc.includes('<StaffOnly ctx={ctx}><MonitorPage ctx={ctx} /></StaffOnly>') && appSrc.includes('<StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>'), '허브 화면은 StaffOnly 로 감쌈 (대시보드·운영 상태·운영 현황·앱 신청)');
+ok(appSrc.includes('<AdminRoute ctx={ctx}><GroupsPage ctx={ctx} /></AdminRoute>') && appSrc.includes('<AdminRoute ctx={ctx}><MembersPage ctx={ctx} /></AdminRoute>')
+  && appSrc.includes('<AdminRoute ctx={ctx}><AuditPage ctx={ctx} /></AdminRoute>'), '관리자 화면(그룹·명부·사용자 관리·감사 기록)은 AdminRoute');
+ok(appSrc.includes('if (ctx.isStaff) tabs.forEach'), '명령 팔레트의 허브 탭은 개발자 승인 뒤에만');
+ok(appSrc.includes('관리 허브 접근 권한이 없습니다') && appSrc.includes('개발자 승인 후 이용할 수 있어요') && appSrc.includes('<Link to="/" className="btn">메인으로</Link>'), '일반 사용자 안내 카드: 잠금 안내 + 메인으로');
+ok(appSrc.includes('ctx.isStaff ? <Link to="/hub/apps">관리 허브</Link>'), '헤더·푸터의 관리 허브 링크는 개발자에게만');
+ok((appSrc.match(/useCounts\(!!session && isStaff, isAdmin, me\?\.email/g) ?? []).length === 1 && appSrc.includes('scopeToOwned((a.data ?? []) as Counts'), '요약 숫자도 개발자는 담당 앱만 셈');
+const staSrc = readFileSync(new URL('../src/pages/Status.tsx', import.meta.url), 'utf8');
+ok(staSrc.includes('ownedAppIds') && staSrc.includes('scopeToOwned') && staSrc.includes("sb.from('app_owners')"), '/hub/status: 개발자에게는 담당 앱 점검 결과만');
+const monSrc = readFileSync(new URL('../src/pages/Monitor.tsx', import.meta.url), 'utf8');
+ok(!/if \(!ctx\.isAdmin\) return/.test(monSrc) && monSrc.includes('담당 중인 서비스의 최근 24시간'), '/hub/monitor: 개발자도 열리며 담당 서비스만이라고 알림');
+const appsSrc = readFileSync(new URL('../src/pages/Apps.tsx', import.meta.url), 'utf8');
+ok(appsSrc.includes('(ctx.isAdmin || mineIds.has(a.id)) && <HealthDot'), '대시보드 점검 배지도 개발자는 담당 앱만');
+const guideSrc = readFileSync(new URL('../src/pages/Guide.tsx', import.meta.url), 'utf8');
+ok(!guideSrc.includes("'관리 허브로'"), '가이드: 일반 사용자에게 관리 허브로 보내지 않음');
 
 console.log('[허브 배포 스크립트 (deploy-hub.mjs)]');
 const H = await import('./deploy-hub.mjs');

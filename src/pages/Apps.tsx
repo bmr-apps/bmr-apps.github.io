@@ -27,7 +27,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
           <div className="hero-cta">
             <a className="btn" href="#apps">서비스 둘러보기</a>
             <Link to="/guide" className="btn">개발 시작 가이드</Link>
-            {ctx.session ? <Link to="/hub/apps" className="btn alt">관리 허브</Link> : <Link to="/hub/login" className="btn alt">로그인 · 가입</Link>}
+            {ctx.isStaff ? <Link to="/hub/apps" className="btn alt">관리 허브</Link> : ctx.session ? <Link to="/hub/account" className="btn alt">내 계정</Link> : <Link to="/hub/login" className="btn alt">로그인 · 가입</Link>}
           </div>
         </div>
         {/* 색과 도형만으로 그린 격자 (이모지·글자 없음, CSS 만) */}
@@ -139,7 +139,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
               <span className="tile-desc">{a.description || '설명이 없습니다.'}</span>
               <span className="tile-foot">
                 <span className={`sdot s-${a.status}`} />{STATUS_LABEL[a.status]}
-                <HealthDot h={health[a.id]} />
+                {(ctx.isAdmin || mineIds.has(a.id)) && <HealthDot h={health[a.id]} />}
                 {mineIds.has(a.id) && <span className="badge s-preparing">내 서비스</span>}
                 <span className="tile-url">{own.length ? `🧑‍💻 ${own.map((o) => o.name).join(', ')}` : '담당자 없음'}</span>
               </span>
@@ -151,7 +151,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
         <Modal onClose={() => setOpen(null)} wide>
           <div className="modal-head">
             <AppGlyph app={cur} />
-            <div><h2>{cur.name}</h2><span className={`badge s-${cur.status}`}>{STATUS_LABEL[cur.status]}</span> <HealthDot h={health[cur.id]} label /></div>
+            <div><h2>{cur.name}</h2><span className={`badge s-${cur.status}`}>{STATUS_LABEL[cur.status]}</span> {(ctx.isAdmin || mineIds.has(cur.id)) && <HealthDot h={health[cur.id]} label />}</div>
           </div>
           {cur.description && <p>{cur.description}</p>}
           <dl className="meta">

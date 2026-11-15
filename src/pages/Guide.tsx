@@ -30,7 +30,9 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
           <h1>BMR APPS 로 개발 시작하기</h1>
           <p>BMR APPS 는 <b>별무리 개발자들이 함께 만들고 나누는 공간</b>입니다. 앱을 신청해 승인되면 저장소·주소·데이터베이스·파일 저장소·서버 함수가 자동으로 준비되고, 선생님은 화면과 데이터만 만들면 됩니다.</p>
           <div className="hero-cta">
-            {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하고 시작하기</Link> : <Link to={role === 'staff' || role === 'admin' ? '/hub/requests' : '/hub/apps'} className="btn alt">{role === 'staff' || role === 'admin' ? '앱 신청하러 가기' : '관리 허브로'}</Link>}
+            {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하고 시작하기</Link>
+              : role === 'staff' || role === 'admin' ? <Link to="/hub/requests" className="btn alt">앱 신청하러 가기</Link>
+              : <Link to="/" className="btn alt">운영 중인 앱 둘러보기</Link>}
             <Link to="/guide/quick" className="btn">⚡ 빠른 시작</Link>
             <a className="btn" href="#signup">1단계부터 읽기</a>
           </div>
@@ -349,7 +351,9 @@ export function QuickStartPage({ ctx }: { ctx: Ctx }) {
           <h1>⚡ 빠른 시작</h1>
           <p>가입부터 첫 배포까지 꼭 필요한 것만. 자세한 설명은 <Link to="/guide">전체 시작 가이드</Link>에 있어요.</p>
           <div className="hero-cta">
-            {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하기</Link> : <Link to={staff ? '/hub/requests' : '/hub/apps'} className="btn alt">{staff ? '앱 신청하러 가기' : '관리 허브로'}</Link>}
+            {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하기</Link>
+              : staff ? <Link to="/hub/requests" className="btn alt">앱 신청하러 가기</Link>
+              : <Link to="/" className="btn alt">운영 중인 앱 둘러보기</Link>}
             <Link to="/guide" className="btn">전체 가이드</Link>
           </div>
         </div>
