@@ -24,6 +24,7 @@ export function Assistant({ session, page }: { session: Session | null; page?: s
   const [roleLabel, setRoleLabel] = useState('');
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState('');
   const [err, setErr] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -50,7 +51,7 @@ export function Assistant({ session, page }: { session: Session | null; page?: s
     const t = text.trim();
     if (!t || busy) return;
     const next: AssistantMsg[] = [...msgs, { role: 'user', content: t }];
-    setBusy(true); setErr('');
+    setBusy(true); setErr(''); setPending(t);
     try {
       const a = await askAssistant(session, next);
       setMsgs([...next, { role: 'assistant', content: a.text }]);
@@ -58,7 +59,7 @@ export function Assistant({ session, page }: { session: Session | null; page?: s
       setQ('');
     } catch (e) {
       setErr((e as Error).message);
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setPending(''); }
   }, [msgs, session, busy]);
 
   const onSubmit = () => { if (!busy) ask(q); };
@@ -86,9 +87,10 @@ export function Assistant({ session, page }: { session: Session | null; page?: s
               <div key={i} className={`chat-msg${m.role === 'user' ? ' mine' : ''}`}>
                 <div className="chat-bubble"><p>{m.content}</p></div>
               </div>))}
-            {busy && <div className="chat-msg"><div className="chat-bubble typing"><span /><span /><span /></div></div>}
+            {busy && pending && <div className="chat-msg mine"><div className="chat-bubble"><p>{pending}</p></div></div>}
+            {busy && <div className="chat-msg"><div className="chat-bubble typing" aria-label="답을 만드는 중"><span /><span /><span /></div></div>}
             {err && <div className="card warn assist-err">{err}</div>}
-            {!msgs.length && !busy && (
+            {!msgs.length && !busy && !err && (
               <div className="assist-suggest">
                 <b>이런 걸 물어보세요</b>
                 {SUGGEST.map((s) => <button key={s} type="button" className="ghost small" onClick={() => ask(s)}>{s}</button>)}
