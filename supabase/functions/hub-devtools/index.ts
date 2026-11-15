@@ -10,6 +10,8 @@
 //   ai_status       이 앱의 AI 상태(토큰·비밀값·업체 키 등록 여부)·허용 모델·한도 사용량·최근 호출 10건 (키·토큰 값은 돌려주지 않음)
 //   ai_token_issue  AI 토큰을 새로 만들어 <PREFIX>AI_TOKEN 에 넣고 해시만 남긴다
 //   ai_settings_update (관리자) 이 앱의 AI 켜기·허용 모델·한도, 학교 전체 AI 기본값
+//   ops_overview    (관리자) 전체 앱 운영 현황: 앱별 24시간 메일·AI 사용량, 최근 오류 20건,
+//                   활성 앱 기본 함수 /health 를 2.5초 안에 병렬로 확인(살아 있음·응답 시간·mail_ready·ai_hub)
 // 누가: 그 앱 담당 개발자(개발자 승인 + 허브 메일 = 담당자 메일) 또는 관리자. 서버에서 확인한다.
 // 기록: 비밀값 넣기·지우기, 함수 지우기는 public.audit_log 에 이름만 남긴다 (값은 남기지 않음).
 // 관리 토큰(BMR_MGMT_TOKEN)은 hub-provision 과 같은 암호문 비밀값이고, 푸는 열쇠는 배포본(_key.ts)에만 있다.
@@ -22,6 +24,11 @@ import {
   aiSecretOf, AI_DEFAULTS, AI_STARTER_MODELS, AI_PROVIDERS, AI_PROVIDER_LABEL, aiState, aiLimitOf,
   parseAiModelSpec, normalizeAiModelList, effectiveAiModels, type AiProvider,
 } from './rules.ts';
+import {
+  OPS_CACHE_MS, OPS_ERROR_ROWS, OPS_PROBE_MAX_APPS, OPS_PROBE_TIMEOUT_MS, OPS_WINDOW_HOURS,
+  addAiRow, addMailRow, appHealth, emptyAi, emptyMail, healthUrl, opsTotals, tidyError,
+  type AiAgg, type AppHealth, type ErrorRow, type MailAgg,
+} from './ops.ts';
 
 const REF = 'psupfmarnyxontorftio';
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
@@ -151,6 +158,109 @@ async function appSecrets(sb: ReturnType<typeof mgmtFor>, slug: string) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// ---------- 운영 현황 (관리자) ----------
+// 앱 하나에 매이지 않는 전체 보기: 앱별 24시간 메일·AI 사용량, 최근 오류, 활성 앱 /health 실시간 확인.
+// 앱 /health 는 2.5초 안에 병렬로 확인하고, 10초 안에 다시 누르면 그 결과를 그대로 돌려준다(앱을 두들기지 않게).
+type OpsAppRow = { id: number; slug: string; name: string; status: string; url: string };
+type OpsApp = OpsAppRow & { mail: MailAgg; ai: AiAgg; health: AppHealth | null };
+type OpsOverview = {
+  ok: true; at: string; window_hours: number; cached?: boolean;
+  apps: OpsApp[];
+  totals: ReturnType<typeof opsTotals>;
+  recent_errors: ErrorRow[]; errors_ready: boolean; mail_ready: boolean; ai_ready: boolean;
+  probe: { timeout_ms: number; probed: number; skipped: number; took_ms: number };
+};
+let opsCache: { at: number; v: OpsOverview } | null = null;
+
+async function opsOverview(): Promise<OpsOverview> {
+  if (opsCache && Date.now() - opsCache.at < OPS_CACHE_MS) return { ...opsCache.v, cached: true };
+  const t0 = Date.now();
+  const apps = (await db`select id, slug, name, status, url from public.apps order by sort, name`) as unknown as OpsAppRow[];
+
+  // 24시간 메일·AI 집계 (표가 아직 없으면 앱 목록만 보여 주고 이유를 알린다)
+  let mailReady = true, aiReady = true;
+  const mail = new Map<number, MailAgg>();
+  try {
+    const rows = await db`select app_id, status, count(*)::int as n from bmr_admin.mail_log
+      where at > now() - interval '24 hours' group by 1, 2`;
+    for (const r of rows) {
+      const id = Number(r.app_id);
+      const m = mail.get(id) ?? emptyMail();
+      addMailRow(m, r.status, r.n);
+      mail.set(id, m);
+    }
+  } catch (e) { mailReady = false; console.error('ops mail', String((e as Error)?.message ?? e).slice(0, 200)); }
+
+  const ai = new Map<number, AiAgg>();
+  try {
+    const rows = await db`select app_id, status, count(*)::int as n, coalesce(sum(total_tokens), 0)::int as tokens
+      from bmr_admin.ai_log where at > now() - interval '24 hours' group by 1, 2`;
+    for (const r of rows) {
+      const id = Number(r.app_id);
+      const a = ai.get(id) ?? emptyAi();
+      addAiRow(a, r.status, r.n, r.tokens);
+      ai.set(id, a);
+    }
+  } catch (e) { aiReady = false; console.error('ops ai', String((e as Error)?.message ?? e).slice(0, 200)); }
+
+  let auditErrors24h = 0;
+  try {
+    const [r] = await db`select count(*)::int as n from public.audit_log where result = 'error' and at > now() - interval '24 hours'`;
+    auditErrors24h = Number(r?.n ?? 0);
+  } catch { /* 기록 표가 없으면 0 */ }
+
+  // 최근 오류: 메일 실패·거부 + AI 실패·거부 + 감사 기록 실패를 한 줄기로 (7일 안에서 최근 20건)
+  let recent: ErrorRow[] = [];
+  let errorsReady = true;
+  try {
+    const rows = await db`(select 'mail' as src, at, slug, status, coalesce(error, '') as detail, subject as extra
+        from bmr_admin.mail_log where status <> 'sent' and at > now() - interval '7 days' order by at desc limit ${OPS_ERROR_ROWS})
+      union all
+      (select 'ai' as src, at, slug, status, coalesce(error, '') as detail, model as extra
+        from bmr_admin.ai_log where status <> 'ok' and at > now() - interval '7 days' order by at desc limit ${OPS_ERROR_ROWS})
+      union all
+      (select 'audit' as src, at, target as slug, result as status, detail, action as extra
+        from public.audit_log where result <> 'ok' and at > now() - interval '7 days' order by at desc limit ${OPS_ERROR_ROWS})
+      order by at desc limit ${OPS_ERROR_ROWS}`;
+    recent = rows.map((r) => tidyError(r as unknown as Record<string, unknown>));
+  } catch (e) { errorsReady = false; console.error('ops errors', String((e as Error)?.message ?? e).slice(0, 200)); }
+
+  // 활성 앱의 기본 함수 /health 를 병렬로 (각 2.5초 제한)
+  const active = apps.filter((a) => a.status === 'active');
+  const targets = active.slice(0, OPS_PROBE_MAX_APPS);
+  const health = new Map<number, AppHealth>();
+  await Promise.all(targets.map(async (a) => {
+    const s = Date.now();
+    try {
+      const r = await fetch(healthUrl(SB_URL, a.slug), { signal: AbortSignal.timeout(OPS_PROBE_TIMEOUT_MS), headers: { Accept: 'application/json' } });
+      const text = await r.text().catch(() => '');
+      let j: unknown = null;
+      if (text && text.length < 20000) { try { j = JSON.parse(text); } catch { j = null; } }
+      health.set(a.id, appHealth(r.status, j, Date.now() - s));
+    } catch {
+      health.set(a.id, appHealth(null, null, Date.now() - s));
+    }
+  }));
+
+  const rows: OpsApp[] = apps.map((a) => ({
+    ...a, mail: mail.get(a.id) ?? emptyMail(), ai: ai.get(a.id) ?? emptyAi(), health: health.get(a.id) ?? null,
+  }));
+  const v: OpsOverview = {
+    ok: true,
+    at: new Date().toISOString(),
+    window_hours: OPS_WINDOW_HOURS,
+    apps: rows,
+    totals: opsTotals(rows, auditErrors24h),
+    recent_errors: recent,
+    errors_ready: errorsReady,
+    mail_ready: mailReady,
+    ai_ready: aiReady,
+    probe: { timeout_ms: OPS_PROBE_TIMEOUT_MS, probed: targets.length, skipped: active.length - targets.length, took_ms: Date.now() - t0 },
+  };
+  opsCache = { at: Date.now(), v };
+  return v;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(req) });
   const o = req.headers.get('Origin');
@@ -163,6 +273,14 @@ Deno.serve(async (req) => {
     u = await me(req).catch(async (e) => { await rateLimit(req, null, action || '?'); throw e; });
     await rateLimit(req, u, action);
     if (!u.staff) return json(req, 403, { error: '개발자 승인 후 이용할 수 있어요. 관리자에게 요청하세요.' });
+    // 관리자 전체 현황은 앱 하나에 매이지 않는다 — app_id 확인보다 먼저 처리한다
+    if (action === 'ops_overview') {
+      if (!u.admin) {
+        await audit(u, '*', 'ops:overview', 'denied', '관리자가 아님');
+        return json(req, 403, { error: '관리자만 운영 현황을 볼 수 있습니다.' });
+      }
+      return json(req, 200, await opsOverview());
+    }
     const a = await appFor(u, Number(b.app_id));
     const allSlugs = (await db`select slug from public.apps`).map((x) => String(x.slug));
     const sb = mgmtFor(a.slug, allSlugs);

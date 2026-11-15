@@ -27,5 +27,9 @@ verify_jwt = false
 [functions.hub-ai]
 verify_jwt = false
 
+# 앱 토큰(메일·AI) 또는 허브 로그인 토큰을 함수 안에서 확인한다
+[functions.hub-directory]
+verify_jwt = false
+
 [functions.hub-favicon]
 verify_jwt = false

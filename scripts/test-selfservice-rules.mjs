@@ -169,4 +169,113 @@ const m = R.maskSecrets(`url postgresql://class_designer_fn.ref:Sup3rS3cret@host
 ok(!m.includes('Sup3rS3cret') && !m.includes(jwt) && !m.includes('b'.repeat(30)) && !m.includes('c'.repeat(30)) && !m.includes('Z9'.repeat(30)) && !m.includes('a'.repeat(30)), '비밀번호·JWT·키·긴 토큰 가림', m);
 ok(R.maskSecrets('booted (time: 47ms) GET /class-designer-fn/health 200 f00af562-86ab-4fa0-9dca-0fb8f76ac5b6') === 'booted (time: 47ms) GET /class-designer-fn/health 200 f00af562-86ab-4fa0-9dca-0fb8f76ac5b6', '보통 글·경로·UUID 는 그대로');
 
+console.log('[학교 그룹·명부 (hub-directory)]');
+const D = await import('../supabase/functions/hub-directory/rules.ts');
+ok(D.GROUP_KINDS.join(',') === 'grade,class,club,staff,custom', '그룹 종류 다섯 가지', D.GROUP_KINDS.join(','));
+ok(D.groupSlugProblem('grade-10') === null && D.groupSlugProblem('staff') === null, '주소 이름: 영문 소문자·하이픈 허용');
+ok(D.groupSlugProblem('Grade') !== null && D.groupSlugProblem('10학년') !== null && D.groupSlugProblem('') !== null, '주소 이름: 대문자·한글·빈 값 거부');
+ok(D.groupSlugProblem('hub') !== null && D.groupSlugProblem('admin') !== null, '주소 이름: 허브 화면과 겹치는 이름 거부');
+ok(D.groupNameProblem('10학년') === null && D.groupNameProblem('정보동아리') === null, '이름: 한글 허용');
+ok(D.groupNameProblem('') !== null && D.groupNameProblem('a'.repeat(61)) !== null && D.groupNameProblem('가<b>') !== null, '이름: 빈 값·60자 넘음·꺾쇠 거부');
+ok(D.groupKindProblem('club') === null && D.groupKindProblem('') === null && D.groupKindProblem('x') !== null, '종류: 다섯 가지 또는 비움');
+ok(D.groupDescProblem('') === null && D.groupDescProblem('고등부 10학년') === null && D.groupDescProblem('x'.repeat(301)) !== null, '설명: 300자까지');
+ok(D.normalizeEmail(' Ab@Bmrschool.org ') === 'ab@bmrschool.org' && D.normalizeEmail('no-at') === null && D.normalizeEmail(5) === null, '메일 정리: 소문자·공백 제거, 형식 검사');
+const emails = D.normalizeEmails('A@x.org, b@x.org\nb@x.org  a@x.org', 10);
+ok(emails.list.length === 2 && emails.list[0] === 'a@x.org' && emails.list[1] === 'b@x.org', '메일 여러 개: 중복·공백 정리', JSON.stringify(emails.list));
+const emailsBad = D.normalizeEmails(['ok@x.org', 'bad', 'also-bad']);
+ok(emailsBad.list.length === 1 && emailsBad.bad.length === 2, '메일 여러 개: 틀린 것은 bad 에', JSON.stringify(emailsBad));
+ok(D.normalizeEmails(Array.from({ length: 5 }, (_, i) => `s${i}@x.org`), 3).list.length === 3, '한 번에 넣는 메일 수 상한');
+const rowsM = [
+  { slug: 'grade-10', name: '10학년', kind: 'grade', role: 'member' },
+  { slug: 'info-club', name: '정보동아리', kind: 'club', role: 'leader' },
+];
+const mem = D.membershipsOf(rowsM);
+ok(mem.member_of.length === 2 && mem.leader_of[0] === 'info-club' && mem.roles['grade-10'] === 'member' && mem.roles['info-club'] === 'leader', '소속 정리: member_of · leader_of · roles', JSON.stringify(mem));
+ok(D.membershipsOf([]).member_of.length === 0 && D.membershipsOf([{ slug: '', name: '', kind: '', role: '' }]).groups.length === 0, '빈 소속·빈 줄은 버림');
+const askedM = D.checkAsked(['10학년', 'staff', '정보동아리'], rowsM);
+ok(askedM[0].member && askedM[0].slug === 'grade-10' && askedM[1].member === false && askedM[1].slug === null && askedM[2].role === 'leader', '물어본 그룹: 이름으로도 찾고, 없는 그룹은 member=false', JSON.stringify(askedM));
+ok(D.checkAsked(['10학년', '10학년'], rowsM).length === 1, '같은 질문은 한 번만');
+ok(D.normalizeGroupList('10학년, staff\n10학년').join('|') === '10학년|staff', '물어볼 그룹 목록 정리', D.normalizeGroupList('10학년, staff\n10학년').join('|'));
+ok(D.groupFolderOf('grade-10') === 'grade-10/' && D.FILES_BUCKET === 'bmr-files', '공용 파일: 버킷 이름·그룹 폴더', D.groupFolderOf('grade-10'));
+const dirSrc = readFileSync(new URL('../supabase/functions/hub-directory/index.ts', import.meta.url), 'utf8');
+ok(['list_groups', 'check', 'members', 'me', 'group_save', 'group_delete', 'member_add', 'member_remove'].every((a) => dirSrc.includes(`action === '${a}'`)), 'hub-directory: 여덟 동작');
+ok(dirSrc.includes('bmr_admin.mail_tokens') && dirSrc.includes('bmr_admin.ai_tokens') && !dirSrc.includes('token_issue'), '앱 신분은 이미 있는 메일·AI 토큰 해시로 확인 (새 토큰 발급 없음)');
+ok(dirSrc.includes("me.role !== 'admin'") && dirSrc.indexOf("me.role !== 'admin'") < dirSrc.indexOf("action === 'group_save'"), '그룹 고치기는 관리자만');
+ok(!dirSrc.includes("from './_key.ts'") && dirSrc.includes('directory_attempts'), 'hub-directory: 열쇠를 풀지 않고(키 없는 함수) 호출 횟수를 남김');
+ok(dirSrc.includes('MEMBER_LIST_MAX') && dirSrc.includes('directory:member_add'), '구성원 목록에 상한, 변경은 감사 기록에');
+const dirMig = readFileSync(new URL('../supabase/migrations/20261115120000_hub_groups_files.sql', import.meta.url), 'utf8');
+ok(/create table if not exists bmr_admin\.groups/.test(dirMig) && /create table if not exists bmr_admin\.group_members/.test(dirMig), '마이그레이션: groups · group_members 표');
+ok(dirMig.includes("kind in ('grade', 'class', 'club', 'staff', 'custom')") && dirMig.includes("role in ('leader', 'member')"), '마이그레이션: 종류·역할 값이 rules.ts 와 같음');
+ok(dirMig.includes("values ('bmr-files', 'bmr-files', false") && dirMig.includes('private.group_member') && dirMig.includes('private.group_leader'), '마이그레이션: 비공개 버킷 bmr-files + 소속 도우미');
+ok(['읽기', '올리기', '바꾸기', '지우기'].every((k) => dirMig.includes(`create policy "bmr-files: `) && dirMig.includes(k)), '마이그레이션: 버킷 정책 네 가지(읽기·올리기·바꾸기·지우기)');
+ok(/revoke all on bmr_admin\.groups from public, anon, authenticated/.test(dirMig) && /revoke all on bmr_admin\.group_members from public, anon, authenticated/.test(dirMig), '그룹 표는 브라우저에서 직접 읽지 못함 (함수를 거쳐야)');
+
+console.log('[운영 현황 (ops_overview)]');
+const O = await import('../supabase/functions/hub-devtools/ops.ts');
+ok(O.OPS_PROBE_TIMEOUT_MS === 2500 && O.OPS_ERROR_ROWS === 20 && O.OPS_WINDOW_HOURS === 24, '2.5초 제한 · 오류 20건 · 24시간 창', `${O.OPS_PROBE_TIMEOUT_MS}/${O.OPS_ERROR_ROWS}/${O.OPS_WINDOW_HOURS}`);
+ok(O.healthUrl('https://psupfmarnyxontorftio.supabase.co/', 'demo') === 'https://psupfmarnyxontorftio.supabase.co/functions/v1/demo-fn/health', '/health 주소 모양', O.healthUrl('https://x.supabase.co/', 'demo'));
+ok(O.probeState(200, { db: true }) === 'ok' && O.probeState(200, {}) === 'ok' && O.probeState(204, {}) === 'ok', '정상: 2xx (db 를 안 알려 주는 함수도 정상)');
+ok(O.probeState(200, { db: false }) === 'warn', '함수는 떴는데 DB 가 끊기면 warn');
+ok(O.probeState(500, { db: true }) === 'down' && O.probeState(404, {}) === 'down' && O.probeState(null, null) === 'down', '5xx·4xx·무응답은 down');
+const mailAgg = O.emptyMail();
+O.addMailRow(mailAgg, 'sent', 3); O.addMailRow(mailAgg, 'error', 2); O.addMailRow(mailAgg, 'denied', 1); O.addMailRow(mailAgg, 'other', 9); O.addMailRow(mailAgg, 'sent', 'x');
+ok(mailAgg.sent === 3 && mailAgg.error === 2 && mailAgg.denied === 1, '메일 집계: sent·error·denied 만 셈', JSON.stringify(mailAgg));
+const aiAgg = O.emptyAi();
+O.addAiRow(aiAgg, 'ok', 2, 150); O.addAiRow(aiAgg, 'error', 1, 40); O.addAiRow(aiAgg, 'denied', 3, 0); O.addAiRow(aiAgg, 'ok', 1, -5);
+ok(aiAgg.ok === 3 && aiAgg.error === 1 && aiAgg.denied === 3 && aiAgg.tokens === 150, 'AI 집계: ok 만 토큰을 세고 음수는 0', JSON.stringify(aiAgg));
+const opsT = O.opsTotals([
+  { status: 'active', mail: { sent: 5, error: 1, denied: 0 }, ai: { ok: 2, error: 0, denied: 1, tokens: 100 } },
+  { status: 'active', mail: { sent: 0, error: 0, denied: 0 }, ai: { ok: 0, error: 0, denied: 0, tokens: 0 } },
+  { status: 'preparing', mail: { sent: 0, error: 0, denied: 0 }, ai: { ok: 0, error: 0, denied: 0, tokens: 0 } },
+  { status: 'retired', mail: { sent: 0, error: 0, denied: 0 }, ai: { ok: 0, error: 0, denied: 0, tokens: 0 } },
+], 4);
+ok(opsT.apps_total === 4 && opsT.apps_active === 2 && opsT.apps_problem === 1, '요약: 전체·운영 중·준비/중지 앱 수 (종료는 문제로 안 셈)', JSON.stringify(opsT));
+ok(opsT.mail_sent === 5 && opsT.mail_failed === 1 && opsT.ai_calls === 2 && opsT.ai_tokens === 100 && opsT.ai_failed === 1, '요약: 메일·AI 사용량');
+ok(opsT.errors === 1 + 1 + 4, '요약: 오류 = 메일 실패·거부 + AI 실패·거부 + 감사 실패', String(opsT.errors));
+const tidy = O.tidyError({ src: 'mail', at: new Date('2026-11-15T00:00:00Z'), slug: 'demo', status: 'error', detail: 'a\nb\u0001', extra: '제목' });
+ok(tidy.at === '2026-11-15T00:00:00.000Z' && tidy.src === 'mail' && !/\n/.test(tidy.detail), '최근 오류 한 줄: 때·출처·내용 다듬기', JSON.stringify(tidy));
+const dvSrc = readFileSync(new URL('../supabase/functions/hub-devtools/index.ts', import.meta.url), 'utf8');
+ok(dvSrc.includes("action === 'ops_overview'") && dvSrc.includes('if (!u.admin)'), 'hub-devtools: ops_overview 는 관리자만');
+ok(dvSrc.indexOf("action === 'ops_overview'") < dvSrc.indexOf('const a = await appFor(u, Number(b.app_id))'), 'ops_overview 는 앱(app_id) 확인 전에 처리 (전체 보기라서)');
+ok(dvSrc.includes('AbortSignal.timeout(OPS_PROBE_TIMEOUT_MS)') && dvSrc.includes('Promise.all'), '/health 는 2.5초 제한으로 병렬 확인');
+ok(dvSrc.includes("from './ops.ts'"), 'hub-devtools: 계산은 ops.ts (시험이 같은 함수를 확인)');
+
+console.log('[허브 배포 스크립트 (deploy-hub.mjs)]');
+const H = await import('./deploy-hub.mjs');
+const a0 = H.parseArgs([]);
+ok(a0.only === null && a0.migrate === false && a0.dryRun === false && a0.verify === true && a0.help === false, '인자 없음: 모두 배포 · 마이그레이션 안 함 · 확인 함');
+ok(JSON.stringify(H.parseArgs(['--only', 'hub-devtools, hub-directory']).only) === '["hub-devtools","hub-directory"]', '--only 는 쉼표로 여러 개 (공백 무시)');
+ok(JSON.stringify(H.parseArgs(['--only=hub-mail']).only) === '["hub-mail"]', '--only=이름 형태도 됨');
+ok(H.parseArgs(['--migrate', '--dry-run', '--no-verify']).migrate === true && H.parseArgs(['--dry-run']).dryRun === true && H.parseArgs(['--no-verify']).verify === false, '--migrate · --dry-run · --no-verify');
+let argThrew = false; try { H.parseArgs(['--only']); } catch { argThrew = true; } ok(argThrew, '--only 뒤에 이름이 없으면 거절');
+argThrew = false; try { H.parseArgs(['--wat']); } catch { argThrew = true; } ok(argThrew, '모르는 옵션 거절');
+argThrew = false; try { H.parseArgs(['hub-mail']); } catch { argThrew = true; } ok(argThrew, '함수 이름을 그냥 주면 --only 를 쓰라고 거절');
+const hubFns = H.discoverFunctions();
+ok(hubFns.length >= 12 && hubFns.some((f) => f.name === 'hub-directory'), 'supabase/functions 아래 허브 함수를 찾음', `${hubFns.length}개`);
+ok(JSON.stringify(hubFns.filter((f) => f.keyed).map((f) => f.name).sort()) === JSON.stringify([...H.KEYED].sort()), '열쇠를 쓰는 함수 목록 = KEYED', hubFns.filter((f) => f.keyed).map((f) => f.name).join(','));
+ok(hubFns.find((f) => f.name === 'hub-directory').keyed === false, 'hub-directory 는 열쇠 없이 배포되는 함수');
+ok(hubFns.every((f) => f.files.includes('index.ts') && !f.files.includes('_key.ts') && !f.files.includes('_key.ts.example')), '배포 파일에 _key.ts 를 넣지 않음 (열쇠는 배포본에만 따로)');
+const hubDeploySrc = readFileSync(new URL('./deploy-hub.mjs', import.meta.url), 'utf8');
+ok(!/writeFileSync\s*\(/.test(hubDeploySrc) && !hubDeploySrc.includes('randomBytes'), '스크립트는 열쇠 파일을 쓰지 않는다 (새 열쇠를 만들지 않음)');
+ok(hubDeploySrc.includes('mkdirSync') === false && hubDeploySrc.includes('setup-provision.mjs'), '열쇠가 없으면 멈추고 setup-provision.mjs 로 안내');
+ok(hubDeploySrc.includes('await recordDeploy(fn.name, fn.dir)') && !hubDeploySrc.includes('insert into public.audit_log'), '배포 기록은 deploy-record.mjs 에 맡김 (감사 기록 hub:deploy)');
+ok(hubDeploySrc.includes('pendingMigrations') && hubDeploySrc.includes('migrate.mjs'), '--migrate 는 scripts/migrate.mjs 로 미적용 파일만 적용');
+const wf = readFileSync(new URL('../.github/workflows/functions-check.yml', import.meta.url), 'utf8');
+ok(H.KEYED.every((k) => wf.includes(k)), 'CI 검사 워크플로의 _key.ts 채우기 목록과 같은 함수들');
+
+console.log('[새 앱 시작 틀 (lib/hub.ts)]');
+const T = await import('../supabase/functions/hub-provision/templates.ts');
+ok(Object.keys(T.REPO_FILES).includes('supabase/functions/{{FN}}/lib/hub.ts'), '시작 틀에 supabase/functions/<함수>/lib/hub.ts 가 들어감');
+const libSrc = T.REPO_FILES['supabase/functions/{{FN}}/lib/hub.ts'] ?? '';
+ok(['sendHubMail', 'askHubAi', 'checkHubGroups', 'hubGroupMembers', 'checkHubAuth', 'healthJson'].every((f) => new RegExp(`export (async )?function ${f}`).test(libSrc) || libSrc.includes(`export const ${f}`)), '도우미 여섯 가지 (메일·AI·그룹·그룹 구성원·로그인 확인·/health)');
+ok(libSrc.includes("secret('MAIL_TOKEN')") && libSrc.includes("secret('AI_TOKEN')") && libSrc.includes("secret('MAIL_TOKEN') || secret('AI_TOKEN')"), '토큰은 <PREFIX>MAIL_TOKEN · <PREFIX>AI_TOKEN 에서만');
+ok(libSrc.includes('mail_ready') && libSrc.includes('ai_hub') && libSrc.includes('app: SLUG'), '/health 표준 모양에 mail_ready · ai_hub');
+ok(!/bmr_|sb_secret_|SERVICE_ROLE/.test(libSrc), '시작 틀 도우미에 허브 전용 비밀값 이름이 없음');
+ok(T.MAIL_SOURCE.includes('export { sendHubMail as sendMail'), 'mail.ts 는 lib/hub.ts 를 다시 내보냄 (예전 이름 sendMail 유지)');
+ok(T.FN_SOURCE.includes("from './lib/hub.ts'") && T.FN_SOURCE.includes('healthJson(true)') && T.FN_SOURCE.includes('checkHubAuth(req)'), '시작 함수가 lib/hub.ts 를 씀 (로그인 확인·/health)');
+ok(T.REPO_FILES['README.md'].includes('bmr-files') && T.REPO_FILES['README.md'].includes('lib/hub.ts') && T.REPO_FILES['README.md'].includes('checkHubGroups'), 'README 에 그룹 공용 파일 · 허브 도우미 안내');
+ok(T.REPO_FILES['README.md'].includes('{{PREFIX}}MAIL_TOKEN'), 'README 도 {{PREFIX}} 같은 자리표시자를 그대로 씀 (앱마다 채워짐)');
+const provRenderSrc = readFileSync(new URL('../supabase/functions/hub-provision/index.ts', import.meta.url), 'utf8');
+ok(provRenderSrc.includes('files[render(p, rv)] = render(t, rv)'), 'hub-provision: 파일 경로도 {{FN}} 을 채운다 (lib/hub.ts 가 제자리에 올라감)');
+
 console.log(`\n결과: ${pass} 통과, ${fail} 실패`); process.exit(fail ? 1 : 0);

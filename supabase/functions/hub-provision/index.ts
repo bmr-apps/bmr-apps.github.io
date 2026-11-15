@@ -305,7 +305,8 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
       if (!ref.ok) throw new HttpError(502, `main 브랜치 읽기 실패 (${ref.status})`);
       const rv = vars(c, { PUB_KEY: publishableKey(), POOL_HOST, DIRECT_HOST: `db.${REF}.supabase.co` });
       const files: Record<string, string> = {};
-      for (const [p, t] of Object.entries(REPO_FILES)) files[p] = render(t, rv);
+      // 경로에도 {{FN}} 같은 자리표시가를 쓸 수 있게 한다 (예: supabase/functions/{{FN}}/lib/hub.ts)
+      for (const [p, t] of Object.entries(REPO_FILES)) files[render(p, rv)] = render(t, rv);
       files[`supabase/functions/${n.fn}/index.ts`] = render(FN_SOURCE, rv);
       files[`supabase/functions/${n.fn}/mail.ts`] = render(MAIL_SOURCE, rv);
       const tree = await gh.call('POST', `${gh.path}/git/trees`, { tree: Object.entries(files).map(([path, content]) => ({ path, mode: '100644', type: 'blob', content })) });

@@ -166,6 +166,7 @@ create policy "멤버만 읽기" on library.books for select to authenticated us
         </div>
         <h3>파일 저장</h3>
         <p>버킷은 비공개이고, 로그인한 사람은 <code>&lt;내 아이디&gt;/…</code> 폴더에 올릴 수 있습니다. <b>파일 경로(키)에 한글은 쓸 수 없어요</b> — 영문·숫자로 이름을 바꿔 올리세요(원래 이름은 표에 따로 저장).</p>
+        <p><b>여러 사람이 함께 쓰는 파일</b>(교직원 공지·학년 자료·동아리 사진)은 공용 버킷 <code>bmr-files</code> 에 둡니다. 경로의 첫 칸이 <b>그룹 주소 이름</b>이라서, 로그인한 사람은 <b>자기가 속한 그룹 폴더만</b> 보고 올릴 수 있습니다 (그룹장은 그 그룹 파일을 지울 수도 있음). 그룹 명부는 관리자가 허브 → <b>👥 그룹·명부</b> 에서 관리합니다.</p>
         <h3>배포</h3>
         <ul>
           <li><b>화면</b>: <code>main</code> 브랜치에 push 하면 GitHub Actions 가 빌드해서 1~2분 뒤 앱 주소에 반영합니다. '준비 중' 페이지(<code>index.html</code>)를 내 화면으로 바꾸면 됩니다.</li>
@@ -199,7 +200,7 @@ const r = await fetch(\`\${Deno.env.get('SUPABASE_URL')}/functions/v1/hub-mail\`
   }),
 });
 const { ok, id, from, error } = await r.json();`}</C>
-          <p className="muted">시작 틀의 <code>mail.ts</code> 에 <code>sendMail()</code> 도우미가 들어 있습니다. 토큰을 브라우저·저장소·로그에 넣지 마세요. 함수 비밀값은 프로젝트 공용이라 다른 앱 함수도 이론상 내 메일 토큰을 읽을 수 있습니다. 그래도 발송 비밀번호 자체는 허브만 씁니다.</p>
+          <p className="muted">시작 틀의 <code>lib/hub.ts</code> 에 <code>sendHubMail()</code> 도우미가 들어 있습니다 (예전 <code>mail.ts</code> 의 <code>sendMail()</code> 은 같은 것을 다시 내보냅니다). 토큰을 브라우저·저장소·로그에 넣지 마세요. 함수 비밀값은 프로젝트 공용이라 다른 앱 함수도 이론상 내 메일 토큰을 읽을 수 있습니다. 그래도 발송 비밀번호 자체는 허브만 씁니다.</p>
         </div>
         <div id="ai" className="g-google">
           <h3>AI 부르기</h3>
@@ -231,6 +232,21 @@ const r = await fetch(\`\${Deno.env.get('SUPABASE_URL')}/functions/v1/hub-ai\`, 
 const { ok, provider, model, text, usage, error } = await r.json();
 // usage = { input_tokens, output_tokens, total_tokens }`}</C>
           <p className="muted">여러 번 주고받으려면 <code>messages: [{`{ role: 'user', content: '…' }`}]</code> 를 쓰세요 (role 은 user·assistant, system 은 <code>system</code> 칸). 토큰을 브라우저·저장소·로그에 넣지 마세요.</p>
+        </div>
+        <div id="groups" className="g-google">
+          <h3>학교 그룹·명부</h3>
+          <p>'이 사람이 교직원·고등부·10학년·정보동아리인가'는 <b>앱마다 명부를 만들지 말고 허브에 물어보세요.</b> 명부는 관리자가 허브 → 👥 그룹·명부 에서 한 번만 관리하고, 앱은 <code>hub-directory</code> 로 읽습니다. 앱 신분은 <b>이미 있는 <code>&lt;접두어&gt;MAIL_TOKEN</code> 또는 <code>AI_TOKEN</code></b> 으로 증명하므로 새 토큰을 발급할 필요가 없습니다.</p>
+          <C>{`// supabase/functions/library-fn/index.ts  (서버 함수 안에서만)
+import { checkHubGroups, hubGroupMembers } from './lib/hub.ts';
+
+// 이 사람이 10학년인지, 정보동아리 부원인지
+const me = await checkHubGroups('student@bmrschool.org', ['10학년', '정보동아리']);
+if (me.asked[0]?.member) { /* 10학년이 맞음 */ }
+// me.member_of = ['grade-10'] · me.leader_of = [] · me.roles = { 'grade-10': 'member' }
+
+// 그룹 구성원 메일 목록 (최대 1,000명)
+const { members } = await hubGroupMembers('grade-10');`}</C>
+          <p className="muted">그룹은 이름(한글, 예: <code>10학년</code>)과 주소 이름(폴더 이름, 예: <code>grade-10</code>)을 함께 가집니다. 앱은 둘 중 아무거나로 물어볼 수 있어요. 앱이 <b>활성</b>일 때만 부를 수 있고, 조회·변경은 감사 기록에 남습니다(메일 주소 값은 남기지 않고 몇 명인지만).</p>
         </div>
         <div id="selfservice" className="g-google">
           <h3>🧰 개발자 셀프서비스 (관리자에게 부탁하지 않고 직접)</h3>

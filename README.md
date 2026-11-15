@@ -44,6 +44,8 @@
 | `/hub/account` | 내 계정 | 로그인한 사람 |
 | `/hub/requests` | 앱 신청 (관리자는 전체 신청 검토) | 개발자 · 관리자 |
 | `/hub/status` | 운영 상태 (매시 자동 점검) | 개발자 · 관리자 |
+| `/hub/monitor` | 📊 운영 현황 — 앱별 `/health` 실시간·24시간 메일/AI 사용량·최근 오류 | 관리자 |
+| `/hub/groups` | 👥 그룹·명부 — 교직원·학년·동아리 소속과 그룹 공용 파일 폴더 | 관리자 |
 | `/hub/db` | 앱별 DB 접속 정보 모아 보기 | 개발자 · 관리자 |
 | `/hub/members` | 사용자 관리(역할·비밀번호·사용 중지·삭제) | 관리자 |
 | `/hub/audit` | 감사 기록(승인·생성·권한·비밀번호·배포) | 관리자 |
@@ -221,6 +223,13 @@ await supabase.auth.signOut({ scope: 'local' });   // 이 앱에서만 (그냥 s
 
 버킷은 **비공개**이고, 로그인한 사람은 `<내 아이디>/…` 폴더에 올릴 수 있습니다. **파일 경로(키)에 한글은 쓸 수 없어요** — 영문·숫자로 이름을 바꿔 올리고 원래 이름은 표에 따로 저장하세요. 한 파일 10MB 까지입니다.
 
+**여러 사람이 함께 쓰는 파일**은 공용 버킷 `bmr-files` 에 둡니다. 경로의 첫 칸이 **그룹 주소 이름**이라서, 로그인한 사람은 **자기가 속한 그룹 폴더만** 보고 올릴 수 있습니다(그룹장은 그 그룹 파일을 지울 수도 있음). 그룹 명부는 허브 → 👥 그룹·명부 에서 관리합니다.
+
+```js
+await supabase.storage.from('bmr-files').upload('grade-10/현장학습-안내.pdf', file);   // 우리 그룹 폴더
+const { data } = await supabase.storage.from('bmr-files').list('grade-10');
+```
+
 ### 3-11. 배포 — push 하면 끝
 
 - **화면**: `main` 브랜치에 push 하면 GitHub Actions 가 빌드해서 **1~2분 뒤** 앱 주소에 반영합니다. 저장소의 '준비 중' 페이지(`index.html`)를 내 화면으로 바꾸면 됩니다.
@@ -248,7 +257,7 @@ await supabase.auth.signOut({ scope: 'local' });   // 이 앱에서만 (그냥 s
 - **토큰은 직접 발급합니다.** 내 서비스 → 앱 정보 창의 **✉️ 앱 메일** 에서 **메일 토큰 발급**을 누르면 `<접두어>MAIL_TOKEN` 이 함수 비밀값에 들어가고 해시만 서버에 남습니다(값은 다시 볼 수 없음). **새 앱은 승인 때 자동으로 발급**됩니다. 잊어버렸거나 다른 사람이 알게 되었으면 **재발급**하세요 — 예전 토큰은 바로 무효가 됩니다. 같은 칸에서 한도 사용량과 최근 발송 결과를 볼 수 있습니다.
 - 앱이 **활성 상태**가 아니면 보낼 수 없습니다. 본문은 남기지 않고 제목·받는 사람 수·결과만 감사 기록에 남습니다.
 - 선택: `reply_to`(회신 주소), `from_name`(표시 이름, 기본은 앱 이름).
-- 시작 틀의 `supabase/functions/library-fn/mail.ts` 에 `sendMail()` 도우미가 들어 있습니다. 토큰을 브라우저·저장소·로그에 넣지 마세요.
+- 시작 틀의 `supabase/functions/library-fn/lib/hub.ts` 에 `sendHubMail()` 이 들어 있습니다 (예전 `mail.ts` 의 `sendMail()` 은 같은 것을 다시 내보냅니다). 토큰을 브라우저·저장소·로그에 넣지 마세요.
 
 ### 3-14. AI 부르기 (hub-ai)
 
@@ -281,6 +290,22 @@ const { ok, provider, model, text, usage, error } = await r.json();
 - **남기지 않는 것**: 프롬프트와 응답 본문은 저장하지 않습니다. 모델·토큰 수·결과·오류만 기록합니다(감사 기록에도 모델과 토큰 수만). 학생 개인정보를 프롬프트에 넣을 때는 목적·보관을 먼저 정하세요.
 - 앱이 **일시 중지·종료** 상태이거나 관리자가 AI 사용을 멈추면 부를 수 없습니다. 관리자는 앱별로 **사용 켜기/멈추기**와 허용 모델·한도를 바꿀 수 있습니다.
 - 오류는 한국어로 돌려줍니다: 토큰 없음/틀림 401 · 권한·허용 모델·사용 중지 403 · 한도 429 · 업체 거절·응답 없음 502 · 키 미등록·설정 없음 503.
+
+### 3-15. 학교 그룹·명부 (hub-directory)
+
+'이 사람이 교직원·고등부·10학년·정보동아리인가'는 **앱마다 명부를 만들지 말고 허브에 물어보세요.** 명부는 관리자가 허브 → **👥 그룹·명부** 에서 한 번만 관리하고, 앱은 `hub-directory` 로 읽습니다.
+
+```ts
+// 앱 서버 함수 안에서 (lib/hub.ts 의 checkHubGroups)
+const me = await checkHubGroups('student@bmrschool.org', ['10학년', '정보동아리']);
+if (me.asked[0]?.member) { /* 10학년이 맞음 */ }
+// me.member_of = ['grade-10'] · me.leader_of = [] · me.roles = { 'grade-10': 'member' }
+```
+
+- 앱 신분은 **이미 있는 `<접두어>MAIL_TOKEN` 또는 `<접두어>AI_TOKEN`** 으로 증명합니다 — 새 토큰을 발급할 필요가 없습니다.
+- 액션: `check`(소속 확인) · `list_groups`(그룹 목록·구성원 수·폴더 이름) · `members`(그룹 구성원 메일, 최대 1,000명) · `me`(사람이 자기 소속 보기). 그룹을 고치는 것은 관리자만.
+- 그룹은 이름(한글 가능, 예: `10학년`)과 주소 이름(폴더 이름, 예: `grade-10`)을 함께 가집니다. 앱은 둘 중 아무거나로 물어볼 수 있습니다.
+- 앱이 **활성 상태**일 때만 부를 수 있고, 앱의 조회와 관리자의 변경은 감사 기록에 남습니다(메일 주소 값은 남기지 않고 몇 명인지만).
 
 ### 3-15. 공용 주소에서 꼭 지킬 규칙
 
@@ -374,6 +399,7 @@ npm run dev                    # http://localhost:5173
 | `npm run preview` | 빌드 결과 미리 보기 (`http://localhost:4173`) |
 | `npm run migrate` | `supabase/migrations/*.sql` 을 순서대로 적용 (Management API) |
 | `node scripts/sql.mjs "select 1"` | 운영 DB 에 SQL 한 번 (`-f 파일.sql` 도 가능) |
+| `node scripts/deploy-hub.mjs` | **허브 함수를 한 번에 배포** (열쇠 있는 함수는 열쇠까지 넣어서). `--only a,b` · `--migrate` · `--dry-run` |
 | `node scripts/deploy-fn.mjs <함수이름>` | 허브 함수 하나 배포 (배포 기록은 감사 기록 `hub:deploy`) |
 | `node scripts/setup-provision.mjs` | 열쇠 만들기 + 관리 토큰 암호문 저장 + 핵심 5개 함수 배포 |
 | `node scripts/setup-mail.mjs` | 메일 비밀값·앱별 토큰 준비 + `hub-mail` 배포 + Auth SMTP + `--test` 시험 발송 |
@@ -406,7 +432,7 @@ SUPABASE_ACCESS_TOKEN_DEVAPPS=... node scripts/migrate.mjs   # 또는 npm run mi
 - `supabase/migrations/` 의 `*.sql` 을 **파일 이름 순서**로 적용하고, 적용한 것은 `supabase_migrations.schema_migrations` 에 기록합니다(이미 한 파일은 건너뜀). Supabase CLI `db push` 와 같은 기록표를 씁니다.
 - 마이그레이션은 **한 파일씩 트랜잭션**으로 들어갑니다. 한 파일이 실패하면 그 파일만 되돌아가고 멈춥니다.
 - 새 마이그레이션은 `날짜시각_이름.sql` 로 추가하세요 (`20261114090000_dev_selfservice.sql` 처럼). **이미 적용된 파일은 고치지 마세요** — 다른 환경에 반영되지 않습니다.
-- 주요 마이그레이션: 기본 스키마·보안(RLS)·시드·cron → DB 접속 정보 → 사용자 관리 → 앱 만들기/지우기 → 개발 정보 → 공용 주소 점검 → 자동 배포 → 셀프서비스 → 메일 → 카드 꾸미기 → AI 게이트웨이.
+- 주요 마이그레이션: 기본 스키마·보안(RLS)·시드·cron → DB 접속 정보 → 사용자 관리 → 앱 만들기/지우기 → 개발 정보 → 공용 주소 점검 → 자동 배포 → 셀프서비스 → 메일 → 카드 꾸미기 → AI 게이트웨이 → **그룹·명부 + 그룹 공용 파일 버킷(bmr-files)**.
 
 ### 4-6. Edge Functions
 
@@ -415,7 +441,8 @@ SUPABASE_ACCESS_TOKEN_DEVAPPS=... node scripts/migrate.mjs   # 또는 npm run mi
 | `hub-provision` | 신청 승인 시 개발 환경 만들기(DB·버킷·함수·저장소·Pages·허브 등록 + 메일·AI 토큰 발급·담당자 GitHub 권한 맞추기) | 허브(관리자 로그인 토큰). 관리자 역할 확인 + 허용 목록(`guard.ts`) 밖의 외부 호출 금지 + 한 번에 하나 + 시간당 횟수 제한 |
 | `hub-deprovision` | 앱 삭제 — **먼저 전부 백업**한 뒤 저장소·함수·비밀값·버킷·DB·Vault·허브 행 삭제 | 허브(관리자) |
 | `hub-dbcred` | DB 접속 정보 1회 발급·재발급, 담당자 가입 초대 메일 | 허브(담당자·관리자) |
-| `hub-devtools` | 개발자 셀프서비스 — 비밀값 넣기/지우기, 추가 함수 지우기, 로그 보기, 자동 배포 요청, **메일 토큰 발급·상태·한도·최근 발송**, **AI 토큰 발급·상태·허용 모델·한도·최근 호출**(설정 변경은 관리자) | 허브(담당자·관리자). 비밀값 값·메일·AI 토큰 값은 DB·로그에 남기지 않음 (해시만) |
+| `hub-devtools` | 개발자 셀프서비스 — 비밀값 넣기/지우기, 추가 함수 지우기, 로그 보기, 자동 배포 요청, **메일 토큰 발급·상태·한도·최근 발송**, **AI 토큰 발급·상태·허용 모델·한도·최근 호출**(설정 변경은 관리자), **`ops_overview`**(관리자 전체 운영 현황) | 허브(담당자·관리자). 비밀값 값·메일·AI 토큰 값은 DB·로그에 남기지 않음 (해시만) |
+| `hub-directory` | 학교 그룹·명부 읽기 — 앱이 '이 사람이 10학년인가'를 묻고, 사람은 내 소속을 봄 (그룹 만들기·고치기는 관리자) | 앱 서버 함수(`<접두어>MAIL_TOKEN`·`AI_TOKEN`) 또는 허브 로그인. 열쇠(_key.ts) 없이 배포 |
 | `hub-fn-deploy` | 앱 저장소 `main` push 때 그 앱 함수 자동 배포 | 앱 저장소 GitHub Actions — **GitHub OIDC 토큰**을 직접 검증(서명·저장소·워크플로 이름) |
 | `hub-checks` | 앱 저장소가 보낸 '공용 주소 점검' 결과 받기 | 앱 저장소 GitHub Actions — OIDC 검증 |
 | `hub-health` | 운영 중 앱 주소를 열어 보는 점검 | pg_cron(매시) 의 Vault 비밀값, 또는 관리자의 '지금 점검' |
@@ -429,16 +456,22 @@ SUPABASE_ACCESS_TOKEN_DEVAPPS=... node scripts/migrate.mjs   # 또는 npm run mi
 ### 4-7. 함수 배포
 
 ```bash
-# 처음 준비(열쇠·암호문 비밀값 저장 + provision/deprovision/fn-deploy/devtools/mail/ai 배포)
+# 허브 함수를 한 번에 (권장) — 열쇠(_key.ts)를 쓰는 함수에 열쇠를 넣어 배포하고 /health 까지 확인
+node scripts/deploy-hub.mjs
+
+# 마이그레이션까지 함께 (아직 안 한 파일만, scripts/migrate.mjs 가 함)
+node scripts/deploy-hub.mjs --migrate
+
+# 고른 함수만 · 무엇을 올릴지만 보기
+node scripts/deploy-hub.mjs --only hub-devtools,hub-directory
+node scripts/deploy-hub.mjs --dry-run
+
+# 처음 준비(열쇠·암호문 비밀값 저장 + 핵심 함수 배포)
 node scripts/setup-provision.mjs
-
-# 하나만 다시 배포
-node scripts/setup-provision.mjs --deploy --only hub-devtools
-
-# 열쇠가 없는 함수 하나만 배포 (스크립트가 바뀐 경우)
-node scripts/deploy-fn.mjs hub-checks
 ```
 
+- `deploy-hub.mjs` 는 **열쇠를 새로 만들지 않습니다.** `.secrets/hub-provision.key` 가 없으면 멈춥니다 — 새 열쇠로 배포하면 이미 배포된 함수가 암호문(`BMR_MGMT_TOKEN`·`BMR_GH_TOKEN`·업체 키)을 풀지 못하기 때문입니다. 처음 준비는 `setup-provision.mjs` 가 합니다.
+- `_key.ts` 를 import 하는 함수만 '열쇠 있는 함수'로 보고, 그 함수들에는 배포본에만 열쇠를 넣습니다(`hub-directory`·`hub-checks`·`hub-health`·`hub-users`·`hub-favicon`·`hub-dbcred` 는 열쇠 없이 배포).
 - `setup-provision.mjs` 는 `.secrets/hub-provision.key`(이 컴퓨터에만, git 제외)를 만들고, `SUPABASE_ACCESS_TOKEN_DEVAPPS`·`GITHUB_BMR_APPS_TOKEN`(과 있으면 `GMAIL_APP_PASSWORD`·`RESEND_API_KEY`)을 **AES-GCM 암호문**으로 함수 비밀값에 넣습니다. 푸는 열쇠는 배포본 `_key.ts` 에만 있습니다.
 - 열쇠를 새로 만들면(`--rotate-key`) 기존 암호문을 풀 수 없으므로 토큰을 다시 넣어야 합니다.
 - 배포에 성공하면 감사 기록에 `hub:deploy`(함수·버전·커밋)가 남습니다.
@@ -457,7 +490,7 @@ node scripts/deploy-fn.mjs hub-checks
 
 | 스크립트 | 확인하는 것 | 성격 |
 |---|---|---|
-| `node scripts/test-selfservice-rules.mjs` | 셀프서비스 규칙만 — 비밀값 이름 접두어·다른 앱 이름 공간·추가 함수 이름·로그 SQL·비밀값 가리기·메일 토큰 이름/주소/상태/한도·AI 토큰 이름/상태/모델 해석/허용 목록/한도 | **네트워크 없음** (안전) |
+| `node scripts/test-selfservice-rules.mjs` | 셀프서비스·그룹·운영 현황 규칙 — 비밀값 이름 접두어·다른 앱 이름 공간·추가 함수 이름·로그 SQL·비밀값 가리기·메일 토큰 이름/주소/상태/한도·AI 토큰 이름/상태/모델 해석/허용 목록/한도 · 그룹 이름·주소·종류·메일 정리·소속 판정 · ops 집계·/health 판정 · `deploy-hub` 인자·함수 찾기(열쇠 목록) · 시작 틀 `lib/hub.ts` | **네트워크 없음** (안전) |
 | `node scripts/test-fn-deploy.mjs` | 자동 배포 함수가 토큰 없음·엉터리·서명 없는·위조 서명 토큰을 모두 거부하는지 | 아무것도 배포하지 않음 |
 | `node scripts/test-hub-provision.mjs` | 시험 앱 `zztest-auto` 를 실제로 만들고 단계·결과 확인 | **실제 생성** · 정리 `--cleanup` |
 | `node scripts/test-hub-deprovision.mjs` | `zztest-del` 을 만들고 데이터·파일을 넣은 뒤 백업→삭제 확인 (기존 앱은 건드리지 않고 비교만) | **실제 생성·삭제** · 정리 `--cleanup` |
@@ -471,6 +504,8 @@ node scripts/deploy-fn.mjs hub-checks
 
 ### 4-10. 운영
 
+- **운영 현황(📊)**: 관리자 화면에서 앱별 `/health`(2.5초 제한·병렬) · 24시간 메일/AI 사용량 · 최근 오류 20건을 한 번에 봅니다. `hub-devtools` 의 `ops_overview` 가 만들고 10초 동안 결과를 기억합니다(연속 새로고침으로 앱을 두들기지 않게).
+- **그룹·명부(👥)**: 교직원·학년·동아리 소속을 관리합니다. 앱은 `hub-directory` 로 읽기만 하므로, 명부를 앱마다 다시 만들 필요가 없습니다. 그룹 폴더(`bmr-files/<그룹 주소>/`)는 그 그룹 구성원만 보고 올릴 수 있습니다.
 - **운영 상태 점검**: pg_cron 이 매시 정각에 `hub-health` 를 부릅니다. 응답 200~399면 정상, **한 번 실패하면 '확인 중'**, **2번 연속 실패하면 '장애'**. 기록은 30일 보관하고 매일 03:40 에 지웁니다. 관리자는 화면에서 **지금 점검**을 눌러 직접 돌릴 수 있습니다.
 - **앱 삭제**: 관리자가 지우면 `hub-backups` 버킷에 허브 기록·DB 구조와 데이터·버킷 파일·서버 함수·저장소 zip 을 **먼저 백업**하고, 그다음 지웁니다. 중간에 멈추면 감사 기록 화면의 삭제 목록에서 **이어서** 할 수 있습니다. 백업은 서명된 10분짜리 링크로 내려받습니다. 가볍게 숨기고 싶으면 상태를 **종료**로만 바꾸면 됩니다(되살릴 수 있음).
 - **감사 기록**: 승인·생성·담당자 권한·DB 비밀번호 발급·함수 비밀값(이름만)·자동 배포 켜기·삭제·사용자 역할 변경이 모두 남습니다.

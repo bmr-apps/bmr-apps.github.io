@@ -9,6 +9,8 @@ import { MembersPage } from './pages/Members';
 import { AuditPage } from './pages/Audit';
 import { DbCredPage } from './pages/DbCred';
 import { AccountPage } from './pages/Account';
+import { MonitorPage } from './pages/Monitor';
+import { GroupsPage } from './pages/Groups';
 import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
@@ -113,10 +115,25 @@ export function App() {
   else if (path === '/hub/requests') page = <StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/tokens') page = <div className="card narrow center"><div className="logo big">🧾</div><h2>토큰 기록은 없어졌습니다</h2><p className="muted">DB 비밀번호 받기·사용자 관리 같은 기록은 이제 감사 기록에 남습니다.</p>{ctx.isAdmin ? <Link to="/hub/audit" className="btn">감사 기록 보기</Link> : <Link to="/hub/apps" className="btn">대시보드로</Link>}</div>;
   else if (path === '/hub/status') page = <StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>;
+  else if (path === '/hub/monitor') page = ctx.isAdmin ? <MonitorPage ctx={ctx} /> : <AdminOnly ctx={ctx} />;
+  else if (path === '/hub/groups') page = ctx.isAdmin ? <GroupsPage ctx={ctx} /> : <AdminOnly ctx={ctx} />;
   else if (path === '/hub/members') page = <MembersPage ctx={ctx} />;
   else if (path === '/hub/audit') page = <AuditPage ctx={ctx} />;
   else page = <div className="card narrow center"><div className="logo big">🧭</div><h2>페이지를 찾을 수 없습니다</h2><p className="muted">주소({path})에 해당하는 앱이 아직 배포되지 않았을 수 있습니다.</p><Link to="/" className="btn">처음으로</Link></div>;
   return <Shell ctx={ctx} path={path}>{page}</Shell>;
+}
+
+/** 관리자 전용 화면: 그 밖의 역할에게는 안내만 보여 준다 */
+function AdminOnly({ ctx }: { ctx: Ctx }) {
+  return (
+    <div className="card narrow center">
+      <div className="logo big">🔒</div>
+      <h2>관리자만 볼 수 있는 화면입니다</h2>
+      <p>필요하면 관리자에게 요청하세요.</p>
+      <p className="muted">{ctx.me?.email}</p>
+      <Link to="/hub/apps" className="btn">대시보드로</Link>
+    </div>
+  );
 }
 
 /** 개발자 전용 화면: 일반 사용자에게는 안내만 보여 준다 */
@@ -160,7 +177,9 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
       { to: '/hub/status', icon: '📡', label: '운영 상태', sub: '매시 자동 점검', show: true, badge: c?.healthBad, tone: 'red' },
     ]],
     ['관리자', [
-      { to: '/hub/members', icon: '👥', label: '사용자 관리', sub: '역할·비밀번호·삭제', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
+      { to: '/hub/monitor', icon: '📊', label: '운영 현황', sub: '앱 상태·메일·AI 사용량', show: ctx.isAdmin },
+      { to: '/hub/groups', icon: '👥', label: '그룹·명부', sub: '교직원·학년·동아리 소속', show: ctx.isAdmin },
+      { to: '/hub/members', icon: '🧑‍🎓', label: '사용자 관리', sub: '역할·비밀번호·삭제', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
       { to: '/hub/audit', icon: '🧾', label: '감사 기록', sub: '승인·생성·권한·비밀번호 기록', show: ctx.isAdmin },
     ]],
   ];

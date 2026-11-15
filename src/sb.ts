@@ -136,6 +136,41 @@ export type DevMailRes = {
 export const DEV_REQ_KIND: Record<DevRequest['kind'], string> = { fn_auto_deploy: '서버 함수 자동 배포 켜기' };
 export const DEV_REQ_STATUS: Record<DevRequest['status'], string> = { pending: '대기 중', approved: '승인', rejected: '반려', canceled: '취소' };
 
+// ---------- 운영 현황 (hub-devtools ops_overview, 관리자 전용) ----------
+export type OpsMail = { sent: number; error: number; denied: number };
+export type OpsAi = { ok: number; error: number; denied: number; tokens: number };
+/** /health 결과: ok 정상 · warn 함수는 떴지만 DB 연결 안 됨 · down 응답 없음/오류 */
+export type OpsHealth = { state: 'ok' | 'warn' | 'down'; http: number | null; ms: number; db: boolean; mail_ready: boolean; ai_hub: boolean };
+export type OpsApp = { id: number; slug: string; name: string; status: Status; url: string; mail: OpsMail; ai: OpsAi; health: OpsHealth | null };
+export type OpsError = { src: 'mail' | 'ai' | 'audit' | string; at: string; slug: string; status: string; detail: string; extra: string };
+export type OpsOverview = {
+  ok: true; at: string; window_hours: number; cached?: boolean;
+  apps: OpsApp[];
+  totals: { apps_total: number; apps_active: number; apps_problem: number; mail_sent: number; mail_failed: number; ai_calls: number; ai_tokens: number; ai_failed: number; errors: number };
+  recent_errors: OpsError[]; errors_ready: boolean; mail_ready: boolean; ai_ready: boolean;
+  probe: { timeout_ms: number; probed: number; skipped: number; took_ms: number };
+};
+/** 전체 앱 운영 현황 (관리자만) */
+export const opsOverview = (session: Session) => devtools<OpsOverview>(session, 'ops_overview');
+
+// ---------- 학교 그룹·명부 (Edge Function hub-directory) ----------
+export type DirGroupKind = 'grade' | 'class' | 'club' | 'staff' | 'custom';
+export type DirGroup = { id: number; slug: string; name: string; kind: DirGroupKind | string; kind_label: string; description: string; members: number; file_folder: string };
+export type DirMember = { email: string; role: 'leader' | 'member'; added_at: string };
+export type DirGroupList = { ok: true; groups: DirGroup[]; kinds: { kind: string; label: string }[]; file_bucket: string; note: string };
+export type DirMembers = { ok: true; group: DirGroup; truncated: boolean; members: DirMember[] };
+export type DirMe = { ok: true; user_email: string; groups: { slug: string; name: string; kind: string; role: 'leader' | 'member' }[]; member_of: string[]; leader_of: string[]; roles: Record<string, 'leader' | 'member'> };
+/** 그룹·명부 (hub-directory). 허브 로그인 토큰으로 부른다 — 관리자만 고칠 수 있다 */
+export async function directoryApi<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-directory`, {
+    method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ action, ...body }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error || `요청에 실패했습니다 (HTTP ${r.status}).`);
+  return j as T;
+}
+
 /** 앱 AI 상태 (hub-devtools ai_status) — 업체 키·토큰 값은 서버가 돌려주지 않는다 */
 export type DevAiProvider = 'gemini' | 'openai' | 'anthropic' | 'xai';
 export type DevAiLog = { at: string; provider: string; model: string; input_tokens: number; output_tokens: number; total_tokens: number; status: 'ok' | 'denied' | 'error' | string; error: string; actor: string };
