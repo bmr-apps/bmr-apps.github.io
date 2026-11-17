@@ -274,9 +274,8 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           </nav>
           <div className="side-foot">
             <Link to="/hub/account" className={`me${path === '/hub/account' ? ' on' : ''}`} title="내 계정 · 비밀번호 바꾸기" aria-label={`내 계정: ${name}`}><span className="avatar">{(name || '?').slice(0, 1)}</span><span className="me-txt"><b>{name}</b><small>{ctx.me ? ROLE_LABEL[ctx.me.role] : ''} · {ctx.session?.user.email}</small></span><span className="me-go" aria-hidden="true">›</span></Link>
-            {/* 상단바에서 걷어 낸 검색·테마는 여기서 그대로 쓸 수 있다 (검색은 Ctrl+K 도 됨) */}
+            {/* 검색은 상단바(Ctrl+K)에 있으니 사이드바에는 테마 바꾸기만 둔다 */}
             <div className="side-tools">
-              <button type="button" className="ghost small" onClick={() => { setPal(true); setMenu(false); }} aria-label="검색 (Ctrl+K)">🔎 검색</button>
               <button type="button" className="ghost small" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️ 밝게' : '🌙 어둡게'}</button>
             </div>
             <button type="button" className="ghost small side-logout" onClick={logout}>🚪 로그아웃</button>
@@ -289,8 +288,12 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           {inHub && <button className="icon-btn burger" aria-label="메뉴 열기" onClick={() => setMenu(true)}>☰</button>}
           {!inHub && <Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>}
           {inHub ? <div className="greet"><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></div> : <div className="grow" />}
-          {/* 상단바에는 관리 허브·로그인(로그아웃)만 둔다 — 검색·테마는 사이드바·푸터, 쪽지·알림은 허브 메뉴 */}
+          {/* 상단바: 검색 + 관리 허브·로그인(로그아웃) — 쪽지·알림은 허브 메뉴, 테마는 사이드바·푸터에 있다 */}
           <div className="top-actions">
+            {/* 넓은 화면은 🔎 + '검색' + Ctrl K 힌트, 좁은 화면(≤640px)은 🔎 아이콘만 — 상단바는 어디서나 한 줄 */}
+            <button type="button" className="search-btn ghost" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)" title="검색 (Ctrl+K)">
+              <span className="s-ico" aria-hidden="true">🔎</span><span className="s-txt">검색</span><kbd className="s-kbd">Ctrl K</kbd>
+            </button>
             {ctx.session ? <>
               {!inHub && <Link to="/hub/apps" className="btn">관리 허브</Link>}
               {!inHub && <button type="button" className="ghost" onClick={logout} title="로그아웃">로그아웃</button>}

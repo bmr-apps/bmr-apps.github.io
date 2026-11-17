@@ -270,14 +270,22 @@ ok(appSrc.includes('tabs.forEach((t) => list.push') && !appSrc.includes('if (ctx
 ok(appSrc.includes('개발자 승인 후 이용할 수 있어요') && appSrc.includes('<Link to="/hub/apps" className="btn">서비스 둘러보기</Link>'), '일반 사용자가 개발 화면에 들어오면: 승인 안내 + 둘러보기로');
 ok(/{ to: '\/hub\/requests'[^}]*show: ctx\.isStaff/.test(appSrc) && /{ to: '\/hub\/status'[^}]*show: ctx\.isStaff/.test(appSrc), '사이드바 운영 메뉴는 개발자·관리자에게만');
 ok(appSrc.includes('<Link to="/hub/apps" className="btn">관리 허브</Link>') && appSrc.includes('<Link to="/hub/apps">관리 허브</Link>'), '헤더·푸터의 관리 허브 링크는 로그인한 사람이면 누구나');
-// 상단바: 관리 허브·로그인(로그아웃) 둘만, 나머지 아이콘은 걷어 낸다 (넓은 화면·모바일 모두 한 줄)
+// 상단바: 검색 + 관리 허브·로그인(로그아웃), 나머지 아이콘은 그대로 빠져 있다 (넓은 화면·모바일 모두 한 줄)
 const headerSrc = appSrc.slice(appSrc.indexOf('<header className="top">'), appSrc.indexOf('</header>'));
-ok(headerSrc.length > 200 && !headerSrc.includes('className="search"') && !headerSrc.includes('chat-btn') && !headerSrc.includes('NotificationBell')
-  && !headerSrc.includes('<Clock />') && !headerSrc.includes('toggleTheme'), '상단바에서 검색·쪽지·알림 종·시계·테마 아이콘 제거', headerSrc.length);
-ok(headerSrc.includes('관리 허브') && headerSrc.includes('로그인') && headerSrc.includes('로그아웃') && headerSrc.includes('className="top-actions"'), '상단바 오른쪽: 관리 허브 + 로그인(로그아웃)만');
-ok(appSrc.includes('className="side-tools"') && appSrc.replace(/\s+/g, ' ').includes('aria-label="검색 (Ctrl+K)"') && appSrc.replace(/\s+/g, ' ').includes('onClick={toggleTheme}'), '걷어 낸 검색·테마는 사이드바에서 그대로 (검색은 Ctrl+K)');
+const topActs = headerSrc.slice(headerSrc.indexOf('className="top-actions"'));
+ok(headerSrc.length > 200 && topActs.includes('aria-label="검색 (Ctrl+K)"') && topActs.includes('onClick={() => setPal(true)}')
+  && !headerSrc.includes('chat-btn') && !headerSrc.includes('NotificationBell')
+  && !headerSrc.includes('<Clock />') && !headerSrc.includes('toggleTheme'), '상단바: 검색 버튼은 되살리고 쪽지·알림 종·시계·테마 아이콘은 그대로 없음', headerSrc.length);
+ok(topActs.indexOf('aria-label="검색 (Ctrl+K)"') < topActs.indexOf('className="btn"'), '검색 버튼은 상단 오른쪽 버튼 자리(.top-actions)의 맨 앞');
+ok(topActs.includes('관리 허브') && topActs.includes('로그인') && topActs.includes('로그아웃'), '상단바 오른쪽: 검색 + 관리 허브 + 로그인(로그아웃)');
+const sideTools = appSrc.slice(appSrc.indexOf('className="side-tools"'), appSrc.indexOf('side-logout'));
+ok(sideTools.length > 0 && sideTools.includes('onClick={toggleTheme}') && !sideTools.includes('setPal(true)'), '사이드바 아래에는 테마 바꾸기만 (상단바 검색과 중복되지 않게)');
 const cssSrc = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
 ok(/\.top-actions \{[^}]*flex: none/.test(cssSrc) && /\.top-actions > \* \{[^}]*white-space: nowrap/.test(cssSrc), '상단 버튼 자리는 줄어들지 않고 글자도 줄바꿈하지 않는다');
+ok(/\.top-actions \.search-btn \{[^}]*display: inline-flex/.test(cssSrc), '상단바 검색은 🔎 + 라벨 + Ctrl K 힌트를 가진 버튼');
+const narrowCss = cssSrc.slice(cssSrc.indexOf('@media (max-width: 640px)'));
+ok(narrowCss.length > 0 && /\.top-actions \.search-btn \{ width: 38px; height: 38px; padding: 0;/.test(narrowCss)
+  && narrowCss.includes('.top-actions .search-btn .s-txt, .top-actions .search-btn .s-kbd { display: none; }'), '좁은 화면(≤640px)에서는 글자·힌트를 숨기고 38px 🔎 아이콘 버튼만');
 ok((appSrc.match(/useCounts\(!!session && isStaff, isAdmin, me\?\.email/g) ?? []).length === 1 && appSrc.includes('scopeToOwned((a.data ?? []) as Counts'), '요약 숫자도 개발자는 담당 앱만 셈');
 const staSrc = readFileSync(new URL('../src/pages/Status.tsx', import.meta.url), 'utf8');
 ok(staSrc.includes('ownedAppIds') && staSrc.includes('scopeToOwned') && staSrc.includes("sb.from('app_owners')"), '/hub/status: 개발자에게는 담당 앱 점검 결과만');
