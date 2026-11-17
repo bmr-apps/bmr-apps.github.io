@@ -32,7 +32,7 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
           <div className="hero-cta">
             {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하고 시작하기</Link>
               : role === 'staff' || role === 'admin' ? <Link to="/hub/requests" className="btn alt">앱 신청하러 가기</Link>
-              : <Link to="/" className="btn alt">운영 중인 앱 둘러보기</Link>}
+              : <Link to="/hub/apps" className="btn alt">운영 중인 앱 둘러보기</Link>}
             <Link to="/guide/quick" className="btn">⚡ 빠른 시작</Link>
             <a className="btn" href="#signup">1단계부터 읽기</a>
           </div>
@@ -353,7 +353,7 @@ export function QuickStartPage({ ctx }: { ctx: Ctx }) {
           <div className="hero-cta">
             {!ctx.session ? <Link to="/hub/login" className="btn alt">가입하기</Link>
               : staff ? <Link to="/hub/requests" className="btn alt">앱 신청하러 가기</Link>
-              : <Link to="/" className="btn alt">운영 중인 앱 둘러보기</Link>}
+              : <Link to="/hub/apps" className="btn alt">운영 중인 앱 둘러보기</Link>}
             <Link to="/guide" className="btn">전체 가이드</Link>
           </div>
         </div>

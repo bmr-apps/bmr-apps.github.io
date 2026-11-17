@@ -259,20 +259,32 @@ const allApps = [{ id: 1 }, { id: 2 }, { id: 3 }];
 ok(S.scopeToOwned(allApps, true, mineIds).length === 3 && S.scopeToOwned(allApps, false, mineIds).length === 1 && S.scopeToOwned(allApps, false, mineIds)[0].id === 1, '관리자는 전체, 개발자는 담당 앱만');
 ok(S.scopeToOwned(null, true, mineIds).length === 0 && S.scopeToOwned(undefined, false, mineIds).length === 0, '목록이 없으면 빈 목록');
 const appSrc = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-ok(/const inHub = !!ctx\.session && ctx\.isStaff &&/.test(appSrc), '허브 틀(사이드바·헤더 허브)은 개발자 승인 뒤에만');
-ok(appSrc.includes('<StaffOnly ctx={ctx}><AppsPage ctx={ctx} /></StaffOnly>') && appSrc.includes('<StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>')
-  && appSrc.includes('<StaffOnly ctx={ctx}><MonitorPage ctx={ctx} /></StaffOnly>') && appSrc.includes('<StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>'), '허브 화면은 StaffOnly 로 감쌈 (대시보드·운영 상태·운영 현황·앱 신청)');
+ok(/const inHub = !!ctx\.session && ctx\.me\?\.role !== 'disabled' &&/.test(appSrc), '허브 틀(사이드바·둘러보기)은 로그인한 사람이면 누구나 (사용 중지는 제외)');
+ok(appSrc.includes("else if (path === '/hub' || path === '/hub/apps') page = <AppsPage ctx={ctx} />;"), '관리 허브 대시보드는 일반 사용자에게도 열린다');
+ok(appSrc.includes('<StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>')
+  && appSrc.includes('<StaffOnly ctx={ctx}><MonitorPage ctx={ctx} /></StaffOnly>') && appSrc.includes('<StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>')
+  && appSrc.includes('<StaffOnly ctx={ctx}><DbCredPage ctx={ctx} /></StaffOnly>'), '개발 화면(앱 신청·운영 상태·운영 현황·DB)은 StaffOnly 로 계속 잠금');
 ok(appSrc.includes('<AdminRoute ctx={ctx}><GroupsPage ctx={ctx} /></AdminRoute>') && appSrc.includes('<AdminRoute ctx={ctx}><MembersPage ctx={ctx} /></AdminRoute>')
   && appSrc.includes('<AdminRoute ctx={ctx}><AuditPage ctx={ctx} /></AdminRoute>'), '관리자 화면(그룹·명부·사용자 관리·감사 기록)은 AdminRoute');
-ok(appSrc.includes('if (ctx.isStaff) tabs.forEach'), '명령 팔레트의 허브 탭은 개발자 승인 뒤에만');
-ok(appSrc.includes('관리 허브 접근 권한이 없습니다') && appSrc.includes('개발자 승인 후 이용할 수 있어요') && appSrc.includes('<Link to="/" className="btn">메인으로</Link>'), '일반 사용자 안내 카드: 잠금 안내 + 메인으로');
-ok(appSrc.includes('ctx.isStaff ? <Link to="/hub/apps">관리 허브</Link>'), '헤더·푸터의 관리 허브 링크는 개발자에게만');
+ok(appSrc.includes('tabs.forEach((t) => list.push') && !appSrc.includes('if (ctx.isStaff) tabs.forEach'), '명령 팔레트 메뉴는 사이드바와 같은 목록 (일반 사용자도 둘러보기)');
+ok(appSrc.includes('개발자 승인 후 이용할 수 있어요') && appSrc.includes('<Link to="/hub/apps" className="btn">서비스 둘러보기</Link>'), '일반 사용자가 개발 화면에 들어오면: 승인 안내 + 둘러보기로');
+ok(/{ to: '\/hub\/requests'[^}]*show: ctx\.isStaff/.test(appSrc) && /{ to: '\/hub\/status'[^}]*show: ctx\.isStaff/.test(appSrc), '사이드바 운영 메뉴는 개발자·관리자에게만');
+ok(appSrc.includes('<Link to="/hub/apps" className="btn">관리 허브</Link>') && appSrc.includes('<Link to="/hub/apps">관리 허브</Link>'), '헤더·푸터의 관리 허브 링크는 로그인한 사람이면 누구나');
+// 상단바: 관리 허브·로그인(로그아웃) 둘만, 나머지 아이콘은 걷어 낸다 (넓은 화면·모바일 모두 한 줄)
+const headerSrc = appSrc.slice(appSrc.indexOf('<header className="top">'), appSrc.indexOf('</header>'));
+ok(headerSrc.length > 200 && !headerSrc.includes('className="search"') && !headerSrc.includes('chat-btn') && !headerSrc.includes('NotificationBell')
+  && !headerSrc.includes('<Clock />') && !headerSrc.includes('toggleTheme'), '상단바에서 검색·쪽지·알림 종·시계·테마 아이콘 제거', headerSrc.length);
+ok(headerSrc.includes('관리 허브') && headerSrc.includes('로그인') && headerSrc.includes('로그아웃') && headerSrc.includes('className="top-actions"'), '상단바 오른쪽: 관리 허브 + 로그인(로그아웃)만');
+ok(appSrc.includes('className="side-tools"') && appSrc.replace(/\s+/g, ' ').includes('aria-label="검색 (Ctrl+K)"') && appSrc.replace(/\s+/g, ' ').includes('onClick={toggleTheme}'), '걷어 낸 검색·테마는 사이드바에서 그대로 (검색은 Ctrl+K)');
+const cssSrc = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+ok(/\.top-actions \{[^}]*flex: none/.test(cssSrc) && /\.top-actions > \* \{[^}]*white-space: nowrap/.test(cssSrc), '상단 버튼 자리는 줄어들지 않고 글자도 줄바꿈하지 않는다');
 ok((appSrc.match(/useCounts\(!!session && isStaff, isAdmin, me\?\.email/g) ?? []).length === 1 && appSrc.includes('scopeToOwned((a.data ?? []) as Counts'), '요약 숫자도 개발자는 담당 앱만 셈');
 const staSrc = readFileSync(new URL('../src/pages/Status.tsx', import.meta.url), 'utf8');
 ok(staSrc.includes('ownedAppIds') && staSrc.includes('scopeToOwned') && staSrc.includes("sb.from('app_owners')"), '/hub/status: 개발자에게는 담당 앱 점검 결과만');
 const monSrc = readFileSync(new URL('../src/pages/Monitor.tsx', import.meta.url), 'utf8');
 ok(!/if \(!ctx\.isAdmin\) return/.test(monSrc) && monSrc.includes('담당 중인 서비스의 최근 24시간'), '/hub/monitor: 개발자도 열리며 담당 서비스만이라고 알림');
 const appsSrc = readFileSync(new URL('../src/pages/Apps.tsx', import.meta.url), 'utf8');
+ok(appsSrc.includes('운영 중인 서비스를 둘러보세요') && appsSrc.includes('if (!ctx.isStaff)') && appsSrc.includes('<Link to="/hub/chat" className="btn">💬 회원 쪽지</Link>'), '일반 사용자 대시보드: 둘러보기 + 쪽지·알림·가이드 링크');
 ok(appsSrc.includes('(ctx.isAdmin || mineIds.has(a.id)) && <HealthDot'), '대시보드 점검 배지도 개발자는 담당 앱만');
 const guideSrc = readFileSync(new URL('../src/pages/Guide.tsx', import.meta.url), 'utf8');
 ok(!guideSrc.includes("'관리 허브로'"), '가이드: 일반 사용자에게 관리 허브로 보내지 않음');
@@ -430,8 +442,7 @@ ok(chatUi.includes('chatMarkRead') && chatUi.includes('unread'), '쪽지 화면:
 ok(chatUi.includes('PeoplePicker') && chatUi.includes('ROLE_LABEL'), '쪽지 화면: 회원 고르기(이름·역할 배지)');
 ok(chatUi.includes('2000') && chatUi.includes('maxLength={2000}'), '쪽지 화면: 2,000자 상한을 화면에서도 지킴');
 const appS2 = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
-ok(appS2.includes("path === '/hub/chat'" ) && appS2.includes("to: '/hub/chat'") && appS2.includes('useChatUnread'), '허브: /hub/chat 갈래·사이드바·안 읽은 배지');
-ok(appS2.indexOf("path === '/hub/chat'") < appS2.indexOf('<StaffOnly ctx={ctx}><AppsPage'), '쪽지는 개발자 승인 전 일반 사용자도 연다 (StaffOnly 앞)');
+ok(appS2.includes("path === '/hub/chat'") && !appS2.includes('<StaffOnly ctx={ctx}><ChatPage'), '쪽지는 로그인한 사람이면 누구나 (StaffOnly 아님)');
 ok(appS2.includes('<Assistant session={ctx.session}') && appS2.includes('openAssistant'), '허브: 어디서나 도우미를 열 수 있다');
 const asUi = readFileSync(new URL('../src/Assistant.tsx', import.meta.url), 'utf8');
 ok(asUi.includes('askAssistant') && asUi.includes('개인정보') && asUi.includes('개인정보·비밀번호는 넣지 마세요'), '도우미 화면: hub-assistant 호출 + 개인정보 주의 문구');
@@ -561,7 +572,7 @@ ok(pUi.includes('export function NotificationBell') && pUi.includes('export func
 ok(pUi.includes('markAll') && pUi.includes('update({ read_at'), '알림 읽음/모두 읽음');
 ok(pUi.includes('시험 알림') && pUi.includes('홈 화면에 추가'), '안내: 시험 발송·아이폰 홈 화면 추가');
 ok(pUi.includes('setSubscribed(Boolean(await currentSubscription()))') && pUi.includes('on={subscribed}'), '화면의 켜짐/꺼짐은 이 브라우저의 구독 상태 (기기마다 따로)');
-ok(appS2.includes('<NotificationBell session={ctx.session} />') && appS2.includes('useBadge(ctx.session, chat.messages)'), '허브 머리에 🔔 + 배지(쪽지+알림)');
+ok(!appS2.includes('<NotificationBell') && appS2.includes('useBadge(ctx.session, chat.messages)') && appS2.includes("to: '/hub/account', icon: '🔔'"), '알림 종은 상단바에서 빠지고 사이드바 알림 설정·배지로');
 const accUi = readFileSync(new URL('../src/pages/Account.tsx', import.meta.url), 'utf8');
 ok(accUi.includes('<NotifySettings session={ctx.session} />'), '내 계정에 알림 설정');
 ok(chatUi.includes('notifyChat(ctx.session, openId)') && chatUi.includes('<NotifyQuickToggle'), '쪽지: 보낸 뒤 상대에게 알림 + 화면에서 바로 켜고 끄기');

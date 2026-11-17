@@ -113,6 +113,13 @@ a.logo:hover, a.brand-title:hover, a.eyebrow:hover { text-decoration: none; }
 .clock b { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; } .clock span { font-size: 12px; color: var(--muted); font-weight: 600; }
 .icon-btn { flex: none; width: 42px; height: 42px; padding: 0; display: grid; place-items: center; font-size: 18px; background: var(--bg); border: var(--border); color: var(--text); cursor: pointer; box-shadow: none; }
 .icon-btn:hover:not(:disabled) { background: var(--hover); }
+/* 상단 오른쪽 버튼 자리: 관리 허브·로그인(로그아웃) 둘만 — 좁은 화면에서도 줄바꿈하지 않는다 */
+.top-actions { flex: none; display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.top-actions > * { flex: none; white-space: nowrap; }
+.side-tools { display: flex; gap: 6px; margin-top: 6px; }
+.side-tools button { flex: 1 1 0; min-width: 0; padding: 4px 6px; }
+.foot nav .linkbtn.ghost { display: inline-flex; align-items: center; width: fit-content; padding: 0 2px; border: 0; background: none; box-shadow: none; color: var(--text); font-size: 14px; font-weight: 800; letter-spacing: -0.015em; }
+.foot nav .linkbtn.ghost:hover:not(:disabled) { background: var(--hover); color: #000; }
 .burger { display: none; }
 
 /* ---------- 버튼·입력 ---------- */
@@ -126,6 +133,9 @@ button.danger { background: var(--coral); color: #000; border-color: #000; }
 button.danger:hover:not(:disabled) { background: #000; color: var(--coral); }
 button.small { padding: 4px 10px; font-size: 12.5px; }
 [data-theme="dark"] button:not(.ghost):not(.danger):not(.pill):not(.icon-btn):not(.search):not(.link):not(.stat):not(.tile):not(.cmd), [data-theme="dark"] .btn { background: #f5f5f5; color: #000; border-color: #f5f5f5; }
+/* 링크 버튼의 보조 모양 (테두리만) — 상단바·카드의 두 번째 버튼에 쓴다 */
+.btn.ghost { background: var(--bg); color: var(--text); border-color: var(--line); }
+.btn.ghost:hover { background: var(--hover); color: #000; }
 [data-theme="dark"] button:hover:not(:disabled), [data-theme="dark"] .btn:hover { background: var(--hover) !important; color: #000 !important; border-color: var(--hover); }
 label { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; font-weight: 800; margin-bottom: 12px; color: var(--text); }
 label.inline { flex-direction: row; align-items: center; font-weight: 600; gap: 6px; margin: 0; }
@@ -390,6 +400,8 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
   .clock { display: none; }
   .top, .layout.with-side .top { padding: 0 12px; gap: 8px; height: 64px; }
   .layout.with-side .top { padding-left: 12px; }
+  .top-actions { gap: 6px; }
+  .top-actions .btn, .top-actions button { padding: 8px 10px; font-size: 13.5px; }
   .side-brand { padding: 0 16px; height: 64px; }
   main { padding: 20px 16px 32px; }
   .hero { grid-template-columns: 1fr; min-height: 0; }
@@ -404,6 +416,7 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
   .pill { flex: none; }
   .greet { padding-left: 12px; }
   .greet p { display: none; } .greet h1 { font-size: 17px; }
+  .top-actions .btn, .top-actions button { padding: 7px 9px; font-size: 13px; }
   .stat-value { font-size: 32px; }
   .stat { padding: 14px; }
   .hero h2 { font-size: 30px; } .hero p { font-size: 15.5px; }

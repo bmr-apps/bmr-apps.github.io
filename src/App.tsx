@@ -12,10 +12,9 @@ import { AccountPage } from './pages/Account';
 import { MonitorPage } from './pages/Monitor';
 import { GroupsPage } from './pages/Groups';
 import { ChatPage, useChatUnread } from './pages/Chat';
-import { NotificationBell } from './pages/Notify';
 import { useBadge } from './notify';
 import { Assistant, openAssistant } from './Assistant';
-import { Clock, Palette, appIcon, useTheme, type Cmd } from './ui';
+import { Palette, appIcon, useTheme, type Cmd } from './ui';
 import { ownedAppIds, scopeToOwned, type OwnerRef } from './scope';
 
 // 아주 작은 경로 처리 (허브 화면은 /hub/ 아래: 앱 주소 /<slug> 와 겹치지 않게)
@@ -121,7 +120,8 @@ export function App() {
   // 회원 쪽지는 가입한 회원이면 누구나 (개발자 승인 전 일반 사용자도)
   else if (path === '/hub/chat') page = <ChatPage ctx={ctx} />;
   else if (path === '/hub/db') page = <StaffOnly ctx={ctx}><DbCredPage ctx={ctx} /></StaffOnly>;
-  else if (path === '/hub' || path === '/hub/apps') page = <StaffOnly ctx={ctx}><AppsPage ctx={ctx} /></StaffOnly>;
+  // 관리 허브 대시보드는 로그인한 사람이면 누구나 — 일반 사용자는 '서비스 둘러보기'로 쓴다 (운영·관리자 메뉴만 잠금)
+  else if (path === '/hub' || path === '/hub/apps') page = <AppsPage ctx={ctx} />;
   else if (path === '/hub/requests') page = <StaffOnly ctx={ctx}><RequestsPage ctx={ctx} /></StaffOnly>;
   else if (path === '/hub/tokens') page = <StaffOnly ctx={ctx}><div className="card narrow center"><div className="logo big">🧾</div><h2>토큰 기록은 없어졌습니다</h2><p className="muted">DB 비밀번호 받기·사용자 관리 같은 기록은 이제 감사 기록에 남습니다.</p>{ctx.isAdmin ? <Link to="/hub/audit" className="btn">감사 기록 보기</Link> : <Link to="/hub/apps" className="btn">대시보드로</Link>}</div></StaffOnly>;
   else if (path === '/hub/status') page = <StaffOnly ctx={ctx}><StatusPage ctx={ctx} /></StaffOnly>;
@@ -133,15 +133,15 @@ export function App() {
   return <Shell ctx={ctx} path={path}>{page}</Shell>;
 }
 
-/** 일반 사용자(개발자 승인 전): 관리·개발 허브는 통째로 잠긴다 — 메인으로 돌려보낸다 */
+/** 일반 사용자(개발자 승인 전): 개발·운영 화면만 잠근다 — 둘러보기(관리 허브)로 돌려보낸다 */
 function NoHubAccess({ ctx }: { ctx: Ctx }) {
   return (
     <div className="card narrow center">
       <div className="logo big">🔒</div>
-      <h2>관리 허브 접근 권한이 없습니다</h2>
-      <p>개발자 승인 후 이용할 수 있어요. 필요하면 관리자에게 요청하세요.</p>
+      <h2>개발자 승인 후 이용할 수 있어요</h2>
+      <p>앱 신청·운영 상태 같은 개발 기능은 관리자가 <b>개발자</b>로 올린 뒤에 쓸 수 있어요. 운영 중인 앱 둘러보기와 회원 쪽지는 지금도 쓸 수 있습니다.</p>
       <p className="muted">{ctx.me?.email}</p>
-      <Link to="/" className="btn">메인으로</Link>
+      <Link to="/hub/apps" className="btn">서비스 둘러보기</Link>
     </div>
   );
 }
@@ -189,18 +189,18 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const unread = chat.threads;
   const badge = useBadge(ctx.session, chat.messages);
   const c = ctx.counts;
-  // 허브 틀(사이드바)은 개발자 승인을 받은 사람에게만 — 일반 사용자는 메인·가이드·내 계정만 본다
-  const inHub = !!ctx.session && ctx.isStaff && path !== '/' && path !== '/hub/login';
+  // 허브 틀(사이드바·둘러보기)은 로그인한 사람이면 누구나 — 개발·관리 메뉴만 역할에 따라 숨긴다
+  const inHub = !!ctx.session && ctx.me?.role !== 'disabled' && path !== '/' && path !== '/hub/login';
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
       { to: '/guide', icon: '🧭', label: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', show: true },
-      { to: '/hub/apps', icon: '🏠', label: '대시보드', sub: '서비스·담당 개발자', show: true },
+      { to: '/hub/apps', icon: '🏠', label: ctx.isStaff ? '대시보드' : '서비스 둘러보기', sub: ctx.isStaff ? '서비스·담당 개발자' : '운영 중인 앱 둘러보고 열기', show: true },
       { to: '/hub/chat', icon: '💬', label: '회원 쪽지', sub: '가입 회원끼리 1:1 대화', show: true, badge: unread, tone: 'amber' },
       { to: '/hub/account', icon: '🔔', label: '알림 설정', sub: '쪽지·신청 알림 켜기', show: true, badge: badge.notifications, tone: 'red' },
     ]],
     ['운영', [
-      { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·개발자 요청 승인', show: true, badge: c?.reqPending, tone: 'amber' },
-      { to: '/hub/status', icon: '📡', label: '운영 상태', sub: '매시 자동 점검', show: true, badge: c?.healthBad, tone: 'red' },
+      { to: '/hub/requests', icon: '📝', label: '앱 신청', sub: '새 앱 신청·개발자 요청 승인', show: ctx.isStaff, badge: c?.reqPending, tone: 'amber' },
+      { to: '/hub/status', icon: '📡', label: '운영 상태', sub: '매시 자동 점검', show: ctx.isStaff, badge: c?.healthBad, tone: 'red' },
       { to: '/hub/monitor', icon: '📊', label: '운영 현황', sub: ctx.isAdmin ? '앱 상태·메일·AI 사용량' : '담당 서비스 상태·사용량', show: ctx.isStaff },
     ]],
     ['관리자', [
@@ -229,9 +229,8 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     const list: Cmd[] = [];
     list.push({ id: 'home', group: '메뉴', icon: '🌐', title: '메인', sub: '누구나 보는 서비스 모음', run: () => go('/') });
     if (ctx.session && ctx.me?.role !== 'disabled') {
-      // 허브 탭(대시보드·앱 신청·운영 상태·운영 현황)은 개발자 승인 뒤에만
-      if (ctx.isStaff) tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
-      else list.push({ id: 'guide', group: '메뉴', icon: '🧭', title: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', run: () => go('/guide') });
+      // 허브 메뉴(둘러보기 = 누구나, 운영·관리자 = 역할에 따라)는 사이드바와 같은 목록
+      tabs.forEach((t) => list.push({ id: 'tab' + t.to, group: '메뉴', icon: t.icon, title: t.label, sub: t.sub, run: () => go(t.to) }));
       list.push({ id: 'quick', group: '메뉴', icon: '⚡', title: '빠른 시작', sub: '꼭 필요한 단계만 빠르게', run: () => go('/guide/quick') });
       list.push({ id: 'account', group: '메뉴', icon: '👤', title: '내 계정', sub: '허브 로그인 비밀번호 바꾸기', run: () => go('/hub/account') });
       list.push({ id: 'chat', group: '메뉴', icon: '💬', title: '회원 쪽지', sub: '가입 회원끼리 1:1 대화', run: () => go('/hub/chat') });
@@ -275,6 +274,11 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           </nav>
           <div className="side-foot">
             <Link to="/hub/account" className={`me${path === '/hub/account' ? ' on' : ''}`} title="내 계정 · 비밀번호 바꾸기" aria-label={`내 계정: ${name}`}><span className="avatar">{(name || '?').slice(0, 1)}</span><span className="me-txt"><b>{name}</b><small>{ctx.me ? ROLE_LABEL[ctx.me.role] : ''} · {ctx.session?.user.email}</small></span><span className="me-go" aria-hidden="true">›</span></Link>
+            {/* 상단바에서 걷어 낸 검색·테마는 여기서 그대로 쓸 수 있다 (검색은 Ctrl+K 도 됨) */}
+            <div className="side-tools">
+              <button type="button" className="ghost small" onClick={() => { setPal(true); setMenu(false); }} aria-label="검색 (Ctrl+K)">🔎 검색</button>
+              <button type="button" className="ghost small" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️ 밝게' : '🌙 어둡게'}</button>
+            </div>
             <button type="button" className="ghost small side-logout" onClick={logout}>🚪 로그아웃</button>
           </div>
         </aside>
@@ -285,21 +289,23 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
           {inHub && <button className="icon-btn burger" aria-label="메뉴 열기" onClick={() => setMenu(true)}>☰</button>}
           {!inHub && <Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link>}
           {inHub ? <div className="greet"><h1>안녕하세요, {name}님 <span className="wave">👋</span></h1><p>오늘도 BMR APPS를 살펴볼까요?</p></div> : <div className="grow" />}
-          <button className="search" onClick={() => setPal(true)} aria-label="검색 (Ctrl+K)"><span>🔎</span><span className="ph">검색하거나 이동…</span><kbd>Ctrl K</kbd></button>
-          {ctx.session && <Link to="/hub/chat" className="icon-btn chat-btn" title="회원 쪽지" aria-label={`회원 쪽지${unread ? ` · 안 읽은 대화 ${unread}` : ''}`}>💬{unread > 0 && <span className="icon-count">{unread}</span>}</Link>}
-          {ctx.session && <NotificationBell session={ctx.session} />}
-          <Clock />
-          <button className="icon-btn" onClick={toggleTheme} aria-label="테마 바꾸기" title={theme === 'dark' ? '밝은 화면으로' : '어두운 화면으로'}>{theme === 'dark' ? '☀️' : '🌙'}</button>
-          {ctx.session ? <>
-            {!inHub && ctx.isStaff && <Link to="/hub/apps" className="btn">관리 허브</Link>}
-            <button className="icon-btn" onClick={logout} aria-label="로그아웃" title="로그아웃">🚪</button>
-          </> : path !== '/hub/login' && <Link to="/hub/login" className="btn">로그인</Link>}
+          {/* 상단바에는 관리 허브·로그인(로그아웃)만 둔다 — 검색·테마는 사이드바·푸터, 쪽지·알림은 허브 메뉴 */}
+          <div className="top-actions">
+            {ctx.session ? <>
+              {!inHub && <Link to="/hub/apps" className="btn">관리 허브</Link>}
+              {!inHub && <button type="button" className="ghost" onClick={logout} title="로그아웃">로그아웃</button>}
+            </> : path !== '/hub/login' ? <>
+              {path !== '/hub/apps' && path !== '/hub' && <Link to="/hub/apps" className="btn ghost">관리 허브</Link>}
+              <Link to="/hub/login" className="btn">로그인</Link>
+            </> : null}
+          </div>
         </header>
         <main>{children}</main>
         <footer className="foot">
           <div className="foot-in">
             <div className="foot-brand"><Link to="/" className="mark" aria-label="BMR APPS 메인 화면"><span>BMR</span><span>APPS</span></Link><p>별무리 개발자들이 함께 만들고 나누는 공간<small>별무리학교 · apps.bmrschool.net</small></p></div>
-            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.session ? <Link to="/hub/chat">회원 쪽지</Link> : null}{ctx.isStaff ? <Link to="/hub/apps">관리 허브</Link> : ctx.session ? <Link to="/hub/account">내 계정</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
+            <nav aria-label="바로가기"><b>둘러보기</b><Link to="/">메인</Link><Link to="/guide">시작 가이드</Link><Link to="/guide/quick">빠른 시작</Link>{ctx.session ? <Link to="/hub/chat">회원 쪽지</Link> : null}{ctx.session ? <Link to="/hub/apps">관리 허브</Link> : <Link to="/hub/login">로그인 · 가입</Link>}</nav>
+            <nav aria-label="화면 설정"><b>화면</b><button type="button" className="linkbtn ghost" onClick={() => setPal(true)}>🔎 검색 (Ctrl+K)</button><button type="button" className="linkbtn ghost" onClick={toggleTheme}>{theme === 'dark' ? '☀️ 밝은 화면' : '🌙 어두운 화면'}</button>{ctx.session && <Link to="/hub/account">내 계정 · 알림 설정</Link>}</nav>
             {ctx.session && ctx.isStaff && <nav aria-label="개발자 메뉴"><b>개발자</b><Link to="/hub/requests">앱 신청</Link><Link to="/hub/account">내 계정</Link><Link to="/hub/status">운영 상태</Link></nav>}
           </div>
         </footer>

@@ -27,7 +27,7 @@ export function Landing({ ctx }: { ctx: Ctx }) {
           <div className="hero-cta">
             <a className="btn" href="#apps">서비스 둘러보기</a>
             <Link to="/guide" className="btn">개발 시작 가이드</Link>
-            {ctx.isStaff ? <Link to="/hub/apps" className="btn alt">관리 허브</Link> : ctx.session ? <Link to="/hub/account" className="btn alt">내 계정</Link> : <Link to="/hub/login" className="btn alt">로그인 · 가입</Link>}
+            {ctx.session ? <Link to="/hub/apps" className="btn alt">관리 허브</Link> : <Link to="/hub/login" className="btn alt">로그인 · 가입</Link>}
           </div>
         </div>
         {/* 색과 도형만으로 그린 격자 (이모지·글자 없음, CSS 만) */}
@@ -94,9 +94,15 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
     const active = apps.filter((a) => a.status === 'active');
     return (
       <section>
-        <div className="card warn">
-          <h3>개발자 승인 후 이용할 수 있어요</h3>
-          <p>일반 사용자로 가입되었습니다. 앱 신청, DB 접속 정보, 운영 상태는 관리자가 개발자로 올리면 쓸 수 있습니다. 관리자에게 요청하세요.</p>
+        <div className="card">
+          <h3>👋 운영 중인 서비스를 둘러보세요</h3>
+          <p>별무리학교 선생님들이 만든 앱입니다. 카드를 누르면 새 탭에서 바로 열립니다. 회원 쪽지와 알림 설정도 이 허브에서 그대로 쓸 수 있어요.</p>
+          <p className="muted">앱을 직접 만들고 싶다면 관리자에게 <b>개발자</b> 승인을 요청하세요. 승인되면 앱 신청·운영 도구가 함께 열립니다.</p>
+          <div className="row wrap" style={{ marginTop: 12 }}>
+            <Link to="/hub/chat" className="btn">💬 회원 쪽지</Link>
+            <Link to="/hub/account" className="btn ghost">🔔 알림 설정</Link>
+            <Link to="/guide" className="btn ghost">🧭 시작 가이드</Link>
+          </div>
         </div>
         <div className="section-head"><h2>운영 중인 앱 {active.length ? <span className="cnt">{active.length}</span> : null}</h2></div>
         {err && <p className="error" role="alert">{err}</p>}
