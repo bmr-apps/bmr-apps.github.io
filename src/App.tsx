@@ -32,7 +32,7 @@ function usePath() {
 export type Counts = {
   apps: { id: number; slug: string; name: string; url: string; status: Status; card_icon?: string | null }[];
   healthOk: number; healthChecking: number; healthBad: number; healthNone: number;
-  reqPending: number; memPending: number | null;
+  reqPending: number; memTotal: number | null;
 };
 export type Ctx = { session: Session | null; isAdmin: boolean; isStaff: boolean; me: Profile | null; counts?: Counts | null; refreshCounts?: () => void };
 
@@ -48,7 +48,7 @@ function useCounts(enabled: boolean, isAdmin: boolean, email: string, path: stri
         sb.from('app_health_latest').select('app_id, ok, state'),
         sb.from('app_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
         isAdmin ? sb.from('dev_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending') : Promise.resolve(null),
-        isAdmin ? sb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'pending') : Promise.resolve(null),
+        isAdmin ? sb.from('profiles').select('id', { count: 'exact', head: true }) : Promise.resolve(null),
         isAdmin ? Promise.resolve(null) : sb.from('app_owners').select('app_id, email'),
       ]);
       if (!live) return;
@@ -63,7 +63,7 @@ function useCounts(enabled: boolean, isAdmin: boolean, email: string, path: stri
         healthBad: watched.filter((x) => hl.get(x.id) === 'down').length,
         healthNone: watched.filter((x) => !hl.has(x.id)).length,
         reqPending: (r.count ?? 0) + (dr ? dr.count ?? 0 : 0),
-        memPending: m ? m.count ?? 0 : null,
+        memTotal: m ? m.count ?? 0 : null,
       });
     })();
     return () => { live = false; };
@@ -205,7 +205,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
     ]],
     ['관리자', [
       { to: '/hub/groups', icon: '👥', label: '그룹·명부', sub: '교직원·학년·동아리 소속', show: ctx.isAdmin },
-      { to: '/hub/members', icon: '🧑‍🎓', label: '사용자 관리', sub: '역할·비밀번호·삭제', show: ctx.isAdmin, badge: c?.memPending, tone: 'amber' },
+      { to: '/hub/members', icon: '🧑‍🎓', label: '사용자 관리', sub: '전체·허브·앱별', show: ctx.isAdmin },
       { to: '/hub/audit', icon: '🧾', label: '감사 기록', sub: '승인·생성·권한·비밀번호 기록', show: ctx.isAdmin },
     ]],
   ];

@@ -123,7 +123,7 @@ export function AppsPage({ ctx }: { ctx: Ctx }) {
       <div className="stats">
         <Stat tone="amber" icon="📝" label="승인 대기 신청" value={c ? c.reqPending : '–'} sub={ctx.isAdmin ? '검토가 필요한 새 앱 신청' : '내가 낸 신청 중 검토 대기'} onClick={() => go('/hub/requests')} />
         {ctx.isAdmin
-          ? <Stat tone="red" icon="👥" label="가입 승인 대기" value={c?.memPending ?? '–'} sub="역할을 정해야 하는 새 사용자" onClick={() => go('/hub/members')} />
+          ? <Stat tone="blue" icon="👥" label="허브 계정" value={c?.memTotal ?? '–'} sub="앱 이용자 포함 전체 계정" onClick={() => go('/hub/members')} />
           : <Stat tone="blue" icon="🧑‍💻" label="담당 개발자" value={owners.length} sub="등록된 담당자 수" />}
         <Stat tone="green" icon="📡" label="운영 상태" value={c ? <>{c.healthOk}<small>/{watched}</small></> : '–'} sub={c ? (c.healthBad ? `⚠️ 장애 ${c.healthBad}개` : c.healthChecking ? `확인 중 ${c.healthChecking}개 (한 번 실패)` : c.healthNone ? `기록 없음 ${c.healthNone}개` : '모두 정상') : ''} onClick={() => go('/hub/status')} />
         <Stat tone="violet" icon="🧩" label="서비스" value={<>{n('active')}<small>/{apps.length}</small></>} sub={`운영 중 · 준비 중 ${n('preparing')}개`} />

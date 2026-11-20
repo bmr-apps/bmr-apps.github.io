@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import type { Ctx } from '../App';
-import { fmtTime, ROLE_LABEL, usersApi, type HubUser, type Role } from '../sb';
-import { Modal, Pills } from '../ui';
+import { fmtDate, fmtTime, ROLE_LABEL, usersApi, type HubAppSummary, type HubUser, type HubUsersRes, type Role } from '../sb';
+import { appIcon, Modal, Pills } from '../ui';
 
 function Copy({ text, label = '복사' }: { text: string; label?: string }) {
   const [t, setT] = useState(label);
@@ -57,6 +57,7 @@ function ResetDialog({ user, session, onClose, onDone }: { user: HubUser; sessio
 function DeleteDialog({ user, session, onClose, onDone }: { user: HubUser; session: Session; onClose: () => void; onDone: () => void }) {
   const [email, setEmail] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const ok = email.trim().toLowerCase() === user.email.toLowerCase();
+  const apps = user.app_names ?? [];
   const go = async (e: FormEvent) => {
     e.preventDefault(); if (!ok) return; setErr(''); setBusy(true);
     try { await usersApi(session, 'delete', { user_id: user.id, confirm_email: email.trim() }); onDone(); }
@@ -68,6 +69,9 @@ function DeleteDialog({ user, session, onClose, onDone }: { user: HubUser; sessi
       <p><b>{user.name || user.email}</b> ({user.email}) 계정을 삭제할까요? 이 작업은 되돌릴 수 없습니다.</p>
       {user.owned_apps.length > 0 && (
         <p className="alert">이 사람은 앱 담당자로 등록되어 있습니다: {user.owned_apps.map((a) => a.name).join(', ')}. 앱과 담당자 기록은 그대로 남습니다.</p>
+      )}
+      {apps.length > 0 && (
+        <p className="alert">가입한 앱: {apps.map((a) => a.name).join(', ')}. 앱 안의 기록은 그대로 남고, 이 계정으로는 다시 들어올 수 없습니다.</p>
       )}
       <p className="muted">확인을 위해 이메일 주소를 그대로 입력하세요.</p>
       <form onSubmit={go}>
@@ -82,20 +86,50 @@ function DeleteDialog({ user, session, onClose, onDone }: { user: HubUser; sessi
   );
 }
 
-type Filter = 'all' | Role;
+/** 보기: 전체(통괄) · 허브 회원(개발·운영) · 앱별 사용자 */
+type View = 'all' | 'hub' | 'app';
+const ALL_APPS = '*';
+/** 앱 이름표 하나 */
+type AppTag = { slug: string; name: string; icon: string; members: number };
+
+/** 이 사람이 가입한 앱 주소 목록 (옛 서버 응답이면 빈 배열) */
+const appsOf = (u: HubUser): string[] => u.app_slugs ?? (u.app_names ?? []).map((a) => a.slug);
+/** 허브 회원: 관리자·개발자이거나 앱 소속이 없는 허브 가입자 */
+const isHubMember = (u: HubUser) => u.is_hub_member ?? (u.role === 'staff' || u.role === 'admin' || appsOf(u).length === 0);
+
+/** 앱 배지 (한 줄에 3개까지, 나머지는 +N) */
+function AppBadges({ user, index }: { user: HubUser; index: Map<string, AppTag> }) {
+  const slugs = appsOf(user);
+  if (!slugs.length) return <span className="badge hub-badge">🏠 허브</span>;
+  const shown = slugs.slice(0, 3), rest = slugs.length - shown.length;
+  return (
+    <span className="app-badges">
+      {shown.map((s) => {
+        const a = index.get(s);
+        return <span key={s} className="badge app-badge" title={a?.name ?? s}>{a?.icon ?? appIcon(s)} {a?.name ?? s}</span>;
+      })}
+      {rest > 0 && <span className="badge app-badge" title={slugs.slice(3).map((s) => index.get(s)?.name ?? s).join(', ')}>+{rest}</span>}
+    </span>
+  );
+}
 
 /** 사용자 관리: 역할 변경, 비밀번호 초기화, 사용 중지, 삭제 (관리자 전용) */
 export function MembersPage({ ctx }: { ctx: Ctx }) {
-  const [rows, setRows] = useState<HubUser[]>([]); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
-  const [q, setQ] = useState(''); const [filter, setFilter] = useState<Filter>('all');
+  const [data, setData] = useState<HubUsersRes | null>(null);
+  const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState(''); const [roleFilter, setRoleFilter] = useState<'all' | Role>('all');
+  const [view, setView] = useState<View>('all'); const [appSel, setAppSel] = useState<string>(ALL_APPS);
   const [resetFor, setResetFor] = useState<HubUser | null>(null);
   const [delFor, setDelFor] = useState<HubUser | null>(null);
   const [revealed, setRevealed] = useState<{ email: string; password: string } | null>(null);
   const session = ctx.session;
+  const rows = useMemo(() => data?.users ?? [], [data]);
+  /** 허브 서버가 앱별 소속 정보를 주는지 (옛 판이면 false → 전체 사용자만) */
+  const appsReady = data?.apps_ready === true;
 
   const load = useCallback(async () => {
     if (!session) return;
-    try { const j = await usersApi<{ users: HubUser[] }>(session, 'list'); setRows(j.users); setErr(''); }
+    try { setData(await usersApi<HubUsersRes>(session, 'list')); setErr(''); }
     catch (e) { setErr((e as Error).message); }
   }, [session]);
   useEffect(() => { if (ctx.isAdmin) load(); }, [ctx.isAdmin, load]);
@@ -106,63 +140,138 @@ export function MembersPage({ ctx }: { ctx: Ctx }) {
     catch (e) { setErr((e as Error).message); }
     finally { setBusy(false); }
   };
-  const setRole = (u: HubUser, role: Role) => {
-    if (u.role === role) return;
-    const ask = role === 'disabled'
+  const setRole = (u: HubUser, next: Role) => {
+    if (u.role === next) return;
+    const ask = next === 'disabled'
       ? `${u.email} 계정을 사용 중지할까요? 바로 로그인할 수 없게 됩니다.`
-      : u.role === 'disabled' ? `${u.email} 계정을 다시 사용할 수 있게 하고, 역할을 ${ROLE_LABEL[role]}(으)로 할까요?` : null;
+      : u.role === 'disabled' ? `${u.email} 계정을 다시 사용할 수 있게 하고, 역할을 ${ROLE_LABEL[next]}(으)로 할까요?` : null;
     if (ask && !confirm(ask)) return;
-    return act(() => usersApi(session!, 'set_role', { user_id: u.id, role }));
+    return act(() => usersApi(session!, 'set_role', { user_id: u.id, role: next }));
   };
+
+  /** 앱 목록: 서버가 준 앱(이름·인원) → 화면에 보이는 앱(아이콘) 순으로 합친다 */
+  const appTags = useMemo<AppTag[]>(() => {
+    const m = new Map<string, AppTag>();
+    const counts = new Map((data?.apps ?? []).map((a: HubAppSummary) => [a.slug, a.members]));
+    for (const a of ctx.counts?.apps ?? []) {
+      if (m.has(a.slug)) continue;
+      m.set(a.slug, { slug: a.slug, name: a.name, icon: a.card_icon || appIcon(a.slug), members: counts.get(a.slug) ?? 0 });
+    }
+    for (const a of data?.apps ?? []) {
+      const cur = m.get(a.slug);
+      if (cur) { cur.name = a.name; cur.members = a.members; }
+      else m.set(a.slug, { slug: a.slug, name: a.name, icon: appIcon(a.slug), members: a.members });
+    }
+    // 옛 서버(앱 목록 없음)여도 사용자 행에 앱 주소가 오면 칩을 만든다
+    for (const u of rows) {
+      for (const a of u.app_names ?? []) {
+        if (m.has(a.slug)) continue;
+        m.set(a.slug, { slug: a.slug, name: a.name, icon: appIcon(a.slug), members: rows.filter((x) => appsOf(x).includes(a.slug)).length });
+      }
+    }
+    return [...m.values()].sort((x, y) => x.name.localeCompare(y.name, 'ko'));
+  }, [ctx.counts?.apps, data?.apps, rows]);
+  const appIndex = useMemo(() => new Map(appTags.map((a) => [a.slug, a])), [appTags]);
 
   const counts = useMemo(() => ({
     all: rows.length,
+    hub: rows.filter(isHubMember).length,
+    app: rows.filter((r) => appsOf(r).length > 0).length,
     pending: rows.filter((r) => r.role === 'pending').length,
     staff: rows.filter((r) => r.role === 'staff').length,
     admin: rows.filter((r) => r.role === 'admin').length,
     disabled: rows.filter((r) => r.role === 'disabled').length,
   }), [rows]);
+
+  const inView = useCallback((r: HubUser) => {
+    if (view === 'hub') return isHubMember(r);
+    if (view === 'app') return appSel === ALL_APPS ? appsOf(r).length > 0 : appsOf(r).includes(appSel);
+    return true;
+  }, [view, appSel]);
+
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return rows.filter((r) => (filter === 'all' || r.role === filter)
+    return rows.filter((r) => inView(r) && (roleFilter === 'all' || r.role === roleFilter)
       && (!s || r.email.toLowerCase().includes(s) || (r.name || '').toLowerCase().includes(s)
+        || appsOf(r).some((slug) => slug.includes(s) || (appIndex.get(slug)?.name ?? '').toLowerCase().includes(s))
         || r.owned_apps.some((a) => a.name.toLowerCase().includes(s) || a.slug.includes(s))));
-  }, [rows, q, filter]);
+  }, [rows, q, roleFilter, inView, appIndex]);
 
   if (!ctx.isAdmin) return <div className="card">관리자만 볼 수 있습니다.</div>;
   if (!session) return null;
+
+  const selectedApp = appSel === ALL_APPS ? null : appIndex.get(appSel) ?? null;
+  const head = view === 'hub'
+    ? '허브 회원(관리자·개발자, 앱 소속 없는 허브 가입자)만 봅니다.'
+    : view === 'app'
+      ? (selectedApp ? `‘${selectedApp.name}’에 가입한 사용자만 봅니다.` : '앱에 가입한 사용자를 앱별로 모아 봅니다.')
+      : '모든 계정을 한곳에서 — 앱 이용자까지 검색·조회·중지·삭제·비밀번호 초기화.';
 
   return (
     <section>
       <div className="section-head"><h2>👥 사용자 관리</h2></div>
       <p className="muted">역할을 바꾸고, 비밀번호를 초기화하고, 사용을 중지하거나 계정을 삭제할 수 있습니다. 임시 비밀번호는 한 번만 보이며 서버에 저장되지 않습니다.</p>
-      {counts.pending > 0 && <p className="warn">일반 사용자 {counts.pending}명이 있습니다. 개발자로 올리면 앱 신청과 DB 접속 정보를 쓸 수 있습니다.</p>}
+      {!appsReady && data && (
+        <p className="warn">앱별 소속 정보를 아직 받지 못했습니다(허브 서버 업데이트 전). 지금은 <b>전체 사용자</b>로만 나눠 볼 수 있고, 앱 배지는 서버를 새로 올리면 나타납니다.</p>
+      )}
       {err && <p className="error" role="alert">{err}</p>}
+
+      <div className="section-head" style={{ marginBottom: 8 }}>
+        <Pills value={view} onChange={(v) => setView(v)} items={[
+          ['all', '전체 사용자', counts.all],
+          ['hub', '허브 회원', counts.hub],
+          ['app', '앱별 사용자', counts.app],
+        ]} />
+      </div>
+      {view === 'app' && (
+        <div className="pills app-chips" role="tablist" aria-label="앱 선택">
+          <button role="tab" aria-selected={appSel === ALL_APPS} className={`pill${appSel === ALL_APPS ? ' on' : ''}`} onClick={() => setAppSel(ALL_APPS)}>
+            전체 앱<span className="cnt">{counts.app}</span>
+          </button>
+          {appTags.map((a) => (
+            <button key={a.slug} role="tab" aria-selected={appSel === a.slug} className={`pill${appSel === a.slug ? ' on' : ''}`} onClick={() => setAppSel(a.slug)} title={a.slug}>
+              <span aria-hidden="true">{a.icon}</span> {a.name}<span className="cnt">{a.members}</span>
+            </button>
+          ))}
+          {appTags.length === 0 && <button type="button" className="pill" disabled>등록된 앱이 없습니다</button>}
+        </div>
+      )}
+      <p className="muted small-note">{head}</p>
+
       <div className="section-head">
-        <input className="filter-in" value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름, 이메일, 담당 앱 검색" aria-label="사용자 검색" />
-        <Pills value={filter} onChange={setFilter} items={[
-          ['all', '전체', counts.all], ['pending', '일반 사용자', counts.pending],
-          ['staff', '개발자', counts.staff], ['admin', '관리자', counts.admin], ['disabled', '사용 중지', counts.disabled],
+        <input className="filter-in" value={q} onChange={(e) => setQ(e.target.value)} placeholder="이름, 이메일, 앱 이름 검색" aria-label="사용자 검색" />
+        <Pills value={roleFilter} onChange={setRoleFilter} items={[
+          ['all', '전체 역할', counts.all],
+          ['pending', '일반 사용자', counts.pending],
+          ['staff', '개발자', counts.staff],
+          ['admin', '관리자', counts.admin],
+          ['disabled', '사용 중지', counts.disabled],
         ]} />
       </div>
       <div className="card flush"><table>
-        <thead><tr><th>이름</th><th>이메일</th><th>가입</th><th>최근 로그인</th><th>역할</th><th>담당 앱</th><th>동작</th></tr></thead>
+        <thead><tr><th>이름</th><th>이메일</th><th>허브 역할</th><th>앱 소속</th><th>가입 · 최근 로그인</th><th>동작</th></tr></thead>
         <tbody>
-          {shown.length === 0 && <tr><td colSpan={7} className="muted">맞는 사용자가 없습니다.</td></tr>}
+          {shown.length === 0 && <tr><td colSpan={6} className="muted">맞는 사용자가 없습니다.</td></tr>}
           {shown.map((p) => {
             const mine = p.id === session.user.id;
+            const owner = p.owned_apps.map((a) => a.name).join(', ');
             return (
               <tr key={p.id} className={p.role === 'pending' ? 'soon' : p.role === 'disabled' ? 'off' : ''}>
-                <td><span className="avatar sm">{(p.name || p.email).slice(0, 1)}</span> {p.name || '—'}</td>
+                <td>
+                  <span className="avatar sm">{(p.name || p.email).slice(0, 1)}</span> {p.name || '—'}
+                  {owner && <small className="cell-sub">🛠 담당: {owner}</small>}
+                </td>
                 <td>{p.email}</td>
-                <td>{fmtTime(p.created_at)}</td>
-                <td>{fmtTime(p.last_sign_in_at) || '—'}</td>
                 <td>
                   <span className={`badge role-${p.role}`}>{ROLE_LABEL[p.role]}</span>
                   {mine && <span className="muted"> (나)</span>}
                   {p.banned && p.role !== 'disabled' && <span className="badge role-disabled">로그인 차단</span>}
                 </td>
-                <td>{p.owned_apps.length ? p.owned_apps.map((a) => a.name).join(', ') : <span className="muted">—</span>}</td>
+                <td><AppBadges user={p} index={appIndex} /></td>
+                <td>
+                  <span className="cell-sub">가입 {fmtDate(p.created_at) || '—'}</span>
+                  <span className="cell-sub">로그인 {fmtTime(p.last_sign_in_at) || '—'}</span>
+                </td>
                 <td>{mine ? <span className="muted">내 비밀번호는 내 계정에서</span> : (
                   <div className="actions">
                     <select aria-label="역할 변경" disabled={busy} value={p.role} onChange={(e) => setRole(p, e.target.value as Role)}>

@@ -83,6 +83,10 @@ try {
     '관리자 목록에 시험 계정과 실제 계정');
   const row = (j.users || []).find((u) => u.email === pending.email);
   ok(row && row.role === 'pending' && Array.isArray(row.owned_apps) && 'last_sign_in_at' in row, '일반 사용자 행 필드');
+  // 앱별 사용자 구분: 어느 앱에도 없으면 앱 목록은 비고 허브 회원이다
+  ok(Array.isArray(j.apps) && j.apps_ready === true, '앱 목록·apps_ready (마이그레이션 + 함수 새 판)');
+  ok(row && Array.isArray(row.app_slugs) && Array.isArray(row.app_names) && row.app_slugs.length === 0, '앱 소속 없는 시험 계정: app_slugs 빈 배열');
+  ok(row && row.is_hub_member === true, '앱 소속이 없으면 허브 회원(true)');
 
   console.log('3) 역할 변경');
   guard(pending.email, 'set_role');

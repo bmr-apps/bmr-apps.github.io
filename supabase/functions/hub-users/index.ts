@@ -1,6 +1,6 @@
 // hub-users — 관리자가 허브 사용자를 보고, 역할을 바꾸고, 비밀번호를 초기화하고, 삭제한다.
 // 호출: POST { action, user_id?, role?, password?, confirm_email? }  Authorization: Bearer <관리자 로그인 토큰>
-//   list             사용자 목록 (메일·이름·역할·가입·최근 로그인·담당 앱)
+//   list             사용자 목록 (메일·이름·역할·가입·최근 로그인·담당 앱·가입한 앱)
 //   set_role         역할 변경. disabled 는 Auth 로그인 차단, 그 외는 차단 해제
 //   reset_password   임시 비밀번호를 만들어(또는 관리자가 지정) 한 번만 돌려 주고 저장하지 않음
 //   delete           계정 삭제. 본인·마지막 관리자 불가. 확인용으로 대상 이메일 필요
@@ -28,6 +28,8 @@ const json = (req: Request, status: number, body: unknown) =>
 
 type Me = { id: string; email: string; name: string };
 type Target = { id: string; email: string; name: string; role: string };
+type AppSummary = { slug: string; name: string; members: number };
+type Membership = { user_id: string; app_slug: string };
 
 async function me(req: Request): Promise<Me> {
   const m = /^Bearer\s+(.+)$/i.exec(req.headers.get('Authorization') ?? '');
@@ -67,6 +69,28 @@ async function target(id: string): Promise<Target> {
 async function ownedApps(email: string) {
   return await db`select a.id, a.slug, a.name from public.app_owners o join public.apps a on a.id = o.app_id
     where o.email is not null and lower(o.email) = lower(${email}) order by a.name`;
+}
+
+/**
+ * 앱별 사용자(가입한 앱) 목록. 앱마다 자기 스키마의 members 표가 진짜 출처라서,
+ * 부를 때마다 private.hub_sync_app_memberships() 로 사본(public.app_memberships)을 새로 채운 뒤 읽는다.
+ * 마이그레이션 전(옛 DB)이면 이 표·함수가 없으므로 ready:false 로 돌려주고 목록은 그대로 낸다.
+ */
+async function appMemberships(): Promise<{ rows: Membership[]; apps: AppSummary[]; ready: boolean }> {
+  try {
+    await db`select private.hub_sync_app_memberships()`;
+    const rows = await db`select user_id, app_slug from public.app_memberships order by app_slug`;
+    const apps = await db`
+      select a.slug, a.name,
+             (select count(*)::int from public.app_memberships m where m.app_slug = a.slug) as members
+        from public.apps a
+       where a.status <> 'retired'
+       order by a.name`;
+    return { rows: rows as unknown as Membership[], apps: apps as unknown as AppSummary[], ready: true };
+  } catch (e) {
+    console.error('hub-users memberships', (e as { code?: string })?.code ?? '', String((e as Error)?.message ?? e).slice(0, 160));
+    return { rows: [], apps: [], ready: false };
+  }
 }
 
 async function adminCount() {
@@ -126,12 +150,28 @@ Deno.serve(async (req) => {
         if (!byEmail.has(k)) byEmail.set(k, []);
         byEmail.get(k)!.push({ id: x.id, slug: x.slug, name: x.name });
       }
-      const users = rows.map((r) => ({
-        id: r.id, email: r.email, name: r.name, role: r.role, created_at: r.created_at,
-        last_sign_in_at: r.last_sign_in_at, banned: !!r.banned,
-        owned_apps: byEmail.get(String(r.email).toLowerCase()) ?? [],
-      }));
-      return json(req, 200, { users, me: { id: u.id, email: u.email } });
+      const mem = await appMemberships();
+      const appsByUser = new Map<string, string[]>();
+      for (const m of mem.rows) {
+        const k = String(m.user_id);
+        if (!appsByUser.has(k)) appsByUser.set(k, []);
+        appsByUser.get(k)!.push(String(m.app_slug));
+      }
+      const appName = new Map(mem.apps.map((a) => [a.slug, a.name]));
+      const users = rows.map((r) => {
+        const slugs = (appsByUser.get(String(r.id)) ?? []).sort();
+        return {
+          id: r.id, email: r.email, name: r.name, role: r.role, created_at: r.created_at,
+          last_sign_in_at: r.last_sign_in_at, banned: !!r.banned,
+          owned_apps: byEmail.get(String(r.email).toLowerCase()) ?? [],
+          // 가입한 앱 (앱 소속) — 화면이 앱별로 나눠 보여 주는 데 쓴다
+          app_slugs: slugs,
+          app_names: slugs.map((s) => ({ slug: s, name: appName.get(s) ?? s })),
+          // 관리자·개발자이거나, 앱 소속이 없는 허브 가입자
+          is_hub_member: r.role === 'staff' || r.role === 'admin' || slugs.length === 0,
+        };
+      });
+      return json(req, 200, { users, apps: mem.apps, apps_ready: mem.ready, me: { id: u.id, email: u.email } });
     }
 
     if (action === 'set_role') {
@@ -180,11 +220,23 @@ Deno.serve(async (req) => {
       if (!confirm || confirm !== t.email.toLowerCase()) throw new HttpError(400, '확인을 위해 대상의 이메일을 그대로 입력해 주세요.');
       if (t.role === 'admin' && await adminCount() <= 1) throw new HttpError(409, '마지막 관리자는 삭제할 수 없습니다.');
       const apps = await ownedApps(t.email);
+      // 가입했던 앱(사본)도 감사 기록에 남긴다 — 앱 쪽 members 행은 앱이 관리하므로 건드리지 않는다
+      let joined: string[] = [];
+      try {
+        const jr = await db`select app_slug from public.app_memberships where user_id = ${t.id} order by app_slug`;
+        joined = jr.map((x) => String(x.app_slug));
+      } catch { joined = []; }
       const r = await authAdmin(`users/${t.id}`, { method: 'DELETE' });
       if (!r.ok) { await r.body?.cancel(); throw new HttpError(502, '계정을 삭제하지 못했습니다.'); }
       await r.body?.cancel();
-      await log(u, t, '계정 삭제', apps.length ? `계정 삭제 · 담당 앱(${apps.map((a) => a.name).join(', ')})과 신청 기록은 남김` : '계정 삭제 · 신청 기록은 남김');
-      return json(req, 200, { ok: true, deleted: t.email, owned_apps: apps });
+      const memo = [
+        '계정 삭제',
+        apps.length ? `담당 앱(${apps.map((a) => a.name).join(', ')})` : '',
+        joined.length ? `가입했던 앱(${joined.join(', ')})` : '',
+        '신청 기록은 남김',
+      ].filter(Boolean).join(' · ');
+      await log(u, t, '계정 삭제', memo);
+      return json(req, 200, { ok: true, deleted: t.email, owned_apps: apps, app_slugs: joined });
     }
 
     return json(req, 400, { error: '알 수 없는 요청입니다.' });

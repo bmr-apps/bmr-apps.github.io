@@ -196,10 +196,28 @@ export type DevAiRes = {
 };
 
 // ---------- 사용자 관리 (Edge Function hub-users, 관리자 전용) ----------
+/** 사용자가 가입한 앱 하나 */
+export type HubUserApp = { slug: string; name: string };
+/** 앱별 사용자 수 (앱 선택 칩) */
+export type HubAppSummary = { slug: string; name: string; members: number };
 export type HubUser = {
   id: string; email: string; name: string; role: Role; created_at: string;
   last_sign_in_at: string | null; banned: boolean;
   owned_apps: { id: number; slug: string; name: string }[];
+  /** 가입한 앱 주소 목록. 허브 서버(hub-users)가 아직 옛 판이면 없을 수 있다 */
+  app_slugs?: string[];
+  /** 가입한 앱 이름까지 붙인 목록 */
+  app_names?: HubUserApp[];
+  /** 관리자·개발자이거나, 앱 소속이 없는 허브 가입자 */
+  is_hub_member?: boolean;
+};
+export type HubUsersRes = {
+  users: HubUser[];
+  /** 등록된 앱과 앱별 사용자 수 (옛 서버면 없음) */
+  apps?: HubAppSummary[];
+  /** 앱별 소속 정보를 서버가 줬는지. 옛 서버면 false/없음 */
+  apps_ready?: boolean;
+  me: { id: string; email: string };
 };
 export async function usersApi<T = unknown>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/hub-users`, {

@@ -294,6 +294,13 @@ td select { padding: 6px 10px; }
 .badge.role-admin { background: var(--purple-light); color: #4b3592; }
 [data-theme="dark"] .badge.role-admin { color: #c9b8ff; }
 .badge.role-disabled { background: var(--bad-soft); color: var(--bad); }
+/* 사용자 관리: 앱 소속 배지 · 보조 줄 (앱 배지와 허브 역할 배지를 섮지 않게 구분) */
+.app-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; max-width: 320px; vertical-align: middle; }
+.badge.app-badge { background: var(--bg); color: var(--text); border-color: var(--line); font-weight: 800; }
+.badge.hub-badge { background: var(--bg-alt); color: var(--muted); border-color: var(--line); font-weight: 800; }
+.cell-sub { display: block; font-size: 12px; font-weight: 600; color: var(--muted); line-height: 1.55; white-space: nowrap; }
+.pills.app-chips { margin: 0 0 6px; }
+@media (max-width: 560px) { .app-badges { max-width: 190px; } }
 tr.off td { opacity: .72; }
 code.pw-once { font-size: 15.5px; letter-spacing: .03em; user-select: all; }
 
