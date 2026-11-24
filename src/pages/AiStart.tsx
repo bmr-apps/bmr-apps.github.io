@@ -77,14 +77,14 @@ const STEPS: { id: string; t: string; tone: string }[] = [
   { id: 'db', t: 'DB 는 SQL 파일만 올리기', tone: 'purple' },
   { id: 'ship', t: '확인하고 배포하기', tone: 'cyan' },
   { id: 'help', t: '자주 막히는 문제', tone: 'yellow' },
-  { id: 'migrate', t: '다른 곳에서 만든 앱 옮기기', tone: 'navy' },
+  { id: 'migrate', t: '다른 곳에서 만든 앱 옮겨오기', tone: 'navy' },
 ];
-function Step({ n, children }: { n: number; children: ReactNode }) {
+function Step({ n, title, children }: { n: number; title?: string; children: ReactNode }) {
   const s = STEPS[n - 1];
   return (
     <section id={s.id} className="g-step">
       <div className={`g-num g-${s.tone}`} aria-hidden="true">{n}</div>
-      <div className="g-body"><h2>{s.t}</h2>{children}</div>
+      <div className="g-body"><h2>{title ?? s.t}</h2>{children}</div>
     </section>
   );
 }
@@ -204,7 +204,7 @@ git add -A && git commit -m "첫 화면" && git push`}</C>
         <p>더 자세한 내용은 <Link to="/guide">전체 시작 가이드</Link> 와 저장소의 <code>README.md</code>·<code>CLAUDE.md</code> 에 있습니다.</p>
       </Step>
 
-      <Step n={8}>
+      <Step n={8} title="다른 곳(Lovable · v0 · Cursor · 개인 저장소)에서 만든 앱 옮겨오기">
         <p>Lovable · v0 · Cursor 로 만들었거나 내 개인 GitHub 저장소에 있는 앱도 <b>버리지 않고</b> 옮길 수 있습니다. 새로 만드는 것이 아니라, 허브가 만들어 준 저장소에 <b>옮겨 담는</b> 일입니다.</p>
         <div className="g-grid">
           <div><b>Lovable</b><span>프로젝트 → <b>GitHub 연결</b>(또는 코드 내려받기)로 코드를 꺼냅니다. Supabase 를 함께 쓰고 있었다면 표 구조와 데이터를 따로 내보냅니다.</span></div>
