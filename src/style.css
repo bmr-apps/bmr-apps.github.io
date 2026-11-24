@@ -475,7 +475,7 @@ button.link:hover:not(:disabled) { background: var(--hover); color: #000; }
 .g-toc a { color: #000; text-decoration-thickness: 2px; }
 .g-step { display: grid; grid-template-columns: 72px 1fr; gap: 0; border: var(--border); margin: 0 0 20px; scroll-margin-top: 90px; background: var(--card); }
 .g-num { display: grid; place-items: start center; padding-top: 18px; font-size: 34px; font-weight: 900; color: #000; border-right: var(--border); }
-.g-cyan { background: var(--cyan); } .g-yellow { background: var(--yellow); } .g-green { background: var(--green); } .g-coral { background: var(--coral); } .g-purple { background: var(--purple); color: #fff; }
+.g-cyan { background: var(--cyan); } .g-yellow { background: var(--yellow); } .g-green { background: var(--green); } .g-coral { background: var(--coral); } .g-purple { background: var(--purple); color: #fff; } .g-navy { background: var(--navy); color: #fff; }
 .g-body { padding: 20px 24px 22px; min-width: 0; }
 .g-body h2 { font-size: 26px; margin: 0 0 10px; }
 .g-body h3 { font-size: 17px; margin: 20px 0 8px; }
@@ -697,6 +697,14 @@ table.compact code { overflow-wrap: anywhere; word-break: break-all; }
 .ai-start-view { margin-top: 10px; }
 .ai-start-view summary { cursor: pointer; font-weight: 850; font-size: 13.5px; }
 .ai-prompt { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; max-width: 100%; max-height: 300px; overflow: auto; margin: 8px 0 0; padding: 12px 14px; background: var(--bg-alt); border: 1px solid var(--line-soft); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
+.ai-start-form { margin: 12px 0 0; }
+.ai-start-form label { margin-bottom: 8px; }
+.ai-start-form input { width: 100%; box-sizing: border-box; }
+.ai-start-more { margin: 10px 0 0; font-size: 12.5px; font-weight: 700; }
+.ai-start-more a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+.ai-start-more a:hover { color: var(--text); }
+.ai-start.migrate { border-left-color: var(--cyan); }
+.ai-start.migrate .ai-start-badge { background: var(--cyan-mid); }
 .ai-hero-copy { background: var(--purple-mid); }
 .ai-guide .ai-start { margin: 16px 0 6px; }
 @media (max-width: 640px) {
