@@ -31,6 +31,7 @@ function Revealed({ conn, onClose }: { conn: DbConn; onClose: () => void }) {
         <dt>DB · 스키마</dt><dd><code>{conn.database}</code> · <code>{conn.schema}</code></dd>
       </dl>
       <p className="muted small">쓰는 곳: <code>npm run db:migrate</code> · <code>psql "$DATABASE_URL"</code> · AI 코딩 도구의 DB 연결 설정</p>
+      <p className="muted small">🔁 자동 DB 반영(<code>supabase/migrations</code>)을 쓰는 앱은 GitHub 저장소 <b>Settings → Secrets and variables → Actions</b> 의 <code>DATABASE_URL</code> 도 같은 값이어야 합니다. 새로 발급했다면 그 비밀값도 바꿔 주세요.</p>
       <div className="row end"><button type="button" onClick={onClose}>저장했어요, 닫기</button></div>
     </div>
   );
@@ -39,7 +40,7 @@ function Revealed({ conn, onClose }: { conn: DbConn; onClose: () => void }) {
 export function DbCredCard({ app, session, admin, reload }: { app: DbApp; session: Session; admin: boolean; reload: () => void }) {
   const [conn, setConn] = useState<DbConn | null>(null); const [busy, setBusy] = useState(''); const [err, setErr] = useState(''); const [msg, setMsg] = useState('');
   const act = async (action: 'reveal' | 'rotate') => {
-    if (action === 'rotate' && !confirm(`${app.name}: 새 비밀번호를 발급할까요?\n\n이전 비밀번호를 쓰던 곳(.env.local, AI 도구 등)은 바로 끊깁니다. 서버 함수는 영향 없습니다.`)) return;
+    if (action === 'rotate' && !confirm(`${app.name}: 새 비밀번호를 발급할까요?\n\n이전 비밀번호를 쓰던 곳(.env.local, AI 도구 등)은 바로 끊깁니다. 서버 함수는 영향 없습니다.\n저장소 Actions 의 DATABASE_URL 비밀값(자동 DB 반영용)도 새 값으로 바꿔야 합니다.`)) return;
     if (action === 'reveal' && !confirm('처음 비밀번호는 딱 한 번만 보입니다. 지금 저장할 준비가 됐나요?')) return;
     setBusy(action); setErr(''); setMsg('');
     try { const j = await dbcred<{ conn: DbConn }>(session, action, { app_id: app.app_id }); setConn(j.conn); reload(); }

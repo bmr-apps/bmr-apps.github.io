@@ -6,6 +6,7 @@ import { readFileSync, readdirSync, statSync, writeFileSync, mkdtempSync, rmSync
 import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { patchTemplateFiles } from './lib/provision-patch.mjs';
 
 const SRC = process.argv[2] || '/workspace/bmr-app-templates';
 const walk = (d) => readdirSync(d).flatMap((f) => { const p = join(d, f); return statSync(p).isDirectory() ? walk(p) : [p]; });
@@ -33,10 +34,18 @@ const fn = readFileSync(join(SRC, 'starter', 'fn', 'index.ts'), 'utf8');
 const mail = readFileSync(join(SRC, 'starter', 'fn', 'mail.ts'), 'utf8');
 const sql = { app: readFileSync(join(SRC, 'sql', '10_app.sql'), 'utf8'), starter: readFileSync(join(SRC, 'sql', '20_starter.sql'), 'utf8') };
 
+// 공통 패치: deploy.yml 에 DB 자동 반영(DATABASE_URL) 스텝을 넣는다 (시작 틀 원본이 아직 없어도 결과는 같다)
+patchTemplateFiles(files);
+
 const out = `// 자동 생성 파일 — 고치지 마세요. 원본: bmr-app-templates (node scripts/build-provision-templates.mjs)
 // 저장소 시작 틀 · 앱 서버 함수 · 앱 DB SQL. {{변수}} 는 hub-provision 이 검증한 값으로만 채운다.
+// CLAUDE.md · AGENTS.md(웹 AI 개발 규칙)는 templates/ai-docs 원본을 ai-docs.ts 로 만들어 여기서 합친다.
+import { AI_DOCS } from './ai-docs.ts';
+
 export const TEMPLATE_VERSION = 'bmr-app-templates v2';
-export const REPO_FILES: Record<string, string> = ${JSON.stringify(files, null, 0)};
+const BASE_REPO_FILES: Record<string, string> = ${JSON.stringify(files, null, 0)};
+// 웹 AI 개발 규칙은 모든 새 앱 저장소에 함께 넣는다 (Codex=AGENTS.md, Claude Code=CLAUDE.md)
+export const REPO_FILES: Record<string, string> = { ...BASE_REPO_FILES, ...AI_DOCS };
 export const FN_SOURCE: string = ${JSON.stringify(fn)};
 export const MAIL_SOURCE: string = ${JSON.stringify(mail)};
 export const SQL_APP: string = ${JSON.stringify(sql.app)};
@@ -44,4 +53,4 @@ export const SQL_STARTER: string = ${JSON.stringify(sql.starter)};
 `;
 const dest = new URL('../supabase/functions/hub-provision/templates.ts', import.meta.url);
 writeFileSync(dest, out);
-console.log(`templates.ts: 저장소 파일 ${Object.keys(files).length}개, ${(out.length / 1024).toFixed(0)}KB`);
+console.log(`templates.ts: 저장소 파일 ${Object.keys(files).length}개 (+AI 문서 2개), ${(out.length / 1024).toFixed(0)}KB`);

@@ -233,7 +233,7 @@ export async function usersApi<T = unknown>(session: Session, action: string, bo
 export const STEP_LABEL: [string, string][] = [
   ['check', '겹치는 자원 확인'], ['db', 'DB 스키마·계정'], ['fn_secret', '함수 DB 연결 정보'], ['starter', '시작 표 documents'], ['expose', 'Data API 노출'],
   ['bucket', '파일 버킷'], ['function', '서버 함수 배포'], ['repo', 'GitHub 저장소'], ['pages', 'GitHub Pages'], ['vars', '배포 변수'],
-  ['code', '안내 페이지 올리기'], ['hub', '허브 등록·담당자'], ['mail', '메일 토큰 발급'], ['ai', 'AI 토큰 발급'], ['invite', 'GitHub 초대'], ['dbcred', 'DB 비밀번호 준비'], ['health', '서버 함수 연결 확인'],
+  ['code', '안내 페이지 올리기'], ['hub', '허브 등록·담당자'], ['mail', '메일 토큰 발급'], ['ai', 'AI 토큰 발급'], ['invite', 'GitHub 초대'], ['dbcred', 'DB 비밀번호 준비'], ['ghsecret', 'DB 자동 반영 설정'], ['health', '서버 함수 연결 확인'],
 ];
 export const GH_LABEL: Record<GhStatus, string> = { invited: '초대됨', active: '권한 있음', failed: '실패', no_repo: '저장소 없음' };
 export async function provisionApi<T = Record<string, unknown>>(session: Session, action: string, body: Record<string, unknown> = {}): Promise<T> {

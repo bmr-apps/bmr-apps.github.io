@@ -3,7 +3,7 @@
 **별무리 개발자들이 함께 만들고 나누는 공간**
 
 - 서비스: <https://apps.bmrschool.net>
-- 시작 가이드: <https://apps.bmrschool.net/guide> · 바쁘면 **빠른 시작** <https://apps.bmrschool.net/guide/quick>
+- 시작 가이드: <https://apps.bmrschool.net/guide> · 바쁘면 **빠른 시작** <https://apps.bmrschool.net/guide/quick> · PC 없이 **웹 AI로 개발** <https://apps.bmrschool.net/guide/ai>
 - 관리자: dev@bmrschool.org
 
 이 저장소는 BMR APPS 의 **허브**입니다. 앱 목록을 보여 주고, 새 앱 신청을 받아 승인하면 저장소·주소·데이터베이스·파일 저장소·서버 함수를 자동으로 만들어 주는 화면(React + TypeScript)과, 그 일을 하는 Supabase 함수들이 여기에 있습니다.
@@ -39,6 +39,7 @@
 |---|---|---|
 | `/` | 메인 — 운영 중인 앱 카드 | 누구나 (로그인 없이) |
 | `/guide` · `/guide/quick` | 시작 가이드 · 빠른 시작 | 누구나 |
+| `/guide/ai` | 🤖 웹 AI 개발 가이드 — Codex · Claude Code 로 만들기 (프롬프트 복사) | 누구나 |
 | `/hub/login` | 로그인 · 가입 | 누구나 |
 | `/hub/apps` | 대시보드 — 일반 사용자는 **서비스 둘러보기**, 개발자는 요약·담당 서비스 | 로그인한 사람 |
 | `/hub/account` | 내 계정 (+ 🔔 알림 설정) | 로그인한 사람 |
@@ -234,6 +235,10 @@ npm run dev                    # http://localhost:5173/library/
 npm run db:migrate      # 아직 안 한 파일만 이름 순서대로 실행
 ```
 
+> 🆕 **새 앱은 이 명령을 직접 칠 필요가 없습니다.** 승인할 때 허브가 앱 저장소의 GitHub Actions 비밀값 `DATABASE_URL` 을 자동으로 넣어 두고, `deploy.yml` 이 push 때마다 `npm run db:migrate` 를 실행합니다(`supabase/migrations/*.sql` 만 추가해 커밋·푸시하면 DB 에 반영). Secret 이 없는 예전 앱은 그 스텝이 안내만 남기고 건너뜁니다.
+> DB 비밀번호를 새로 발급하면 Actions 의 `DATABASE_URL` 도 새 값으로 바꿔야 합니다.
+> 웹 AI(Codex · Claude Code)로 개발한다면 새 앱에 자동으로 들어가는 `CLAUDE.md` · `AGENTS.md` 가 같은 규칙을 알려 줍니다 — [웹 AI 가이드](https://apps.bmrschool.net/guide/ai).
+
 > ⚠️ **이름이 헷갈리기 쉬운 부분**: 앱 저장소의 명령은 **`npm run db:migrate`** 입니다. 이 허브 저장소의 `npm run migrate`(허브 자기 DB용)와 다릅니다.
 
 표를 만들 때 꼭 알아 둘 것:
@@ -411,6 +416,7 @@ src/
   pages/                   화면별 컴포넌트
     Apps.tsx               메인(운영 중 앱) · 대시보드 · 앱 상세 모달 · 담당자
     Guide.tsx              /guide 시작 가이드 · /guide/quick 빠른 시작
+    AiStart.tsx            /guide/ai 웹 AI 가이드 · 🤖 프롬프트 복사 카드
     Requests.tsx           앱 신청 · 관리자 승인/반려 · 만들기 진행 단계
     DevInfo.tsx            개발 정보(담당자·관리자만)
     SelfService.tsx        개발자 셀프서비스(요청·비밀값·함수·로그)
@@ -460,7 +466,10 @@ npm run dev                    # http://localhost:5173
 | `node scripts/setup-ai.mjs` | 업체 AI 키(`GEMINI_API_KEY` 등) 암호문 저장 + AI 마이그레이션 확인 + `hub-ai` 배포 + `--test` 로 키·배포 확인 |
 | `node scripts/setup_cron_secret.mjs` | 매시 점검용 비밀값을 Vault 와 함수 비밀값에 넣기 |
 | `node scripts/auth_config.mjs` | Auth 설정(가입 허용·돌아올 주소·비밀번호 8자·확인 메일 없이 로그인) |
-| `node scripts/build-provision-templates.mjs` | 새 앱 시작 틀 템플릿(`templates.ts`) 다시 만들기 |
+| `node scripts/build-provision-templates.mjs` | 새 앱 시작 틀 템플릿(`templates.ts`) 다시 만들기 (deploy.yml 의 DB 자동 반영 스텝은 `scripts/lib/provision-patch.mjs` 가 넣습니다) |
+| `node scripts/build-ai-docs.mjs` | `templates/ai-docs/*.md` → `hub-provision/ai-docs.ts` (웹 AI 규칙: CLAUDE.md · AGENTS.md) |
+| `node scripts/sync-ai-docs.mjs hannah smartfarm --write` | 예전 앱 저장소에 `CLAUDE.md` · `AGENTS.md` 를 커밋·푸시 (기본은 미리보기) |
+| `deno test -A --node-modules-dir=none scripts/test-sealed-box.ts` | GitHub Actions 비밀값 봉인(sealed box)이 libsodium 과 같은지 시험 |
 | `node scripts/screenshot.mjs` · `node scripts/redesign-shots.mjs` | 화면 캡처 (Playwright, 관리자 작업 환경 전용 — 경로가 그 환경 기준으로 박혀 있습니다) |
 
 **환경변수** (스크립트에서만 씁니다. 절대 커밋·채팅에 올리지 마세요)

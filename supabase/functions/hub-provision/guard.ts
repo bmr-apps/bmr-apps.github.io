@@ -2,6 +2,7 @@
 //  · Supabase 관리 API: 프로젝트 psupfmarnyxontorftio 하나, 그 앱의 함수 <slug>-fn 만들기·배포, 그 앱 비밀값 <SCHEMA>_DB_URL·<SCHEMA>_MAIL_TOKEN·<SCHEMA>_AI_TOKEN 셋,
 //    Data API 노출 스키마에 그 앱 스키마 '추가'만, 고정 SQL 실행. 지우기(DELETE) 경로는 없다.
 //  · GitHub API: 조직 bmr-apps 의 그 앱 저장소 하나. 저장소 지우기·설정 바꾸기·조직 멤버 관리 없음. 초대는 push 권한만.
+//    Actions 비밀값은 DATABASE_URL 하나만 넣을 수 있다(봉인 값 + 저장소 공개 키 id). 다른 비밀값·변수는 못 만든다.
 //  · Storage: 그 앱 버킷 하나 만들기(비공개). 지우기 없음.
 
 import { deployFiles } from './deploy-files.ts';
@@ -175,6 +176,9 @@ export class GitHub {
       ['POST', new RegExp(`^${b}/pages$`), (x) => x?.build_type === 'workflow'],
       ['PATCH', new RegExp(`^${b}/actions/variables/(VITE_SUPABASE_URL|VITE_SUPABASE_PUBLISHABLE_KEY)$`)],
       ['POST', new RegExp(`^${b}/actions/variables$`), (x) => ['VITE_SUPABASE_URL', 'VITE_SUPABASE_PUBLISHABLE_KEY'].includes(x?.name)],
+      // 자동 DB 마이그레이션용 비밀값: 이 앱 저장소의 DATABASE_URL 하나만 (공개 키 조회 → 봉인 값 등록)
+      ['GET', new RegExp(`^${b}/actions/secrets/public-key$`)],
+      ['PUT', new RegExp(`^${b}/actions/secrets/DATABASE_URL$`), (x) => typeof x?.encrypted_value === 'string' && x.encrypted_value.length > 0 && typeof x?.key_id === 'string' && x.key_id.length > 0],
       ['GET', new RegExp(`^${b}/collaborators/${user}/permission$`)],
       ['PUT', new RegExp(`^${b}/collaborators/${user}$`), (x) => x?.permission === 'push'],
       ['DELETE', new RegExp(`^${b}/collaborators/${user}$`)],

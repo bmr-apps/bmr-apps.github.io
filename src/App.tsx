@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { configured, sb, login, signUp, loginWithGoogle, oauthError, ROLE_LABEL, healthState, type HealthState, type Profile, type Status } from './sb';
 import { Landing, AppsPage } from './pages/Apps';
 import { GuidePage, QuickStartPage } from './pages/Guide';
+import { AiGuidePage } from './pages/AiStart';
 import { RequestsPage } from './pages/Requests';
 import { StatusPage } from './pages/Status';
 import { MembersPage } from './pages/Members';
@@ -111,6 +112,7 @@ export function App() {
   else if (path === '/hub/login') page = <LoginPage session={session} />;
   else if (path === '/guide') page = <GuidePage ctx={ctx} />;
   else if (path === '/guide/quick') page = <QuickStartPage ctx={ctx} />;
+  else if (path === '/guide/ai') page = <AiGuidePage ctx={ctx} />;
   else if (!session) page = <LoginPage session={null} />;
   else if (!meReady) page = <p className="muted">불러오는 중…</p>;
   else if (!me) page = <div className="card narrow center"><h2>프로필을 찾지 못했습니다</h2><p>다시 로그인하거나 관리자에게 문의하세요.</p></div>;
@@ -194,6 +196,7 @@ function Shell({ ctx, path, children }: { ctx: Ctx; path: string; children: Reac
   const groups: [string, Tab[]][] = [
     ['둘러보기', [
       { to: '/guide', icon: '🧭', label: '시작 가이드', sub: 'BMR APPS 로 개발 시작하기', show: true },
+      { to: '/guide/ai', icon: '🤖', label: 'AI로 개발', sub: 'Codex·Claude 로 만들기', show: true },
       { to: '/hub/apps', icon: '🏠', label: ctx.isStaff ? '대시보드' : '서비스 둘러보기', sub: ctx.isStaff ? '서비스·담당 개발자' : '운영 중인 앱 둘러보고 열기', show: true },
       { to: '/hub/chat', icon: '💬', label: '회원 쪽지', sub: '가입 회원끼리 1:1 대화', show: true, badge: unread, tone: 'amber' },
       { to: '/hub/account', icon: '🔔', label: '알림 설정', sub: '쪽지·신청 알림 켜기', show: true, badge: badge.notifications, tone: 'red' },

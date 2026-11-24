@@ -49,6 +49,12 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
         <span className="g-quick-go" aria-hidden="true">→</span>
       </Link>
 
+      <Link to="/guide/ai" className="g-quick-link g-ai-link">
+        <span className="g-quick-badge" aria-hidden="true">🤖</span>
+        <span><b>PC 없이 웹 AI로 개발하기</b><small>ChatGPT Codex · Claude Code 에 저장소를 열고, 허브가 만들어 주는 프롬프트만 붙여 넣으면 화면과 DB 를 함께 만듭니다.</small></span>
+        <span className="g-quick-go" aria-hidden="true">→</span>
+      </Link>
+
       <Step n={1}>
         <p><Link to="/hub/login">로그인 화면</Link>에서 <b>처음이면 가입하기</b>를 눌러 이름·이메일·비밀번호(8자 이상)를 넣으면 바로 가입됩니다. 처음에는 <b>일반 사용자</b>로 시작해요.</p>
         <ul><li>일반 사용자는 운영 중인 서비스를 보고 쓸 수 있습니다.</li><li>학교 메일처럼 <b>앱 담당자로 등록할 메일</b>로 가입하세요. 담당자 메일과 로그인 메일이 같아야 '내 서비스'가 연결됩니다.</li></ul>
@@ -103,6 +109,7 @@ export function GuidePage({ ctx }: { ctx: Ctx }) {
       </Step>
 
       <Step n={7}>
+        <p><b>🤖 내 PC 없이 웹 AI로 만들려면</b> → <Link to="/guide/ai"><b>웹 AI 개발 가이드</b></Link>. 앱 정보 창의 <b>🤖 AI로 개발 시작하기</b>에서 프롬프트를 복사해 Codex·Claude 에 붙여 넣으면 됩니다. DB 는 <code>supabase/migrations/</code> 파일만 올리면 자동 반영됩니다.</p>
         <h3>내려받고 실행하기</h3>
         <C>{`git clone https://github.com/bmr-apps/library.git
 cd library

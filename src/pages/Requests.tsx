@@ -4,6 +4,7 @@ import { sb, errMsg, fmtTime, provisionApi, STEP_LABEL, type Request } from '../
 import { notifyEvent } from '../notify';
 import { Pills } from '../ui';
 import { DevRequestsPanel } from './SelfService';
+import { AiStartCard } from './AiStart';
 
 const ST = { pending: '검토 대기', approved: '승인', rejected: '반려' } as const;
 const blank = { requester_name: '', requester_email: '', app_name: '', slug: '', purpose: '', data_handled: '', has_student_pii: '' as '' | 'yes' | 'no', github_username: '' };
@@ -117,6 +118,7 @@ function RequestCard({ r, ctx, reload }: { r: Request; ctx: Ctx; reload: () => v
           {cur.provision_error && <p className={ps === 'done' ? 'warn' : 'error'}>{cur.provision_error}</p>}
         </dd></>}
       </dl>
+      {r.status === 'approved' && ps === 'done' && <AiStartCard name={cur.app_name} slug={r.slug} repoUrl={`https://github.com/bmr-apps/${r.slug}`} compact />}
       {err && <p className="error" role="alert">{err}</p>}
       {r.status === 'pending' && ctx.isAdmin && (
         <div className="row wrap">

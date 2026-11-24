@@ -13,6 +13,7 @@
 import postgres from 'npm:postgres@3.4.5';
 import { DOMAIN, GH_RE, GitHub, HttpError, Mgmt, names, ORG, REF, Store, type Names } from './guard.ts';
 import { FN_SOURCE, MAIL_SOURCE, REPO_FILES, SQL_APP, SQL_STARTER } from './templates.ts';
+import { sealBoxBase64 } from './sealed.ts';
 import { PROVISION_KEY } from './_key.ts';
 
 const SB_URL = Deno.env.get('SUPABASE_URL')!;
@@ -191,7 +192,7 @@ async function syncOwnerRow(ownerId: number): Promise<GhState | null> {
 }
 
 // ---------- 만들기 단계 ----------
-export const STEPS = ['check', 'db', 'fn_secret', 'starter', 'expose', 'bucket', 'function', 'repo', 'pages', 'vars', 'code', 'hub', 'mail', 'ai', 'invite', 'dbcred', 'health'] as const;
+export const STEPS = ['check', 'db', 'fn_secret', 'starter', 'expose', 'bucket', 'function', 'repo', 'pages', 'vars', 'code', 'hub', 'mail', 'ai', 'invite', 'dbcred', 'ghsecret', 'health'] as const;
 type Ctx = { r: Req; n: Names; name: string; mgmt: Mgmt; gh: GitHub; store: Store; steps: Record<string, unknown>; u: Me; t0: number };
 async function saveSteps(c: Ctx, extra: { status?: string; error?: string | null; finished?: boolean } = {}) {
   await db`update public.app_requests set provision_steps = ${db.json(c.steps as Record<string, never>)},
@@ -411,6 +412,35 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
       }
       throw new HttpError(502, `처음 DB 비밀번호를 준비하지 못했습니다 (hub-dbcred ${last})`);
     }
+    case 'ghsecret': {
+      // 이 앱 저장소의 GitHub Actions 비밀값 DATABASE_URL 을 자동으로 넣는다.
+      // push 할 때 deploy.yml 이 이 값으로 supabase/migrations/*.sql 을 자동 실행한다 (선생님 PC·로컬 명령 없이).
+      // 값은 승인 때 만들어 Vault 에 둔 '처음 DB 비밀번호'를 그대로 쓴다 → 담당자가 허브에서 받는 비밀번호와 같은 값.
+      // 실패해도 앱 만들기는 계속한다(안내만) — 저장소 Settings 에서 직접 넣을 수 있다.
+      await mark();
+      try {
+        const [v] = await db`select decrypted_secret from vault.decrypted_secrets where name = ${n.vault}`;
+        if (!v?.decrypted_secret) {
+          c.steps.ghsecret_result = 'skipped';
+          c.steps.ghsecret_note = '처음 DB 비밀번호가 이미 전달되어 건너뜀 — 비밀번호를 새로 발급했다면 저장소 Secrets 에 직접 넣어야 합니다';
+          return true;
+        }
+        const url = `postgresql://${n.dev}.${REF}:${encodeURIComponent(String(v.decrypted_secret))}@${POOL_HOST}:5432/postgres`;
+        const pk = await gh.call('GET', `${gh.path}/actions/secrets/public-key`);
+        if (!pk.ok) throw new HttpError(502, `Actions 공개 키를 읽지 못했습니다 (${pk.status})`);
+        const put = await gh.call('PUT', `${gh.path}/actions/secrets/DATABASE_URL`, {
+          encrypted_value: sealBoxBase64(url, String(pk.data?.key ?? '')), key_id: String(pk.data?.key_id ?? ''),
+        });
+        if (!put.ok) throw new HttpError(502, `DATABASE_URL 비밀값 등록 실패 (${put.status}${put.data?.message ? ': ' + String(put.data.message).slice(0, 120) : ''})`);
+        c.steps.ghsecret_result = 'ok';
+      } catch (e) {
+        const msg = (e instanceof HttpError ? e.message : String((e as Error)?.message ?? e)).slice(0, 200);
+        console.error('hub-provision ghsecret', msg);
+        c.steps.ghsecret_result = 'failed';
+        c.steps.ghsecret_note = `${msg} — 저장소 Settings → Secrets and variables → Actions 에서 DATABASE_URL 을 직접 넣을 수 있습니다`;
+      }
+      return true;
+    }
     case 'health': {
       for (let i = 0; i < 6; i++) {
         try {
@@ -459,16 +489,18 @@ async function provision(r: Req, u: Me): Promise<{ more: boolean }> {
       c.steps[step] = 'done'; delete c.steps.failed_step;
       await saveSteps(c);
       if (step !== 'check') await audit(u, `provision:${step}`, n.slug,
-        (step === 'mail' && c.steps.mail_result === 'failed') || (step === 'ai' && c.steps.ai_result === 'failed') ? 'error' : 'ok',
+        (step === 'mail' && c.steps.mail_result === 'failed') || (step === 'ai' && c.steps.ai_result === 'failed') || (step === 'ghsecret' && c.steps.ghsecret_result === 'failed') ? 'error' : 'ok',
         step === 'code' ? `commit ${c.steps.commit ?? ''}`
           : step === 'invite' ? `GitHub ${c.r.github_username}: ${c.steps.invite_result}${c.steps.invite_error ? ' · ' + c.steps.invite_error : ''}`
           : step === 'mail' ? `메일 토큰 ${c.steps.mail_result ?? ''}${c.steps.mail_note ? ' · ' + c.steps.mail_note : ''}`
-          : step === 'ai' ? `AI 토큰 ${c.steps.ai_result ?? ''}${c.steps.ai_note ? ' · ' + c.steps.ai_note : ''}` : '');
+          : step === 'ai' ? `AI 토큰 ${c.steps.ai_result ?? ''}${c.steps.ai_note ? ' · ' + c.steps.ai_note : ''}`
+          : step === 'ghsecret' ? `DATABASE_URL ${c.steps.ghsecret_result ?? ''}${c.steps.ghsecret_note ? ' · ' + c.steps.ghsecret_note : ''}` : '');
     }
     const warn = [
       c.steps.invite_result === 'failed' ? `GitHub 초대 실패: ${c.steps.invite_error ?? ''} (담당 개발자에서 다시 시도)` : null,
       c.steps.mail_result === 'failed' ? `메일 토큰 자동 발급 실패: ${c.steps.mail_note ?? ''}` : null,
       c.steps.ai_result === 'failed' ? `AI 토큰 자동 발급 실패: ${c.steps.ai_note ?? ''}` : null,
+      c.steps.ghsecret_result === 'failed' ? `DATABASE_URL 자동 등록 실패: ${c.steps.ghsecret_note ?? ''}` : null,
     ].filter(Boolean).join(' / ') || null;
     await saveSteps(c, { status: 'done', error: warn, finished: true });
     await audit(u, 'provision:done', n.slug, 'ok', `${name} · ${n.url}`);
