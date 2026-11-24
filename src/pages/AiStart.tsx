@@ -93,7 +93,12 @@ function Step({ n, children }: { n: number; children: ReactNode }) {
 export function AiGuidePage({ ctx }: { ctx: Ctx }) {
   const staff = ctx.me?.role === 'staff' || ctx.me?.role === 'admin';
   // /guide/ai#migrate 처럼 들어오면 그 부분으로 이동 (앱 정보 창의 이전 안내 링크)
-  useEffect(() => { const id = decodeURIComponent(location.hash.slice(1)); if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView(), 50); }, []);
+  useEffect(() => {
+    const jump = () => { const id = decodeURIComponent(location.hash.slice(1)); if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView(), 50); };
+    jump();
+    addEventListener('hashchange', jump); addEventListener('popstate', jump);
+    return () => { removeEventListener('hashchange', jump); removeEventListener('popstate', jump); };
+  }, []);
   return (
     <article className="guide ai-guide">
       <header className="g-hero">
