@@ -2,6 +2,8 @@
 // 호출: POST { action, ... }  Authorization: Bearer <허브 로그인 토큰>  — 모든 동작은 '관리자'만 (DB 의 역할로 확인)
 //   approve       { request_id, note?, app_name? }  신청 승인 + 바로 만들기 시작
 //   run           { request_id }                    이어서 만들기 / 실패한 단계부터 다시 시도
+//   update_slug   { request_id, slug, app_name? }   멈춘 승인 건의 주소(slug)를 바꾼 뒤 이어서 만들 준비 (아직 자원이 안 만들어진 경우만)
+//   reject_failed { request_id, note? }             멈춘 승인 건을 반려로 되돌림 (아직 자원이 안 만들어진 경우만)
 //   add_owner     { app_id, name, email?, github_username?, role? }   담당자 추가 + 저장소 push 권한 초대
 //   update_owner  { owner_id, name, email?, github_username?, role? } 담당자 수정 (GitHub 아이디가 바뀌면 옛 권한 회수 → 새로 초대)
 //   remove_owner  { owner_id }                      담당자 빼기 + 저장소 권한 회수
@@ -11,7 +13,7 @@
 // 관리 토큰(BMR_MGMT_TOKEN)·GitHub 토큰(BMR_GH_TOKEN)은 암호문으로만 함수 비밀값에 있고, 푸는 열쇠는 이 함수 배포본에만 있다
 // (같은 프로젝트의 다른 앱 함수가 환경변수를 읽어도 토큰을 쓸 수 없게).
 import postgres from 'npm:postgres@3.4.5';
-import { DOMAIN, GH_RE, GitHub, HttpError, Mgmt, names, ORG, REF, Store, type Names } from './guard.ts';
+import { DOMAIN, GH_RE, GitHub, HttpError, Mgmt, names, ORG, REF, reservedProblem, Store, type Names } from './guard.ts';
 import { FN_SOURCE, MAIL_SOURCE, REPO_FILES, SQL_APP, SQL_STARTER } from './templates.ts';
 import { sealBoxBase64 } from './sealed.ts';
 import { PROVISION_KEY } from './_key.ts';
@@ -104,13 +106,24 @@ async function slugProblem(slug: string): Promise<string | null> {
 type Req = {
   id: number; slug: string; app_name: string; purpose: string; data_handled: string; has_student_pii: boolean; github_username: string;
   requester_name: string; requester_email: string | null; status: string; app_id: number | null;
-  provision_status: string | null; provision_steps: Record<string, unknown>; provision_attempts: number;
+  provision_status: string | null; provision_steps: Record<string, unknown>; provision_attempts: number; provision_lease_until: string | null;
 };
 async function getReq(id: unknown): Promise<Req> {
   if (!Number.isSafeInteger(Number(id)) || Number(id) <= 0) throw new HttpError(400, '신청 번호를 확인해 주세요.');
   const [r] = await db`select * from public.app_requests where id = ${Number(id)}`;
   if (!r) throw new HttpError(404, '신청을 찾을 수 없습니다.');
   return r as unknown as Req;
+}
+/** 만들기가 멈췄는가 — 실패했거나, 실행 중 표시(임차)가 끊긴 채 남아 있는 경우 */
+function stuck(r: Req): boolean {
+  if (r.provision_status === 'failed') return true;
+  return r.provision_status === 'running' && (!r.provision_lease_until || new Date(r.provision_lease_until).getTime() < Date.now());
+}
+/** 자원(스키마·역할·버킷·함수·저장소)이 만들어지는 단계 — 하나라도 끝났으면 주소만 바꿀 수 없다 (이름이 이미 박혀 있음) */
+const RESOURCE_STEPS = ['db', 'fn_secret', 'starter', 'expose', 'bucket', 'function', 'repo'] as const;
+function madeSteps(r: Req): string[] {
+  const st = (r.provision_steps ?? {}) as Record<string, unknown>;
+  return RESOURCE_STEPS.filter((k) => st[k] === 'done');
 }
 
 // 이미 있는 것과 겹치는지 (하나라도 있으면 만들지 않음)
@@ -461,6 +474,8 @@ async function runStep(c: Ctx, step: string): Promise<boolean> {
 }
 
 async function provision(r: Req, u: Me): Promise<{ more: boolean }> {
+  const rp = reservedProblem(r.slug);
+  if (rp) throw new HttpError(400, `${rp} 주소를 바꾼 뒤('✏️ 주소 바꿔서 다시 시도') 다시 시도해 주세요.`);
   const n = names(r.slug);
   const name = r.app_name.trim();
   if (!NAME_RE.test(name)) throw new HttpError(400, '앱 이름은 40자 이내로, 따옴표·꺾쇠·중괄호 없이 적어 주세요.');
@@ -563,6 +578,7 @@ Deno.serve(async (req) => {
       const name = String(b.app_name ?? r0.app_name).trim();
       if (!NAME_RE.test(name)) throw new HttpError(400, '앱 이름은 40자 이내로, 따옴표·꺾쇠·중괄호 없이 적어 주세요. (승인 칸에서 고칠 수 있어요)');
       const note = String(b.note ?? '').slice(0, 2000);
+      const rp = reservedProblem(r0.slug); if (rp) throw new HttpError(400, rp);
       const p = await slugProblem(r0.slug); if (p) throw new HttpError(400, p);
       if (!GH_RE.test(r0.github_username)) throw new HttpError(400, '신청서의 GitHub 아이디 형식이 올바르지 않습니다.');
       const n = names(r0.slug); const tk = await tokens();
@@ -583,6 +599,73 @@ Deno.serve(async (req) => {
       if (r.provision_status === 'done') return json(req, 200, { ok: true, more: false, request: r });
       const res = await provision(r, u);
       return json(req, 200, { ok: true, ...res, request: await getReq(r.id) });
+    }
+
+    // 멈춘 승인 건의 주소(slug)를 바꿔 다시 만들 수 있게 한다 — 아직 DB·저장소 등 자원이 하나도 안 만들어진 경우만.
+    // 예: slug 'check' 는 PostgreSQL 예약어라 `create schema check` 가 구문 오류로 멈춤 (2026-11-28 별무리 출석 프로그램).
+    if (action === 'update_slug' || action === 'change_slug') {
+      const r = await getReq(b.request_id);
+      const slug = String(b.slug ?? '').trim().toLowerCase();
+      const name = String(b.app_name ?? r.app_name).trim();
+      if (r.status !== 'approved') throw new HttpError(409, '승인된 신청만 주소를 바꿀 수 있습니다.');
+      if (r.provision_status === 'done' || r.provision_steps?.hub === 'done' || r.app_id) {
+        throw new HttpError(409, '이미 만들어진 신청입니다. 주소는 앱 화면에서 바꿀 수 없습니다.');
+      }
+      if (!stuck(r)) throw new HttpError(409, '만들기가 멈춘 신청만 주소를 바꿀 수 있습니다. 만들고 있는 중이면 끝난 뒤 다시 시도하세요.');
+      if (madeSteps(r).length) throw new HttpError(409, '이미 DB나 저장소 일부가 만들어져 주소만 바꿀 수 없습니다. 반려 후 새로 신청해 주세요.');
+      if (!NAME_RE.test(name)) throw new HttpError(400, '앱 이름은 40자 이내로, 따옴표·꺾쇠·중괄호 없이 적어 주세요.');
+      const rp = reservedProblem(slug); if (rp) throw new HttpError(400, rp);
+      const n = names(slug); // 모양 검사 (형식이 틀리면 400)
+      const p = await slugProblem(n.slug); if (p) throw new HttpError(400, p);
+      const tk = await tokens();
+      // 실패한 단계에서 일부만 만들어졌을 수 있다 — 옛 주소로 남은 자원이 있으면 이름만 바꿔 넘어갈 수 없다
+      if (n.slug !== r.slug) {
+        const old = names(r.slug);
+        const left = await collisions(old, new Mgmt(old, tk.mgmt), new GitHub(old.slug, tk.gh), new Store(old, SB_URL, SERVICE), null);
+        if (left.length) {
+          await audit(u, 'update_slug', `${r.slug} → ${n.slug}`, 'error', `이전 주소에 남은 자원: ${left.join(' · ')}`);
+          throw new HttpError(409, `이전 주소(${r.slug})로 이미 만들어진 것이 있어 주소만 바꿀 수 없습니다: ${left.join(' · ')} — 반려 후 새로 신청해 주세요.`);
+        }
+      }
+      const col = await collisions(n, new Mgmt(n, tk.mgmt), new GitHub(n.slug, tk.gh), new Store(n, SB_URL, SERVICE), null);
+      if (col.length) {
+        await audit(u, 'update_slug', `${r.slug} → ${n.slug}`, 'error', col.join(' · '));
+        throw new HttpError(409, `주소를 바꾸지 않았습니다 — 이미 있는 자원과 겹칩니다: ${col.join(' · ')}`);
+      }
+      const [dup] = await db`select id from public.app_requests where id <> ${r.id} and slug = ${n.slug} and status in ('pending', 'approved') and app_deleted_at is null limit 1`;
+      if (dup) {
+        await audit(u, 'update_slug', `${r.slug} → ${n.slug}`, 'error', `같은 주소의 다른 신청 #${dup.id}`);
+        throw new HttpError(409, `같은 주소(${n.slug})로 대기·승인된 신청이 이미 있습니다.`);
+      }
+      // 실패 표시와 '겹침 확인'(check) 단계를 되돌려 새 주소로 처음부터 다시 확인하게 한다
+      const steps: Record<string, unknown> = { ...(r.provision_steps ?? {}) };
+      delete steps.failed_step; delete steps.check;
+      for (const k of RESOURCE_STEPS) if (steps[k] === 'started') delete steps[k];
+      const how = `주소를 /${n.slug} 로 바꿨습니다. 이어서 만들 수 있습니다.`;
+      const [row] = await db`update public.app_requests set slug = ${n.slug}, app_name = ${name},
+          provision_steps = ${db.json(steps as Record<string, never>)}, provision_status = 'failed', provision_error = ${how},
+          provision_finished_at = null, provision_lease_until = null
+        where id = ${r.id} and status = 'approved' returning *`;
+      if (!row) throw new HttpError(409, '승인된 신청만 주소를 바꿀 수 있습니다.');
+      await audit(u, 'update_slug', `${r.slug} → ${n.slug}`, 'ok', `신청 #${r.id} ${name}`);
+      return json(req, 200, { ok: true, slug: n.slug, request: row });
+    }
+
+    // 멈춘 승인 건을 '반려'로 되돌린다 — 승인만 되고 자원이 하나도 안 만들어진 경우만 (만들어진 앱은 앱 화면의 삭제 사용)
+    if (action === 'reject_failed') {
+      const r = await getReq(b.request_id);
+      if (r.status !== 'approved') throw new HttpError(409, '승인된 신청만 반려할 수 있습니다.');
+      if (r.provision_status === 'done' || r.provision_steps?.hub === 'done' || r.app_id) {
+        throw new HttpError(409, '이미 개발 환경이 만들어진 신청입니다. 앱 화면의 삭제를 써 주세요.');
+      }
+      if (!stuck(r)) throw new HttpError(409, '만들기가 멈춘 신청만 반려할 수 있습니다. 만들고 있는 중이면 끝난 뒤 다시 시도하세요.');
+      const note = String(b.note ?? '').trim().slice(0, 2000) || '만들기 멈춤으로 반려';
+      const [row] = await db`update public.app_requests set status = 'rejected', provision_status = null, provision_error = null,
+          provision_finished_at = null, provision_lease_until = null, review_note = ${note}, reviewed_by = ${u.id}, reviewed_at = now()
+        where id = ${r.id} and status = 'approved' returning *`;
+      if (!row) throw new HttpError(409, '승인된 신청만 반려할 수 있습니다.');
+      await audit(u, 'reject_failed', r.slug, 'ok', `신청 #${r.id} ${r.app_name} · ${note}`);
+      return json(req, 200, { ok: true, request: row });
     }
 
     if (action === 'add_owner') {

@@ -5,6 +5,7 @@ import { notifyEvent } from '../notify';
 import { Pills } from '../ui';
 import { DevRequestsPanel } from './SelfService';
 import { AiStartCard } from './AiStart';
+import { reservedProblem } from '../../supabase/functions/hub-provision/reserved';
 
 const ST = { pending: '검토 대기', approved: '승인', rejected: '반려' } as const;
 const blank = { requester_name: '', requester_email: '', app_name: '', slug: '', purpose: '', data_handled: '', has_student_pii: '' as '' | 'yes' | 'no', github_username: '' };
@@ -14,6 +15,8 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
   const [f, setF] = useState({ ...blank, requester_name: ctx.me?.name ?? '', requester_email: ctx.me?.email ?? '' });
   const [msg, setMsg] = useState(''); const [err, setErr] = useState('');
   const [tab, setTab] = useState<'all' | Request['status']>('all'); const [showForm, setShowForm] = useState(!ctx.isAdmin);
+  /** DB 예약어·시스템 이름(check, user, order …)은 만들다가 멈추므로 신청 전에 알려 준다 */
+  const slugHint = f.slug ? reservedProblem(f.slug) : null;
   const load = () => sb.from('app_requests').select('*').order('created_at', { ascending: false }).then(({ data, error }) => {
     if (error) setErr(errMsg(error)); setList((data as Request[]) ?? []);
   });
@@ -22,6 +25,8 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setErr(''); setMsg('');
     if (!f.has_student_pii) return setErr('학생 개인정보를 다루는지 골라 주세요.');
+    const bad = reservedProblem(f.slug);
+    if (bad) return setErr(bad);
     const { error } = await sb.from('app_requests').insert({
       requester_name: f.requester_name, requester_email: f.requester_email || null, app_name: f.app_name, slug: f.slug,
       purpose: f.purpose, data_handled: f.data_handled, has_student_pii: f.has_student_pii === 'yes', github_username: f.github_username,
@@ -42,7 +47,7 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
           <label>연락 이메일<input type="email" value={f.requester_email} onChange={(e) => setF({ ...f, requester_email: e.target.value })} /></label>
           <label>앱 이름<input required value={f.app_name} onChange={(e) => setF({ ...f, app_name: e.target.value })} placeholder="예: 도서 대출 관리" /></label>
           <label>원하는 주소 이름<input required pattern="[a-z][a-z0-9\-]{1,38}" title="영문 소문자로 시작, 영문 소문자·숫자·하이픈 2~39자" value={f.slug} onChange={(e) => setF({ ...f, slug: e.target.value.toLowerCase() })} placeholder="예: library" />
-            <small className="muted">apps.bmrschool.net/{f.slug || '주소이름'}</small></label>
+            {slugHint ? <small className="error-text">{slugHint}</small> : <small className="muted">apps.bmrschool.net/{f.slug || '주소이름'}</small>}</label>
           <label>GitHub 아이디<input required value={f.github_username} onChange={(e) => setF({ ...f, github_username: e.target.value })} placeholder="bmr-apps 조직에 초대할 계정" /></label>
           <fieldset><legend>학생 개인정보를 다루나요?</legend>
             <label className="inline"><input type="radio" name="pii" checked={f.has_student_pii === 'yes'} onChange={() => setF({ ...f, has_student_pii: 'yes' })} /> 예</label>
@@ -53,7 +58,7 @@ export function RequestsPage({ ctx }: { ctx: Ctx }) {
         <label>다루는 데이터<textarea value={f.data_handled} onChange={(e) => setF({ ...f, data_handled: e.target.value })} placeholder="예: 학생 이름·학번, 대출 기록" /></label>
         {f.has_student_pii === 'yes' && <p className="warn">학생 개인정보를 다루는 앱은 접근 권한(RLS)과 보관 기간을 승인 전에 함께 검토합니다.</p>}
         {err && <p className="error" role="alert">{err}</p>}
-        <div className="row"><button>신청하기</button></div>
+        <div className="row"><button disabled={!!slugHint}>신청하기</button></div>
       </form>}
       <div className="section-head">
         <h3>{ctx.isAdmin ? '전체 신청 (관리자)' : '내 신청'}</h3>
@@ -80,6 +85,8 @@ function Steps({ r, running }: { r: Request; running: boolean }) {
 function RequestCard({ r, ctx, reload }: { r: Request; ctx: Ctx; reload: () => void }) {
   const [note, setNote] = useState(''); const [name, setName] = useState(r.app_name); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const [live, setLive] = useState<Request | null>(null);
+  /** 멈춘 건의 주소를 바꿔 다시 시도할 때 넣는 새 주소 */
+  const [newSlug, setNewSlug] = useState('');
   const cur = live ?? r;
   /** 서버가 "이어서"라고 하면 끝날 때까지 다시 부른다 (한 번에 약 1분 반씩) */
   const drive = async (first: 'approve' | 'run') => {
@@ -100,11 +107,45 @@ function RequestCard({ r, ctx, reload }: { r: Request; ctx: Ctx; reload: () => v
     setBusy(false); if (error) setErr(errMsg(error)); else { notifyEvent(ctx.session, 'app_request', r.id); reload(); }
   };
   const cancel = async () => { if (!confirm('신청을 취소할까요?')) return; const { error } = await sb.from('app_requests').delete().eq('id', r.id); if (error) setErr(errMsg(error)); else reload(); };
+  /** 주소(slug)를 바꿔서 이어서 만든다 — DB·저장소가 아직 하나도 안 만들어진 멈춘 건만 (서버가 다시 확인한다) */
+  const rename = async () => {
+    const s = newSlug.trim().toLowerCase();
+    const bad = reservedProblem(s);
+    if (bad) return setErr(bad);
+    if (!ctx.session) return;
+    if (!confirm(`주소를 /${r.slug} → /${s} 로 바꾸고 다시 만들까요?\n아직 DB·저장소가 만들어지지 않은 단계라 되돌릴 것이 없습니다.`)) return;
+    setErr(''); setBusy(true);
+    try {
+      const up = await provisionApi<{ request: Request }>(ctx.session, 'update_slug', { request_id: r.id, slug: s, app_name: name });
+      setLive(up.request);
+      let res = await provisionApi<{ more: boolean; request: Request }>(ctx.session, 'run', { request_id: r.id });
+      setLive(res.request);
+      for (let i = 0; res.more && i < 12; i++) { res = await provisionApi(ctx.session, 'run', { request_id: r.id }); setLive(res.request); }
+    } catch (e) { setErr((e as Error).message); }
+    setBusy(false); reload();
+  };
+  /** 승인만 되고 만들기가 멈춘 건을 반려로 되돌린다 (신청자에게 반려 알림이 간다) */
+  const rejectFailed = async () => {
+    if (!ctx.session) return;
+    if (!confirm(`승인을 취소하고 반려할까요?\n/${r.slug} 는 아직 만들어지지 않았습니다. 신청자에게 반려 알림이 갑니다.`)) return;
+    setErr(''); setBusy(true);
+    try {
+      const res = await provisionApi<{ request: Request }>(ctx.session, 'reject_failed', { request_id: r.id });
+      setLive(res.request); notifyEvent(ctx.session, 'app_request', r.id);
+    } catch (e) { setErr((e as Error).message); }
+    setBusy(false); reload();
+  };
   const ps = cur.provision_status;
   const stale = ps === 'running' && !busy && (!cur.provision_lease_until || new Date(cur.provision_lease_until).getTime() < Date.now());
+  /** 허브 등록(hub)까지 끝났으면 앱이 이미 있으니 주소·승인은 앱 화면에서 다룬다 */
+  const hubDone = cur.provision_steps?.hub === 'done' || !!cur.app_id;
+  const wantSlug = newSlug.trim().toLowerCase();
+  const slugBad = wantSlug ? reservedProblem(wantSlug) : '';
+  const canRename = !!wantSlug && wantSlug !== r.slug && /^[a-z][a-z0-9-]{1,38}$/.test(wantSlug)
+    && !wantSlug.endsWith('-') && !wantSlug.includes('--') && !slugBad;
   return (
     <div className={`card item b-${r.status === 'pending' ? 'amber' : r.status === 'approved' ? 'green' : 'red'}`}>
-      <div className="head"><h3>{cur.app_name} <code>/{r.slug}</code> <span className={`badge r-${r.status}`}>{r.status === 'pending' ? '⏳' : r.status === 'approved' ? '✅' : '⛔'} {ST[r.status]}</span>{r.has_student_pii && <span className="badge pii">🔒 학생 개인정보</span>}</h3>
+      <div className="head"><h3>{cur.app_name} <code>/{cur.slug}</code> <span className={`badge r-${r.status}`}>{r.status === 'pending' ? '⏳' : r.status === 'approved' ? '✅' : '⛔'} {ST[r.status]}</span>{r.has_student_pii && <span className="badge pii">🔒 학생 개인정보</span>}</h3>
         <span className="muted">{fmtTime(r.created_at)}</span></div>
       <dl className="meta">
         <dt>신청자</dt><dd>{r.requester_name}{r.requester_email && ` · ${r.requester_email}`} · GitHub @{r.github_username}</dd>
@@ -127,9 +168,20 @@ function RequestCard({ r, ctx, reload }: { r: Request; ctx: Ctx; reload: () => v
           <button disabled={busy} onClick={() => { if (confirm(`${name} (/${r.slug}) 을 승인하고 바로 개발 환경을 만들까요?\n저장소·DB·버킷·서버 함수가 만들어지고 @${r.github_username} 님을 저장소에 초대합니다.`)) drive('approve'); }}>{busy ? '만드는 중…' : '승인하고 바로 만들기'}</button>
           <button disabled={busy} className="danger" onClick={reject}>반려</button>
         </div>)}
-      {r.status === 'approved' && ctx.isAdmin && (ps === 'failed' || stale) && (
-        <div className="row"><button disabled={busy} onClick={() => drive('run')}>{busy ? '다시 시도하는 중…' : '🔁 다시 시도'}</button>
-          <span className="muted">멈춘 단계부터 이어서 합니다. 이미 만든 것은 다시 만들지 않습니다.</span></div>)}
+      {r.status === 'approved' && ctx.isAdmin && (ps === 'failed' || stale) && (<>
+        <div className="row wrap"><button disabled={busy} onClick={() => drive('run')}>{busy ? '다시 시도하는 중…' : '🔁 다시 시도'}</button>
+          <span className="muted">멈춘 단계부터 이어서 합니다. 이미 만든 것은 다시 만들지 않습니다.</span></div>
+        {hubDone ? <p className="muted small">허브 등록까지 끝난 앱입니다. 주소·승인은 앱 화면에서 다룹니다.</p> : <>
+          <div className="row wrap">
+            <input className="grow" aria-label="새 주소 이름" title="영문 소문자로 시작, 영문 소문자·숫자·하이픈 2~39자, DB 예약어 아님"
+              placeholder={`새 주소 이름 (지금 /${r.slug})`} value={newSlug} onChange={(e) => setNewSlug(e.target.value.toLowerCase())} />
+            <button disabled={busy || !canRename} onClick={rename}>{busy ? '만드는 중…' : '✏️ 주소 바꿔서 다시 시도'}</button>
+            <button className="danger" disabled={busy} onClick={rejectFailed}>⛔ 승인 취소(반려)</button>
+          </div>
+          {slugBad ? <p className="error-text small">{slugBad}</p>
+            : <p className="muted small">주소 때문에 멈췄다면(예: check 는 DB 예약어) 새 주소를 넣어 바꾼 뒤 이어서 만들 수 있습니다. 아직 DB·저장소가 안 만들어진 건만 주소를 바꿉니다.</p>}
+        </>}
+      </>)}
       {r.status === 'pending' && !ctx.isAdmin && r.requested_by === ctx.session?.user.id && <button className="ghost small" onClick={cancel}>신청 취소</button>}
     </div>
   );

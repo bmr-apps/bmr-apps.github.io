@@ -7,9 +7,13 @@
 
 import { deployFiles } from './deploy-files.ts';
 
+/** DB 예약어·시스템 이름 검사 — 서버(이 함수)와 허브 화면이 같은 파일을 쓴다 */
+export { RESERVED_HINT, reservedProblem } from './reserved.ts';
+
 export const REF = 'psupfmarnyxontorftio';
 export const ORG = 'bmr-apps';
 export const DOMAIN = 'apps.bmrschool.net';
+/** 주소 모양 규칙. DB 예약어·시스템 이름은 reserved.ts 의 reservedProblem 이 따로 막는다 (스키마 이름 기준) */
 export const SLUG_RE = /^[a-z][a-z0-9-]{1,38}$/;
 export const GH_RE = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
 
