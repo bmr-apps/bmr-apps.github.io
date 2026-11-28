@@ -216,6 +216,7 @@ const { ok, id, from, error } = await r.json();`}</C>
           <p>요약·생성·분류·챗봇 같은 기능은 <b>서버 함수 안에서</b> 허브의 <code>hub-ai</code> 를 부릅니다. 업체 키(Google·OpenAI·Anthropic·xAI)는 <b>허브만</b> 가지고, 앱은 함수 비밀값 <code>&lt;접두어&gt;AI_TOKEN</code>(예: <code>LIBRARY_AI_TOKEN</code>)으로 이 앱 신분만 증명합니다. 앱마다 키를 발급받아 보관할 필요가 없어요.</p>
           <ul>
             <li><b>고를 수 있는 모델</b>: <code>gemini:gemini-2.5-flash</code>, <code>openai:gpt-4o</code>, <code>anthropic:claude-sonnet-4-5</code>, <code>xai:grok-3</code> 처럼 <code>업체:모델</code> 로 씁니다. <code>gpt-4o-mini</code>·<code>claude-3-5-haiku-latest</code> 처럼 모델 이름만 써도 업체를 알아서 고릅니다. <b>학교 전체(또는 이 앱) 허용 목록</b> 밖의 모델은 거부됩니다.</li>
+            <li><b>음성·그림도 됩니다</b>: <code>POST …/hub-ai/tts</code> 는 <code>text</code>·<code>voice</code>(예: <code>Kore</code>)를 받아 <code>audioBase64</code>(<code>audio/wav</code>)를, <code>POST …/hub-ai/image</code> 는 <code>prompt</code>·<code>aspect_ratio</code>(예: <code>16:9</code>)를 받아 <code>imageBase64</code>(<code>image/png</code>)를 돌려줍니다. 기본 모델은 <code>gemini:gemini-2.5-flash-preview-tts</code>·<code>gemini:gemini-2.5-flash-image</code> 이고, 음성·그림 모델도 허용 모델 목록에 있어야 합니다. (<code>body.mode: 'tts' | 'image'</code> 로 <code>/hub-ai</code> 에 보내도 같아요.)</li>
             <li><b>한도</b>: 기본적으로 앱마다 <b>한 시간 60번·하루 500번·하루 50만 토큰</b>, 학교 전체 <b>하루 3,000번·500만 토큰</b>. 막힌 요청은 한도를 먹지 않습니다. 앱별로 다르게 정할 수 있어요(관리자).</li>
             <li><b>토큰은 직접 발급합니다</b>: 앱 정보 창의 <b>🤖 앱 AI</b> 에서 <b>AI 토큰 발급</b>을 한 번 누르면 <code>&lt;접두어&gt;AI_TOKEN</code> 이 함수 비밀값에 들어가고 해시만 서버에 남습니다. 새 앱은 승인 때 자동 발급됩니다. 잊었거나 다른 사람이 알게 되었으면 <b>재발급</b>하세요. 그 화면에서 등록된 업체 키·쓸 수 있는 모델·한도 사용량·최근 호출 10건도 볼 수 있습니다.</li>
             <li><b>남기지 않는 것</b>: 프롬프트와 응답 본문은 저장하지 않습니다. 모델·토큰 수·결과만 기록합니다. 학생 개인정보를 프롬프트에 넣을 때는 꼭 필요한 만큼만.</li>
@@ -241,6 +242,21 @@ const r = await fetch(\`\${Deno.env.get('SUPABASE_URL')}/functions/v1/hub-ai\`, 
 const { ok, provider, model, text, usage, error } = await r.json();
 // usage = { input_tokens, output_tokens, total_tokens }`}</C>
           <p className="muted">여러 번 주고받으려면 <code>messages: [{`{ role: 'user', content: '…' }`}]</code> 를 쓰세요 (role 은 user·assistant, system 은 <code>system</code> 칸). 토큰을 브라우저·저장소·로그에 넣지 마세요.</p>
+          <C>{`// 음성(읽어 주기)과 그림도 같은 허브 게이트웨이로
+const SB = Deno.env.get('SUPABASE_URL');
+const headers = { Authorization: \`Bearer \${token}\`, apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '', 'Content-Type': 'application/json' };
+
+const t = await fetch(SB + '/functions/v1/hub-ai/tts', {
+  method: 'POST', headers,
+  body: JSON.stringify({ text: '오늘 도서실은 5시에 닫습니다.', voice: 'Kore' }),
+});
+const { audioBase64, mimeType } = await t.json();   // 'audio/wav' — 바로 재생할 수 있어요
+
+const i = await fetch(SB + '/functions/v1/hub-ai/image', {
+  method: 'POST', headers,
+  body: JSON.stringify({ prompt: '별무리학교 교정, 수채화', aspect_ratio: '16:9' }),
+});
+const { imageBase64 } = await i.json();   // 'image/png'`}</C>
         </div>
         <div id="groups" className="g-google">
           <h3>학교 그룹·명부</h3>

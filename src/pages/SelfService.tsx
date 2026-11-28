@@ -260,6 +260,23 @@ function Ai({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
   };
 
   const state = a?.state;
+  /** 추천 모델을 목록 칸에 더한다 (이미 있으면 그대로) */
+  const addModel = (spec: string, which: 'app' | 'global') => {
+    const cur = which === 'app' ? models : gModels;
+    const have = cur.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+    if (have.some((x) => x.toLowerCase() === spec.toLowerCase())) return;
+    const next = [...have, spec].join('\n');
+    if (which === 'app') setModels(next); else setGModels(next);
+  };
+  /** 추천 모델 칩 — 누르면 위 목록 칸에 한 줄 더한다 */
+  const chips = (which: 'app' | 'global') => (
+    <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center', marginTop: 6 }}>
+      <span className="muted small">추천 모델 (누르면 목록에 더함)</span>
+      {(a?.starter_models ?? []).map((m) => (
+        <button type="button" key={m} className="ghost small" title={`${m} 을 목록에 넣기`} onClick={() => addModel(m, which)}>+ {m}</button>
+      ))}
+    </div>
+  );
   const badge = state === 'active' ? <span className={a?.enabled === false ? 'badge r-rejected' : 'badge r-approved'}>{a?.enabled === false ? '일시정지' : '활성'}</span>
     : state === 'mismatch' ? <span className="badge r-rejected">불일치 · 재발급 필요</span>
       : state === 'none' ? <span className="badge r-pending">미발급</span> : null;
@@ -268,6 +285,7 @@ function Ai({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
       <h5>🤖 앱 AI {badge}</h5>
       <p className="muted small" style={{ margin: '0 0 6px' }}>
         이 앱 서버 함수가 <code>hub-ai</code> 로 Gemini·OpenAI·Claude·Grok 을 부를 때 쓰는 신분증입니다. 업체 키는 앱이 갖지 않고, 이 앱 신분(<code>{d.secret_prefix}AI_TOKEN</code>)만 증명합니다. 프롬프트·응답은 저장하지 않고 모델·토큰 수·결과만 남깁니다.
+        글은 <code>POST …/hub-ai</code>, <b>음성(TTS)</b>은 <code>POST …/hub-ai/tts</code>(Gemini TTS·OpenAI TTS), <b>그림</b>은 <code>POST …/hub-ai/image</code>(Gemini) 로 부릅니다. 음성·그림 모델도 아래 허용 모델 목록에 있어야 합니다.
       </p>
       {loading && !a ? <p className="muted small" style={{ margin: 0 }}>AI 상태를 불러오는 중…</p> : a && (
         <>
@@ -302,6 +320,7 @@ function Ai({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
               </div>
               <label style={{ display: 'block', marginTop: 8 }}>이 앱 허용 모델 <span className="muted small">· 한 줄에 하나 또는 쉼표로, <code>업체:모델</code> (예: <code>gemini:gemini-2.5-flash</code>). 비우면 학교 전체 목록을 그대로 씁니다.</span>
                 <textarea value={models} rows={4} spellCheck={false} onChange={(e) => setModels(e.target.value)} placeholder={'gemini:gemini-2.5-flash\nopenai:gpt-4o-mini'} style={{ width: '100%', marginTop: 4 }} /></label>
+              {chips('app')}
               <div className="cols" style={{ marginTop: 4 }}>
                 <label>1시간 요청 (빈칸 = 기본값)<input inputMode="numeric" value={hourly} onChange={(e) => setHourly(e.target.value)} placeholder={String(a.config.default_app_hourly)} /></label>
                 <label>24시간 요청<input inputMode="numeric" value={daily} onChange={(e) => setDaily(e.target.value)} placeholder={String(a.config.default_app_daily)} /></label>
@@ -315,6 +334,7 @@ function Ai({ ctx, d }: { ctx: Ctx; d: DevInfoRes }) {
                 <summary><b>학교 전체 AI 기본값</b> <span className="muted small">· 모든 앱에 적용 (관리자)</span></summary>
                 <label style={{ display: 'block', marginTop: 8 }}>기본 모델<input value={gModel} spellCheck={false} onChange={(e) => setGModel(e.target.value)} placeholder="gemini:gemini-2.5-flash" /></label>
                 <label style={{ display: 'block', marginTop: 6 }}>학교 전체 허용 모델<textarea value={gModels} rows={5} spellCheck={false} onChange={(e) => setGModels(e.target.value)} style={{ width: '100%', marginTop: 4 }} /></label>
+                {chips('global')}
                 <div className="cols" style={{ marginTop: 4 }}>
                   <label>앱 기본 1시간 요청<input inputMode="numeric" value={gHourly} onChange={(e) => setGHourly(e.target.value)} /></label>
                   <label>앱 기본 24시간 요청<input inputMode="numeric" value={gDaily} onChange={(e) => setGDaily(e.target.value)} /></label>

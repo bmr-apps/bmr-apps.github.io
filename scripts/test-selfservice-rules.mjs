@@ -96,6 +96,55 @@ ok(["default 'gemini:gemini-2.5-flash'", 'default_app_hourly int not null defaul
 ok(mig.includes('bmrai_') === false && mig.includes('ai_tokens') && mig.includes('ai_log') && mig.includes('ai_config'), '마이그레이션에 세 표가 있고 토큰 평문·접두어는 없음');
 ok(R.AI_STARTER_MODELS.every((m) => R.parseAiModelSpec(m)?.spec === m), '시작 모델 목록은 모두 형식이 맞음', R.AI_STARTER_MODELS.join(','));
 ok(JSON.stringify(A.STARTER_MODELS) === JSON.stringify(R.AI_STARTER_MODELS), 'hub-ai/models.ts 시작 모델 = hub-devtools/rules.ts');
+// 11/28: 최신 Gemini · 음성(TTS) · 이미지 모델이 두 목록에 함께 들어 있는지
+const NEW_MODELS = ['gemini:gemini-2.5-flash-lite', 'gemini:gemini-2.5-flash-preview-tts', 'gemini:gemini-2.5-flash-image',
+  'gemini:gemini-3.1-flash-tts-preview', 'gemini:gemini-3.1-flash-image', 'openai:gpt-4o-mini-tts'];
+ok(NEW_MODELS.every((m) => R.AI_STARTER_MODELS.includes(m) && A.STARTER_MODELS.includes(m)), '최신 Gemini·TTS·이미지 모델이 시작 목록에 있음', NEW_MODELS.filter((m) => !A.STARTER_MODELS.includes(m)).join(','));
+ok(A.STARTER_MODELS.includes('openai:gpt-4o') && A.STARTER_MODELS.includes('anthropic:claude-sonnet-4-5') && A.STARTER_MODELS.includes('xai:grok-3'), '기존 텍스트 모델은 그대로 남아 있음');
+ok(A.STARTER_MODELS.length <= R.AI_DEFAULTS.allowedModelsMax, `시작 목록 ${A.STARTER_MODELS.length}개 ≤ 허용 상한 ${R.AI_DEFAULTS.allowedModelsMax}개`);
+
+console.log('[음성(TTS)·이미지]');
+ok(A.TTS_DEFAULT_MODEL === 'gemini:gemini-2.5-flash-preview-tts' && A.IMAGE_DEFAULT_MODEL === 'gemini:gemini-2.5-flash-image', 'TTS·이미지 기본 모델', `${A.TTS_DEFAULT_MODEL} · ${A.IMAGE_DEFAULT_MODEL}`);
+ok(A.STARTER_MODELS.includes(A.TTS_DEFAULT_MODEL) && A.STARTER_MODELS.includes(A.IMAGE_DEFAULT_MODEL), '기본 TTS·이미지 모델이 시작 목록(허용 후보)에 있음');
+ok(A.TTS_PROVIDERS.join(',') === 'gemini,openai' && A.IMAGE_PROVIDERS.join(',') === 'gemini', 'TTS 는 Gemini·OpenAI, 이미지는 Gemini');
+ok(A.TTS_DEFAULT_VOICE.gemini === 'Kore' && A.TTS_DEFAULT_VOICE.openai === 'alloy', '기본 음성: Gemini Kore · OpenAI alloy');
+const t1 = A.normalizeTts({ text: ' 안녕하세요 ' });
+ok(t1.ok && t1.tts.text === '안녕하세요' && t1.tts.voice === '' && t1.tts.format === '', '음성: text 앞뒤 공백 제거, 음성·형식은 비면 업체 기본');
+const t2 = A.normalizeTts({ prompt: '읽어 줘', voice: 'Puck', format: 'MP3' });
+ok(t2.ok && t2.tts.text === '읽어 줘' && t2.tts.voice === 'Puck' && t2.tts.format === 'mp3', '음성: prompt·voice·format(대문자) 통과');
+const tErr = (b) => { const r = A.normalizeTts(b); return r.ok ? null : r.status; };
+ok(tErr({}) === 400 && tErr({ text: '   ' }) === 400 && tErr({ text: 5 }) === 400, '음성: 글이 없으면 400');
+ok(tErr({ text: 'x'.repeat(A.MAX_TTS_CHARS + 1) }) === 413, `음성: ${A.MAX_TTS_CHARS}자 초과 → 413`);
+ok(tErr({ text: 'x', voice: '<b>' }) === 400 && tErr({ text: 'x', voice: 'K' }) === 400 && tErr({ text: 'x', format: 'flac' }) === 400, '음성: 이상한 음성 이름·형식 → 400');
+const i1 = A.normalizeImage({ prompt: ' 고양이 그림 ' });
+ok(i1.ok && i1.img.prompt === '고양이 그림' && i1.img.aspect === '', '이미지: prompt 정리, 비율은 비면 모델이 정함');
+const i2 = A.normalizeImage({ text: '별이 빛나는 밤', aspect_ratio: '16:9' });
+ok(i2.ok && i2.img.prompt === '별이 빛나는 밤' && i2.img.aspect === '16:9', '이미지: text·aspect_ratio 통과');
+const iErr = (b) => { const r = A.normalizeImage(b); return r.ok ? null : r.status; };
+ok(iErr({}) === 400 && iErr({ prompt: '  ' }) === 400 && iErr({ prompt: 'x', aspect_ratio: '7:3' }) === 400 && iErr({ prompt: 'x', aspect_ratio: 16 }) === 400, '이미지: 글이 없거나 지원하지 않는 비율 → 400');
+ok(A.IMAGE_ASPECTS.includes('1:1') && A.IMAGE_ASPECTS.includes('16:9') && A.IMAGE_ASPECTS.includes('21:9') && A.IMAGE_ASPECTS.length === 14, '이미지 비율 14가지');
+// PCM → WAV 헤더 (44바이트 · RIFF/WAVE · 24kHz 16bit 모노)
+const pcm = new Uint8Array([1, 2, 3, 4, 5, 6]);
+const wav = A.pcmToWav(pcm);
+const rt = (o, n) => String.fromCharCode(...wav.subarray(o, o + n));
+const dv2 = new DataView(wav.buffer);
+ok(wav.length === 44 + pcm.length && rt(0, 4) === 'RIFF' && rt(8, 4) === 'WAVE' && rt(12, 4) === 'fmt ' && rt(36, 4) === 'data', 'WAV: 44바이트 헤더 + 원본 바이트', `${wav.length}`);
+ok(dv2.getUint32(4, true) === 36 + pcm.length && dv2.getUint32(40, true) === pcm.length, 'WAV: RIFF·data 크기');
+ok(dv2.getUint16(20, true) === 1 && dv2.getUint16(22, true) === 1 && dv2.getUint32(24, true) === 24000 && dv2.getUint16(34, true) === 16, 'WAV: PCM · 모노 · 24kHz · 16bit');
+ok(dv2.getUint32(28, true) === 24000 * 2 && dv2.getUint16(32, true) === 2, 'WAV: 바이트레이트·블록정렬');
+ok(wav[44] === 1 && wav[49] === 6, 'WAV: 원본 PCM 이 44바이트 뒤에 그대로');
+ok(A.pcmToWav(pcm, { sampleRate: 16000 }).length === 50 && new DataView(A.pcmToWav(pcm, { sampleRate: 16000 }).buffer).getUint32(24, true) === 16000, 'WAV: 다른 샘플레이트도 그대로 넣음');
+ok(A.sampleRateOf('audio/L16;codec=pcm;rate=24000') === 24000 && A.sampleRateOf('audio/L16;rate=16000') === 16000 && A.sampleRateOf('') === null, 'mimeType 에서 샘플레이트 읽기');
+ok(A.isContainerAudio('audio/wav') && A.isContainerAudio('audio/mpeg') && A.isContainerAudio('audio/ogg; codecs=opus') && !A.isContainerAudio('audio/L16;codec=pcm;rate=24000') && !A.isContainerAudio(''), '이미 그릇인 오디오(wav·mp3·ogg)와 PCM 구분');
+const hubAiMedia = readFileSync(new URL('../supabase/functions/hub-ai/index.ts', import.meta.url), 'utf8');
+ok(hubAiMedia.includes("'/tts'") && hubAiMedia.includes("'/image'") && hubAiMedia.includes("b.mode === 'tts'") && hubAiMedia.includes("b.mode === 'image'"), 'hub-ai: /tts · /image 경로와 body.mode 둘 다 받음');
+ok(hubAiMedia.includes('capabilities: { text: true, tts: true, image: true }'), 'hub-ai /health: capabilities');
+ok(hubAiMedia.includes('responseModalities: [\'AUDIO\']') && hubAiMedia.includes('prebuiltVoiceConfig') && hubAiMedia.includes('pcmToWav'), 'hub-ai TTS: Gemini AUDIO 모달리티 + PCM→WAV');
+ok(hubAiMedia.includes('https://api.openai.com/v1/audio/speech'), 'hub-ai TTS: OpenAI /v1/audio/speech');
+ok(hubAiMedia.includes('responseModalities: [\'IMAGE\', \'TEXT\']') && hubAiMedia.includes('imageBase64') && hubAiMedia.includes('audioBase64'), 'hub-ai 이미지: IMAGE 모달리티 + imageBase64·audioBase64 응답');
+const migMedia = readFileSync(new URL('../supabase/migrations/20261128120000_hub_ai_media_models.sql', import.meta.url), 'utf8');
+ok(NEW_MODELS.every((m) => migMedia.includes(`'${m}'`)), '마이그레이션 20261128120000: 새 모델을 허용 목록에 더함');
+ok(migMedia.includes('bmr_admin.ai_config') && migMedia.includes('allowed_models'), '마이그레이션: ai_config.allowed_models 만 건드림');
 
 const modelCases = [
   'gemini:gemini-2.5-flash', 'gemini-2.5-flash', 'openai:gpt-4o-mini', 'gpt-4o-mini', 'GPT-4O', 'o3-mini', 'o1-preview', 'chatgpt-4o-latest',

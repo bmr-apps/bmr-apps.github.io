@@ -18,17 +18,118 @@ export const AI_DEFAULTS = {
   allowedModelsMax: 50,
 } as const;
 
-/** 허용 모델 목록의 시작값 (새 설정을 만들 때 화면에서 제안) */
+/** 허용 모델 목록의 시작값 (새 설정을 만들 때 화면에서 제안)
+ *  · 텍스트 모델과 함께 음성(-tts)·이미지(-image) 모델도 넣는다 (hub-ai/tts · hub-ai/image) */
 export const STARTER_MODELS: readonly string[] = [
   'gemini:gemini-2.5-flash',
   'gemini:gemini-2.5-pro',
+  'gemini:gemini-2.5-flash-lite',
+  'gemini:gemini-2.5-flash-preview-tts',
+  'gemini:gemini-2.5-flash-image',
+  'gemini:gemini-3.1-flash-tts-preview',
+  'gemini:gemini-3.1-flash-image',
   'openai:gpt-4o-mini',
   'openai:gpt-4o',
+  'openai:gpt-4o-mini-tts',
   'anthropic:claude-3-5-haiku-latest',
   'anthropic:claude-sonnet-4-5',
   'xai:grok-3-mini',
   'xai:grok-3',
 ] as const;
+
+// ---------- 음성(TTS)·이미지 생성 ----------
+/** 요청에 모델을 안 적었을 때 쓰는 음성 모델 (Gemini TTS) */
+export const TTS_DEFAULT_MODEL = 'gemini:gemini-2.5-flash-preview-tts';
+/** 요청에 모델을 안 적었을 때 쓰는 이미지 모델 (Gemini 이미지) */
+export const IMAGE_DEFAULT_MODEL = 'gemini:gemini-2.5-flash-image';
+/** 음성을 만들 수 있는 업체 — Gemini 는 generateContent, OpenAI 는 /v1/audio/speech */
+export const TTS_PROVIDERS: readonly Provider[] = ['gemini', 'openai'] as const;
+/** 이미지를 만들 수 있는 업체 (지금은 Gemini 만) */
+export const IMAGE_PROVIDERS: readonly Provider[] = ['gemini'] as const;
+/** 업체별 기본 음성 이름 — Gemini prebuilt voice(Kore·Puck…)와 OpenAI voice(alloy·nova…) */
+export const TTS_DEFAULT_VOICE: Record<'gemini' | 'openai', string> = { gemini: 'Kore', openai: 'alloy' };
+/** 음성 이름 모양 (Kore · Puck · alloy …) — 있는 이름인지는 업체가 최종 판정한다 */
+export const VOICE_RE = /^[A-Za-z][A-Za-z0-9_-]{1,29}$/;
+/** 한 번에 읽어 줄 글자 수 상한 (TTS 는 글자 수가 곧 길이·값이다) */
+export const MAX_TTS_CHARS = 8_000;
+/** 이미지 비율 — 업체가 받는 값만 통과시킨다 (생략하면 모델이 정한다) */
+export const IMAGE_ASPECTS: readonly string[] = [
+  '1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9', '1:4', '4:1', '1:8', '8:1',
+] as const;
+
+export type Tts = { text: string; voice: string; format: '' | 'wav' | 'mp3' };
+export type TtsResult = { ok: true; tts: Tts } | { ok: false; status: number; message: string };
+/**
+ * 음성 요청 본문 → 읽을 글·음성·형식. 형식이 틀리면 400, 글이 너무 길면 413.
+ *  · text (또는 prompt) · voice · format('wav'|'mp3', 비우면 업체 기본)
+ */
+export function normalizeTts(b: Record<string, unknown>): TtsResult {
+  const bad = (status: number, message: string): TtsResult => ({ ok: false, status, message });
+  const raw = typeof b.text === 'string' ? b.text : typeof b.prompt === 'string' ? b.prompt : '';
+  const text = raw.trim();
+  if (!text) return bad(400, '읽어 줄 글을 text(또는 prompt)에 적어 주세요.');
+  if (text.length > MAX_TTS_CHARS) return bad(413, `한 번에 읽어 줄 글은 ${MAX_TTS_CHARS.toLocaleString('en-US')}자까지입니다.`);
+  const voice = typeof b.voice === 'string' ? b.voice.trim() : '';
+  if (voice && !VOICE_RE.test(voice)) return bad(400, "voice 는 영문으로 시작하는 2~30자입니다 (예: 'Kore', 'Puck', 'alloy').");
+  const f = typeof b.format === 'string' ? b.format.trim().toLowerCase() : '';
+  if (f && f !== 'wav' && f !== 'mp3') return bad(400, "format 은 'wav' 또는 'mp3' 입니다. (비우면 업체 기본)");
+  return { ok: true, tts: { text, voice, format: f as Tts['format'] } };
+}
+
+export type Img = { prompt: string; aspect: string };
+export type ImgResult = { ok: true; img: Img } | { ok: false; status: number; message: string };
+/**
+ * 이미지 요청 본문 → 그릴 글·비율. 형식이 틀리면 400, 글이 너무 길면 413.
+ *  · prompt (또는 text) · aspect_ratio(예: '1:1', '16:9')
+ */
+export function normalizeImage(b: Record<string, unknown>): ImgResult {
+  const bad = (status: number, message: string): ImgResult => ({ ok: false, status, message });
+  const raw = typeof b.prompt === 'string' ? b.prompt : typeof b.text === 'string' ? b.text : '';
+  const prompt = raw.trim();
+  if (!prompt) return bad(400, '그릴 내용을 prompt 에 적어 주세요.');
+  if (prompt.length > MAX_CHARS) return bad(413, `한 번에 보내는 글이 너무 깁니다 (${MAX_CHARS}자까지).`);
+  if (b.aspect_ratio !== undefined && b.aspect_ratio !== null && typeof b.aspect_ratio !== 'string') {
+    return bad(400, "aspect_ratio 는 '16:9' 같은 글자입니다. (비우면 모델이 정함)");
+  }
+  const aspect = typeof b.aspect_ratio === 'string' ? b.aspect_ratio.trim() : '';
+  if (aspect && !IMAGE_ASPECTS.includes(aspect)) {
+    return bad(400, `aspect_ratio 는 ${IMAGE_ASPECTS.join(' · ')} 중 하나입니다. (비우면 모델이 정함)`);
+  }
+  return { ok: true, img: { prompt, aspect } };
+}
+
+/**
+ * Gemini 가 돌려주는 PCM(보통 audio/L16;codec=pcm;rate=24000)을 브라우저가 바로 재생하는 wav 로 감싼다.
+ * 44바이트 RIFF 헤더를 앞에 붙이고 나머지는 원본 바이트 그대로다.
+ */
+export function pcmToWav(pcm: Uint8Array, opts: { sampleRate?: number; channels?: number; bits?: number } = {}): Uint8Array {
+  const rate = opts.sampleRate && opts.sampleRate > 0 ? Math.trunc(opts.sampleRate) : 24_000;
+  const ch = opts.channels && opts.channels > 0 ? Math.trunc(opts.channels) : 1;
+  const bits = opts.bits ?? 16;
+  const block = ch * Math.max(1, Math.trunc(bits / 8));
+  const out = new Uint8Array(44 + pcm.length);
+  const dv = new DataView(out.buffer);
+  const tag = (at: number, s: string) => { for (let i = 0; i < s.length; i++) out[at + i] = s.charCodeAt(i); };
+  tag(0, 'RIFF'); dv.setUint32(4, 36 + pcm.length, true); tag(8, 'WAVE');
+  tag(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, ch, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * block, true); dv.setUint16(32, block, true); dv.setUint16(34, bits, true);
+  tag(36, 'data'); dv.setUint32(40, pcm.length, true);
+  out.set(pcm, 44);
+  return out;
+}
+
+/** 업체가 알려 준 mimeType 에서 샘플레이트를 읽는다 (audio/L16;codec=pcm;rate=24000 → 24000) */
+export function sampleRateOf(mime: string): number | null {
+  const m = String(mime ?? '');
+  const rate = /rate=(\d{3,6})/i.exec(m)?.[1];
+  if (rate) return Number(rate);
+  return null;
+}
+
+/** 업체가 돌려준 오디오 mimeType 이 이미 wav·mp3 같은 그릇인지 (아니면 PCM 이라 wav 로 감싸야 한다) */
+export function isContainerAudio(mime: string): boolean {
+  return /^audio\/(wav|x-wav|mpeg|mp3|ogg|opus|webm|flac|aac|mp4)/i.test(String(mime ?? '').trim());
+}
 
 /** max_tokens 를 안 적었을 때 */
 export const AI_DEFAULT_TOKENS = 1024;

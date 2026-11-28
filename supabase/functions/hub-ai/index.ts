@@ -1,5 +1,8 @@
 // hub-ai — 앱 서버 함수 대신 여러 AI 업체(Gemini · OpenAI · Claude · Grok)를 부르는 학교 공용 게이트웨이.
-// 호출: POST { model?, prompt?, system?, messages?: [{ role, content }], temperature?, max_tokens?, response_mime_type?, slug? }
+// 호출: POST /hub-ai  { model?, prompt?, system?, messages?: [{ role, content }], temperature?, max_tokens?, response_mime_type?, slug? }  → 글
+//       POST /hub-ai/tts   { model?, text?|prompt?, voice?, format?: 'wav'|'mp3', slug? }                        → 음성(audioBase64)
+//       POST /hub-ai/image { model?, prompt?|text?, aspect_ratio?, slug? }                                       → 그림(imageBase64)
+//       (경로 대신 body.mode = 'tts' | 'image' 로 골라도 된다 — 기존 POST /hub-ai 호출은 그대로 글)
 //   Authorization: Bearer <앱 AI_TOKEN>   (bmrai_…)
 //     또는 허브 로그인 토큰(관리자, 또는 그 앱 담당 개발자 — 이때 slug 필요)
 //     또는 허브 내부 도우미(hub-assistant) — 헤더 x-hub-assistant-grant 에 일회용 표(60초·한 번)를 붙인다.
@@ -15,6 +18,8 @@ import { PROVISION_KEY } from './_key.ts';
 import {
   AI_DEFAULTS, MAX_CHARS, MAX_MESSAGES, MAX_TOKENS_CAP, PROVIDER_LABEL, PROVIDERS, type Provider, type Ask,
   parseModelSpec, effectiveModels, limitOf, modelAllowed, normalizeAsk,
+  TTS_DEFAULT_MODEL, IMAGE_DEFAULT_MODEL, TTS_PROVIDERS, IMAGE_PROVIDERS, TTS_DEFAULT_VOICE, normalizeTts, normalizeImage,
+  pcmToWav, sampleRateOf, isContainerAudio, type Tts, type Img,
 } from './models.ts';
 
 if (!PROVISION_KEY) throw new Error('hub-ai: 열쇠가 없습니다 — node scripts/setup-provision.mjs --deploy --only hub-ai 또는 node scripts/setup-ai.mjs --deploy 로 배포하세요');
@@ -33,6 +38,8 @@ const LIMIT = {
   maxTokens: MAX_TOKENS_CAP,
   maxLogRows: 10,
   timeouts: { gemini: 90_000, openai: 90_000, anthropic: 90_000, xai: 90_000 },
+  /** 음성·이미지 생성은 글보다 오래 걸린다 */
+  mediaTimeout: 120_000,
 } as const;
 const db = postgres(Deno.env.get('SUPABASE_DB_URL')!, { prepare: false, max: 2, idle_timeout: 20, connect_timeout: 10, onnotice: () => {} });
 if (new URL(SB_URL).hostname.split('.')[0] !== REF) throw new Error('hub-ai: 다른 프로젝트에서는 실행하지 않습니다');
@@ -53,6 +60,13 @@ const json = (req: Request, status: number, body: unknown) =>
 class HttpError extends Error { constructor(public status: number, message: string) { super(message); } }
 
 const b64d = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+/** 큰 바이트(음성·이미지)를 base64 로 — 한 번에 String.fromCharCode 에 넘기지 않고 나눠서 만든다 */
+function b64e(bytes: Uint8Array): string {
+  let s = '';
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) s += String.fromCharCode(...bytes.subarray(i, i + CH));
+  return btoa(s);
+}
 /** hub-assistant 가 보내는 '허브 내부 도우미' 일회용 표 — 60초 안에 쓰이지 않은 표인지 확인하고 바로 쓴 것으로 표시한다.
  *  새 비밀값 없이 DB 만 본다. 무작위 64자라 짐작할 수 없고, 한 번 쓰면 효력이 없다.
  *  hub-assistant/rules.ts 의 GRANT_HEADER·GRANT_TTL_SECONDS·NONCE_RE 와 같아야 한다. */
@@ -113,6 +127,7 @@ function scrub(s: unknown): string {
 }
 const missingTable = (e: unknown) => /does not exist|relation .*ai_(config|tokens|log)/i.test(String((e as Error)?.message ?? e));
 
+type Kind = 'text' | 'tts' | 'image';
 type AppRow = { id: number; slug: string; name: string; status: string };
 type AiRow = {
   enabled: boolean; allowed_models: string[] | null;
@@ -326,6 +341,97 @@ async function callAnthropic(key: string, model: string, a: ReturnType<typeof re
   return { text, input, output, total: input + output };
 }
 
+type Media = { bytes: Uint8Array; mime: string; text?: string; input: number; output: number; total: number };
+/** Gemini 응답의 parts 에서 inlineData(또는 inline_data) 를 꺼낸다 */
+function inlineOf(j: Record<string, unknown>): { data: string; mimeType: string } | null {
+  const cands = (Array.isArray(j.candidates) ? j.candidates : []) as { content?: { parts?: Record<string, unknown>[] } }[];
+  for (const p of cands[0]?.content?.parts ?? []) {
+    const raw = (p.inlineData ?? p.inline_data) as { data?: unknown; mimeType?: unknown; mime_type?: unknown } | undefined;
+    if (raw && typeof raw.data === 'string' && raw.data) {
+      return { data: raw.data, mimeType: String(raw.mimeType ?? raw.mime_type ?? '') };
+    }
+  }
+  return null;
+}
+/** 응답의 글 부분 (이미지 모델이 함께 돌려주는 설명) */
+function textOf(j: Record<string, unknown>): string {
+  const cands = (Array.isArray(j.candidates) ? j.candidates : []) as { content?: { parts?: { text?: string }[] } }[];
+  return (cands[0]?.content?.parts ?? []).map((p) => String(p?.text ?? '')).join('').trim();
+}
+function usageOf(j: Record<string, unknown>): { input: number; output: number; total: number } {
+  const u = (j.usageMetadata && typeof j.usageMetadata === 'object' ? j.usageMetadata : {}) as { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+  const input = Number(u.promptTokenCount ?? 0), output = Number(u.candidatesTokenCount ?? 0);
+  return { input, output, total: Number(u.totalTokenCount ?? input + output) };
+}
+
+/** Gemini TTS — 응답의 PCM(inlineData)에 wav 헤더를 붙여 바로 재생되는 음성으로 만든다 */
+async function callGeminiTts(key: string, model: string, t: Tts): Promise<Media> {
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: t.text }] }],
+    generationConfig: {
+      responseModalities: ['AUDIO'],
+      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: t.voice || TTS_DEFAULT_VOICE.gemini } } },
+    },
+  };
+  const r = await post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    { 'x-goog-api-key': key }, body, LIMIT.mediaTimeout);
+  if (!r.ok) throw upstreamError('gemini', r.status, errText(r.j), model);
+  const inl = inlineOf(r.j);
+  if (!inl) {
+    const pf = (r.j.promptFeedback && typeof r.j.promptFeedback === 'object' ? r.j.promptFeedback : null) as { blockReason?: string } | null;
+    throw new HttpError(400, pf?.blockReason ? `읽어 줄 글이 안전 정책에 걸렸습니다 (${pf.blockReason}).` : '음성이 비어 있습니다. 글을 조금 바꿔 보세요.');
+  }
+  const pcm = b64d(inl.data);
+  const u = usageOf(r.j);
+  // 이미 wav·mp3 같은 그릇이면 그대로, 원본 PCM(audio/L16)이면 wav 로 감싼다
+  if (isContainerAudio(inl.mimeType)) return { bytes: pcm, mime: inl.mimeType, ...u };
+  const wav = pcmToWav(pcm, { sampleRate: sampleRateOf(inl.mimeType) ?? 24_000 });
+  return { bytes: wav, mime: 'audio/wav', ...u };
+}
+
+/** OpenAI TTS — /v1/audio/speech 가 오디오 바이트를 바로 돌려준다 */
+async function callOpenAiTts(key: string, model: string, t: Tts): Promise<Media> {
+  const format = t.format === 'wav' ? 'wav' : 'mp3';
+  const r = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, input: t.text, voice: t.voice || TTS_DEFAULT_VOICE.openai, response_format: format }),
+    signal: AbortSignal.timeout(LIMIT.mediaTimeout),
+  });
+  if (!r.ok) {
+    const raw = await r.text();
+    let msg = raw.slice(0, 300);
+    try { msg = errText(JSON.parse(raw) as Record<string, unknown>) || msg; } catch { /* 그대로 */ }
+    throw upstreamError('openai', r.status, msg, model);
+  }
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if (!bytes.length) throw new HttpError(502, '음성이 비어 있습니다. 잠시 뒤 다시 시도하세요.');
+  return { bytes, mime: format === 'wav' ? 'audio/wav' : 'audio/mpeg', input: 0, output: 0, total: 0 };
+}
+
+/** Gemini 이미지 — responseModalities [IMAGE, TEXT] 로 부르고 inlineData(이미지)를 돌려준다 */
+async function callGeminiImage(key: string, model: string, img: Img): Promise<Media> {
+  const body = {
+    contents: [{ role: 'user', parts: [{ text: img.prompt }] }],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      ...(img.aspect ? { imageConfig: { aspectRatio: img.aspect } } : {}),
+    },
+  };
+  const r = await post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    { 'x-goog-api-key': key }, body, LIMIT.mediaTimeout);
+  if (!r.ok) throw upstreamError('gemini', r.status, errText(r.j), model);
+  const inl = inlineOf(r.j);
+  const u = usageOf(r.j);
+  const text = textOf(r.j);
+  if (!inl) {
+    const pf = (r.j.promptFeedback && typeof r.j.promptFeedback === 'object' ? r.j.promptFeedback : null) as { blockReason?: string } | null;
+    throw new HttpError(400, pf?.blockReason ? `요청이 안전 정책에 걸려 그림을 만들지 못했습니다 (${pf.blockReason}).`
+      : "그림이 돌아오지 않았습니다. 이 모델이 그림을 그릴 수 있는지(예: gemini-2.5-flash-image)와 요청 글을 확인해 주세요.");
+  }
+  return { bytes: b64d(inl.data), mime: inl.mimeType || 'image/png', ...(text ? { text } : {}), ...u };
+}
+
 const route = (req: Request) => {
   const p = new URL(req.url).pathname;
   const i = p.indexOf('/hub-ai');
@@ -338,9 +444,14 @@ Deno.serve(async (req) => {
   if (o && !ORIGINS.includes(o)) return json(req, 403, { error: '허용되지 않은 출처입니다.' });
   const path = route(req);
   if (req.method === 'GET' && path === '/health') {
-    return json(req, 200, { ok: true, providers: configuredProviders(), default_model: AI_DEFAULTS.defaultModel });
+    return json(req, 200, {
+      ok: true, providers: configuredProviders(), default_model: AI_DEFAULTS.defaultModel,
+      // 어떤 종류의 호출을 받는지 — 앱이 화면에 ‘지원함’을 표시할 때 쓴다
+      capabilities: { text: true, tts: true, image: true },
+      media_models: { tts: TTS_DEFAULT_MODEL, image: IMAGE_DEFAULT_MODEL },
+    });
   }
-  if (req.method !== 'POST' || (path !== '/' && path !== '/chat')) return json(req, 405, { error: 'POST 만 받습니다.' });
+  if (req.method !== 'POST' || !['/', '/chat', '/tts', '/image'].includes(path)) return json(req, 405, { error: 'POST 만 받습니다.' });
 
   let actor: Actor | null = null;
   let app: AppRow | null = null;
@@ -355,6 +466,12 @@ Deno.serve(async (req) => {
     if (t.length > LIMIT.maxBody) throw new HttpError(413, '요청이 너무 큽니다.');
     let b: Record<string, unknown>;
     try { b = t ? JSON.parse(t) as Record<string, unknown> : {}; } catch { throw new HttpError(400, 'JSON 형식이 아닙니다.'); }
+    // 0) 어떤 종류의 호출인가 — 경로(/tts · /image)로 먼저, 없으면 body.mode 로. 나머지는 그대로 글(기존 호출 100% 호환)
+    const kind: Kind = path === '/tts' ? 'tts' : path === '/image' ? 'image'
+      : b.mode === 'tts' ? 'tts' : b.mode === 'image' ? 'image' : 'text';
+    if (kind === 'text' && b.mode !== undefined && b.mode !== null && b.mode !== '' && b.mode !== 'text') {
+      throw new HttpError(400, "mode 는 'tts' 또는 'image' 입니다. (글은 mode 없이 부르면 됩니다)");
+    }
 
     // 1) 누가 부르나 — 허브 내부 도우미 · 앱 토큰 · 허브 로그인(관리자·담당 개발자)
     const internal = await takeAssistantGrant(assistGrant);
@@ -399,24 +516,36 @@ Deno.serve(async (req) => {
       throw new HttpError(403, '이 앱의 AI 사용이 관리자에 의해 멈춰 있습니다. 관리자에게 문의하세요.');
     }
 
-    // 2) 어떤 모델인가 — 허용 목록 안에서만
+    // 2) 어떤 모델인가 — 허용 목록 안에서만 (음성·이미지는 그 종류의 기본 모델을 쓴다)
     const c = await config();
     const allowed = effectiveModels(ai.allowed_models, c.allowed_models);
     if (!allowed.length) throw new HttpError(503, '허용된 AI 모델이 없습니다. 관리자에게 알려 주세요.');
-    const want = b.model === undefined || b.model === null || b.model === '' ? c.default_model : b.model;
+    const fallbackModel = kind === 'tts' ? TTS_DEFAULT_MODEL : kind === 'image' ? IMAGE_DEFAULT_MODEL : c.default_model;
+    const want = b.model === undefined || b.model === null || b.model === '' ? fallbackModel : b.model;
     picked = parseModelSpec(want);
     if (!picked) throw new HttpError(400, `model 은 '업체:모델' 또는 모델 이름입니다 (예: gemini:gemini-2.5-flash). 받은 값: ${String(want).slice(0, 60)}`);
     if (!modelAllowed(picked, allowed)) {
       await aiLog(app, picked.provider, picked.model, { input: 0, output: 0, total: 0 }, 'denied', `허용되지 않은 모델 ${picked.spec}`, actor?.email ?? '');
       await audit(actor, 'ai:deny', app?.slug ?? 'hub-assistant', 'denied', `허용되지 않은 모델 ${picked.spec}`);
-      throw new HttpError(403, `이 앱은 '${picked.spec}' 모델을 쓸 수 없습니다. 쓸 수 있는 모델: ${allowed.slice(0, 6).join(', ')}${allowed.length > 6 ? ' …' : ''}`);
+      const hint = kind === 'text' ? '' : ' (음성·이미지 모델도 관리자 AI 설정의 허용 모델 목록에 있어야 합니다)'; 
+      throw new HttpError(403, `이 앱은 '${picked.spec}' 모델을 쓸 수 없습니다. 쓸 수 있는 모델: ${allowed.slice(0, 6).join(', ')}${allowed.length > 6 ? ' …' : ''}${hint}`);
+    }
+    if (kind === 'tts' && !TTS_PROVIDERS.includes(picked.provider)) {
+      throw new HttpError(400, `음성(TTS)은 ${TTS_PROVIDERS.map((p) => PROVIDER_LABEL[p]).join('·')} 모델로만 됩니다 (기본 ${TTS_DEFAULT_MODEL}).`);
+    }
+    if (kind === 'image' && !IMAGE_PROVIDERS.includes(picked.provider)) {
+      throw new HttpError(400, `이미지는 ${IMAGE_PROVIDERS.map((p) => PROVIDER_LABEL[p]).join('·')} 모델로만 됩니다 (기본 ${IMAGE_DEFAULT_MODEL}).`);
     }
     if (!configuredProviders()[picked.provider]) {
       throw new HttpError(503, `${PROVIDER_LABEL[picked.provider]} 키가 아직 등록되지 않았습니다. 관리자에게 알려 주세요.`);
     }
 
-    // 3) 얼마나 썼나 — 앱별·학교 전체 한도
-    const ask = readAsk(b);
+    // 3) 얼마나 썼나 — 앱별·학교 전체 한도 (글·음성·이미지 모두 같은 한도를 센다)
+    let tts: Tts | null = null;
+    let img: Img | null = null;
+    if (kind === 'tts') { const r = normalizeTts(b); if (!r.ok) throw new HttpError(r.status, r.message); tts = r.tts; }
+    else if (kind === 'image') { const r = normalizeImage(b); if (!r.ok) throw new HttpError(r.status, r.message); img = r.img; }
+    const ask = kind === 'text' ? readAsk(b) : null;
     const eff = {
       hourly: limitOf(ai.hourly_limit, c.default_app_hourly),
       daily: limitOf(ai.daily_limit, c.default_app_daily),
@@ -432,11 +561,37 @@ Deno.serve(async (req) => {
 
     // 4) 부르기
     const key = await providerKey(picked.provider);
+    if (kind !== 'text') {
+      let out: Media;
+      try {
+        out = kind === 'tts'
+          ? (picked.provider === 'openai' ? await callOpenAiTts(key, picked.model, tts as Tts) : await callGeminiTts(key, picked.model, tts as Tts))
+          : await callGeminiImage(key, picked.model, img as Img);
+      } catch (e) {
+        if (e instanceof HttpError) {
+          await aiLog(app, picked.provider, picked.model, { input: 0, output: 0, total: 0 }, 'error', `${e.status} ${e.message}`, actor?.email ?? '');
+          await audit(actor, `ai:${kind}`, app?.slug ?? 'hub-assistant', 'error', `${picked.spec} · ${e.status} ${e.message}`.slice(0, 400));
+        }
+        throw e;
+      }
+      const base = b64e(out.bytes);
+      await aiLog(app, picked.provider, picked.model, { input: out.input, output: out.output, total: out.total }, 'ok', '', actor?.email ?? '');
+      await audit(actor, `ai:${kind}`, app?.slug ?? 'hub-assistant', 'ok', `${picked.spec} · ${out.bytes.length}바이트`);
+      return json(req, 200, {
+        ok: true,
+        app: app?.slug ?? 'hub-assistant',
+        provider: picked.provider,
+        model: picked.model,
+        ...(kind === 'tts' ? { audioBase64: base, mimeType: out.mime } : { imageBase64: base, mimeType: out.mime }),
+        ...(out.text ? { text: out.text } : {}),
+        usage: { input_tokens: out.input, output_tokens: out.output, total_tokens: out.total },
+      });
+    }
     let ans: Answer;
     try {
-      ans = picked.provider === 'gemini' ? await callGemini(key, picked.model, ask)
-        : picked.provider === 'anthropic' ? await callAnthropic(key, picked.model, ask)
-          : await callOpenAiCompatible(picked.provider, key, picked.model, ask);
+      ans = picked.provider === 'gemini' ? await callGemini(key, picked.model, ask as Ask)
+        : picked.provider === 'anthropic' ? await callAnthropic(key, picked.model, ask as Ask)
+          : await callOpenAiCompatible(picked.provider, key, picked.model, ask as Ask);
     } catch (e) {
       if (e instanceof HttpError) {
         await aiLog(app, picked.provider, picked.model, { input: 0, output: 0, total: 0 }, 'error', `${e.status} ${e.message}`, actor?.email ?? '');

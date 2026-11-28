@@ -342,13 +342,39 @@ const { ok, provider, model, text, usage, error } = await r.json();
 // usage = { input_tokens, output_tokens, total_tokens }
 ```
 
-- **모델 고르기**: `업체:모델`(`gemini:gemini-2.5-flash`, `openai:gpt-4o`, `anthropic:claude-sonnet-4-5`, `xai:grok-3`) 또는 모델 이름만(`gpt-4o-mini`, `claude-3-5-haiku-latest`, `grok-3-mini`). 이름만 쓰면 `gemini-*`→Gemini, `gpt-*`/`o1`·`o3`·`o4`→OpenAI, `claude-*`→Claude, `grok-*`→Grok 으로 알아서 고릅니다.
+- **모델 고르기**: `업체:모델`(`gemini:gemini-2.5-flash`, `openai:gpt-4o`, `anthropic:claude-sonnet-4-5`, `xai:grok-3`) 또는 모델 이름만(`gpt-4o-mini`, `claude-3-5-haiku-latest`, `grok-3-mini`). 이름만 쓰면 `gemini-*`→Gemini, `gpt-*`/`o1`·`o3`·`o4`→OpenAI, `claude-*`→Claude, `grok-*`→Grok 으로 알아서 고릅니다. 글 모델은 `gemini-2.5-flash`·`gemini-2.5-flash-lite`·`gemini-2.5-pro`, 음성은 `gemini-2.5-flash-preview-tts`·`gemini-3.1-flash-tts-preview`·`gpt-4o-mini-tts`, 그림은 `gemini-2.5-flash-image`·`gemini-3.1-flash-image` 입니다(2026-11-28 기준 학교 전체 허용 목록).
 - **쓸 수 있는 모델은 정해져 있습니다.** 학교 전체(또는 이 앱에 따로 정한) **허용 모델 목록** 밖의 모델은 403 으로 거부됩니다. 목록은 앱 정보 창의 **🤖 앱 AI** 에서 보고, 관리자는 그 자리에서 바꿀 수 있습니다.
 - **한도**: 기본적으로 앱마다 **한 시간 60번·24시간 500번·24시간 50만 토큰**, 학교 전체 **24시간 3,000번·500만 토큰**. 앱별로 다르게 정할 수 있고(관리자), 한도는 최근 24시간·최근 1시간으로 셉니다. 막힌(거부) 요청은 한도를 먹지 않습니다.
 - **토큰은 직접 발급합니다.** **🤖 앱 AI** 에서 **AI 토큰 발급**을 누르면 `<접두어>AI_TOKEN` 이 함수 비밀값에 들어가고 해시만 서버에 남습니다. **새 앱은 승인 때 자동으로 발급**됩니다. 잊었거나 다른 사람이 알게 되었으면 **재발급**하세요 — 예전 토큰은 바로 무효가 됩니다.
 - **남기지 않는 것**: 프롬프트와 응답 본문은 저장하지 않습니다. 모델·토큰 수·결과·오류만 기록합니다(감사 기록에도 모델과 토큰 수만). 학생 개인정보를 프롬프트에 넣을 때는 목적·보관을 먼저 정하세요.
 - 앱이 **일시 중지·종료** 상태이거나 관리자가 AI 사용을 멈추면 부를 수 없습니다. 관리자는 앱별로 **사용 켜기/멈추기**와 허용 모델·한도를 바꿀 수 있습니다.
-- 오류는 한국어로 돌려줍니다: 토큰 없음/틀림 401 · 권한·허용 모델·사용 중지 403 · 한도 429 · 업체 거절·응답 없음 502 · 키 미등록·설정 없음 503.
+- 오류는 한국어로 돌려줍니다: 토큰 없음/틀림 401 · 권한·허용 모델·사용 중지 403 · 한도 429 · 업체 거절·응답 없음 502 · 키 미등록·설정 없음 503 · 형식 오류 400 · 글자 수 초과 413.
+
+#### 음성(TTS)과 그림 — `POST /hub-ai/tts` · `POST /hub-ai/image`
+
+```ts
+const SB = Deno.env.get('SUPABASE_URL');
+const headers = { Authorization: `Bearer ${Deno.env.get('LIBRARY_AI_TOKEN')}`, apikey: Deno.env.get('SUPABASE_ANON_KEY') ?? '', 'Content-Type': 'application/json' };
+
+// 1) 글을 읽어 주기 (기본 gemini:gemini-2.5-flash-preview-tts, 음성 Kore)
+const t = await fetch(SB + '/functions/v1/hub-ai/tts', {
+  method: 'POST', headers,
+  body: JSON.stringify({ text: '오늘 도서실은 5시에 닫습니다.', voice: 'Kore' }),
+});
+const { ok, audioBase64, mimeType, model, error } = await t.json();   // mimeType = 'audio/wav'
+
+// 2) 글로 그림 만들기 (기본 gemini:gemini-2.5-flash-image)
+const i = await fetch(SB + '/functions/v1/hub-ai/image', {
+  method: 'POST', headers,
+  body: JSON.stringify({ prompt: '별무리학교 교정, 수채화', aspect_ratio: '16:9' }),
+});
+const img = await i.json();   // { ok, imageBase64, mimeType: 'image/png', model, text?(설명) }
+```
+
+- `body.mode: 'tts' | 'image'` 로 `POST /hub-ai` 에 보내도 같습니다(기존 글 호출은 그대로).
+- **요청 칸**: TTS `text`(또는 `prompt`, 8,000자까지) · `voice`(`Kore`·`Puck`·… 또는 OpenAI `alloy`·`nova`·…) · `format`(`wav`·`mp3`, OpenAI만) / 이미지 `prompt` · `aspect_ratio`(`1:1`·`16:9`·`9:16`·`3:4` 등 14가지, 비우면 모델이 정함).
+- **돌려주는 것**: TTS `audioBase64`+`mimeType` (Gemini가 준 PCM 24kHz 16bit 모노는 44바이트 wav 헤더를 붙여 `audio/wav` 로 — 브라우저 `new Audio('data:'+mimeType+';base64,'+audioBase64)` 로 바로 재생) · 이미지 `imageBase64`+`mimeType`(`image/png`). 둘 다 `usage` 토큰 수가 함께 옵니다.
+- 한도·허용 모델·앱 상태·기록은 글 호출과 똑같이 적용됩니다(같은 24시간 한도를 함께 씁니다). `GET /hub-ai/health` 의 `capabilities: { text, tts, image }` 로 지원 여부를 확인할 수 있습니다.
 
 ### 3-15. 학교 그룹·명부 (hub-directory)
 

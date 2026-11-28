@@ -53,8 +53,10 @@ export const AI_DEFAULTS = {
   allowedModelsMax: 50,
 } as const;
 export const AI_STARTER_MODELS: readonly string[] = [
-  'gemini:gemini-2.5-flash', 'gemini:gemini-2.5-pro',
-  'openai:gpt-4o-mini', 'openai:gpt-4o',
+  'gemini:gemini-2.5-flash', 'gemini:gemini-2.5-pro', 'gemini:gemini-2.5-flash-lite',
+  'gemini:gemini-2.5-flash-preview-tts', 'gemini:gemini-2.5-flash-image',
+  'gemini:gemini-3.1-flash-tts-preview', 'gemini:gemini-3.1-flash-image',
+  'openai:gpt-4o-mini', 'openai:gpt-4o', 'openai:gpt-4o-mini-tts',
   'anthropic:claude-3-5-haiku-latest', 'anthropic:claude-sonnet-4-5',
   'xai:grok-3-mini', 'xai:grok-3',
 ] as const;
